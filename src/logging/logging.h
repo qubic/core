@@ -66,6 +66,7 @@ struct Peer;
 #define CUSTOM_MESSAGE_OP_END_DISTRIBUTE_DIVIDENDS 6217575821008457285ULL //END_DDIV
 #define CUSTOM_MESSAGE_OP_START_EPOCH 4850183582582395987ULL // STA_EPOC
 #define CUSTOM_MESSAGE_OP_END_EPOCH 4850183582582591045ULL //END_EPOC
+#define CUSTOM_MESSAGE_ANT_SOLUTION 6146374810954124865ULL // ANT_SOLU
 /*
 * STRUCTS FOR LOGGING
 */
@@ -187,6 +188,23 @@ struct DummyCustomMessage
     unsigned long long _type; // Assign a random unique number to distinguish messages of different types
 
     // Other data go here
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+// On-chain outcome of one ant-colony solution transaction (accepted or rejected),
+// identified by its dedup key (sourcePublicKey, parentRef, nonce).
+struct AntSolutionLogMessage
+{
+    unsigned long long _type; // CUSTOM_MESSAGE_ANT_SOLUTION
+    m256i sourcePublicKey;
+    m256i nonce;
+    unsigned int parentTick;
+    unsigned int parentSolutionIndexInTick;
+    unsigned int anchorTick;
+    unsigned int score;
+    // ValidityResult of the commit
+    unsigned int result;
 
     char _terminator; // Only data before "_terminator" are logged
 };

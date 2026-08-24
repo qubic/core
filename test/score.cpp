@@ -7,6 +7,7 @@
 #include "../src/public_settings.h"
 #include "../src/mining/score_bpp9000.h"
 #include "../src/mining/task_file.h"
+#include "../src/score.h"
 
 #include "score_bpp9000_reference.h"
 #include "score_params.h"
@@ -23,7 +24,9 @@
 #include <thread>
 #include <cstring>
 #include <chrono>
+#include <atomic>
 #include <iostream>
+#include <cstddef>
 
 using namespace score_params;
 using namespace test_utils;
@@ -32,13 +35,17 @@ static const std::string TASK_FILE_NAME = "data/example_task_bpp9000.bin";
 static const std::string SAMPLES_FILE_NAME = "data/samples_bpp9000.csv";
 static const std::string SCORES_FILE_NAME = "data/scores_bpp9000.csv";
 
+static const std::string PRODUCTION_TASK_FILE_NAME = "data/bpp9000.task";
+static const std::string PRODUCTION_FILE_NAME = "data/gt_production.csv";
+static const std::string PRODUCTION_ANT_FILE_NAME = "data/gt_ant_production.csv";
+
 // true  = ALSO run the engine-vs-reference cross-check on random tasks, for isolating a divergence.
 static bool gCompareReference = false;
 
 // Samples run per config
 static constexpr unsigned long long TEST_NUMBER_OF_SAMPLES = 32;
-// Worker threads for the parallel path; effective count = min(this, hardware_concurrency, numSamples).
-static constexpr unsigned int TEST_NUMBER_OF_THREADS = 0;
+// Worker threads for the parallel path; min with hardware_concurrency and numSamples. 0 falls back to 1 (serial).
+static constexpr unsigned int TEST_NUMBER_OF_THREADS = 4;
 
 // Samples and worker threads for the Bpp9000Profile timing run.
 static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 48;
@@ -196,7 +203,8 @@ static unsigned int workerThreadCount(unsigned long long numSamples)
     {
         hw = 1;
     }
-    unsigned int chosen = (hw < TEST_NUMBER_OF_THREADS) ? hw : TEST_NUMBER_OF_THREADS;   // min(hardware_concurrency, chosen)
+    unsigned int requested = (TEST_NUMBER_OF_THREADS == 0) ? 1u : TEST_NUMBER_OF_THREADS;   // 0 falls back to 1 (serial)
+    unsigned int chosen = (hw < requested) ? hw : requested;                                // min(hardware_concurrency, requested)
     return (unsigned int)((numSamples < (unsigned long long)chosen) ? numSamples : (unsigned long long)chosen);   // no more than one thread per sample
 }
 
@@ -378,6 +386,179 @@ TEST(TestQubicScoreFunction, Bpp9000Regression)
     runRegression(seeds, pubkeys, nonces, taskBytes, golden);
 }
 
+TEST(TestQubicScoreFunction, Bpp9000ProductionRegression)
+{
+    auto rows = readCSV(PRODUCTION_FILE_NAME);
+    ASSERT_GT(rows.size(), 1u) << "missing/empty " << PRODUCTION_FILE_NAME;
+
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    std::vector<unsigned int> golden;
+    std::vector<m256i> uniqueSeeds;         // distinct mining seeds -> one pool each
+    std::vector<unsigned int> poolIndex;    // per row: index into uniqueSeeds
+    for (unsigned long long i = 1; i < rows.size(); ++i)
+    {
+        pubkeys.push_back(hexTo32Bytes(trim(rows[i][0]), 32));
+        nonces.push_back(hexTo32Bytes(trim(rows[i][1]), 32));
+        const m256i seed = hexTo32Bytes(trim(rows[i][2]), 32);
+        golden.push_back((unsigned int)std::stoul(trim(rows[i][3])));
+
+        unsigned int idx = (unsigned int)uniqueSeeds.size();
+        for (unsigned int k = 0; k < uniqueSeeds.size(); ++k)
+        {
+            if (memcmp(uniqueSeeds[k].m256i_u8, seed.m256i_u8, 32) == 0)
+            {
+                idx = k;
+                break;
+            }
+        }
+        if (idx == uniqueSeeds.size())
+        {
+            uniqueSeeds.push_back(seed);
+        }
+        poolIndex.push_back(idx);
+    }
+    ASSERT_FALSE(pubkeys.empty());
+
+    std::vector<std::vector<unsigned char>> pools(uniqueSeeds.size());
+    for (size_t k = 0; k < uniqueSeeds.size(); ++k)
+    {
+        generatePool(uniqueSeeds[k], pools[k]);
+    }
+
+    // The production task
+    auto taskBytes = readBinaryFile(PRODUCTION_TASK_FILE_NAME);
+    ASSERT_GT(taskBytes.size(), sizeof(score_task_file::TaskFileHeader)) << "missing/short " << PRODUCTION_TASK_FILE_NAME;
+    const TaskBlocks tb = taskSubview<ProductionConfig>(taskBytes);
+
+    runWorkers(workerThreadCount(pubkeys.size()), [&](unsigned int threadIdx, unsigned int numThreads)
+    {
+        auto engine = makeEngine<ProductionConfig>(tb.topo, tb.data);
+        if (!engine)
+        {
+            return;
+        }
+        for (unsigned long long s = threadIdx; s < pubkeys.size(); s += numThreads)
+        {
+            const unsigned int score = engine->computeScore(pubkeys[s].m256i_u8, nonces[s].m256i_u8, pools[poolIndex[s]].data());
+            EXPECT_EQ(score, golden[s]) << "gt_production row " << s;
+        }
+    });
+}
+
+// Ant-colony score seam (deriveRootANN + computeScoreFromParent)
+TEST(TestQubicScoreFunction, Bpp9000AntColonyRegression)
+{
+    // Group by chain each chain is a lineage - level 0 extends the derived root, level i extends level i-1's bestANN.
+    auto rows = readCSV(PRODUCTION_ANT_FILE_NAME);
+    ASSERT_GT(rows.size(), 1u) << "missing/empty " << PRODUCTION_ANT_FILE_NAME;
+
+    struct AntNode
+    {
+        m256i nonce;
+        m256i anchor;
+        unsigned int score;
+    };
+    struct AntChain
+    {
+        m256i pubkey;
+        unsigned int poolIndex;
+        std::vector<AntNode> nodes;   // indexed by depth
+    };
+    std::vector<AntChain> chains;
+    std::vector<int> chainIds;        // chain id per slot, first-seen order
+    std::vector<m256i> uniqueSeeds;
+
+    for (unsigned long long i = 1; i < rows.size(); ++i)
+    {
+        const int chainId = std::stoi(trim(rows[i][0]));
+        const int depth = std::stoi(trim(rows[i][1]));
+        const m256i pubkey = hexTo32Bytes(trim(rows[i][2]), 32);
+        const m256i seed = hexTo32Bytes(trim(rows[i][5]), 32);
+
+        unsigned int sidx = (unsigned int)uniqueSeeds.size();
+        for (unsigned int k = 0; k < uniqueSeeds.size(); ++k)
+        {
+            if (memcmp(uniqueSeeds[k].m256i_u8, seed.m256i_u8, 32) == 0)
+            {
+                sidx = k;
+                break;
+            }
+        }
+        if (sidx == uniqueSeeds.size())
+        {
+            uniqueSeeds.push_back(seed);
+        }
+
+        size_t cidx = chains.size();
+        for (size_t k = 0; k < chainIds.size(); ++k)
+        {
+            if (chainIds[k] == chainId)
+            {
+                cidx = k;
+                break;
+            }
+        }
+        if (cidx == chains.size())
+        {
+            chainIds.push_back(chainId);
+            AntChain created;
+            created.pubkey = pubkey;
+            created.poolIndex = sidx;
+            chains.push_back(created);
+        }
+
+        AntNode node;
+        node.nonce = hexTo32Bytes(trim(rows[i][3]), 32);
+        node.anchor = hexTo32Bytes(trim(rows[i][4]), 32);
+        node.score = (unsigned int)std::stoul(trim(rows[i][6]));
+
+        AntChain& chain = chains[cidx];
+        if ((size_t)depth >= chain.nodes.size())
+        {
+            chain.nodes.resize((size_t)depth + 1);
+        }
+        chain.nodes[(size_t)depth] = node;
+    }
+    ASSERT_FALSE(chains.empty());
+
+    std::vector<std::vector<unsigned char>> pools(uniqueSeeds.size());
+    for (size_t k = 0; k < uniqueSeeds.size(); ++k)
+    {
+        generatePool(uniqueSeeds[k], pools[k]);
+    }
+
+    auto taskBytes = readBinaryFile(PRODUCTION_TASK_FILE_NAME);
+    ASSERT_GT(taskBytes.size(), sizeof(score_task_file::TaskFileHeader)) << "missing/short " << PRODUCTION_TASK_FILE_NAME;
+    const TaskBlocks tb = taskSubview<ProductionConfig>(taskBytes);
+
+    // Thread across chains; a chain is sequential (each node's bestANN feeds the next depth's parent).
+    runWorkers(workerThreadCount(chains.size()), [&](unsigned int threadIdx, unsigned int numThreads)
+    {
+        auto engine = makeEngine<ProductionConfig>(tb.topo, tb.data);
+        if (!engine)
+        {
+            return;
+        }
+        for (size_t ci = threadIdx; ci < chains.size(); ci += numThreads)
+        {
+            const AntChain& chain = chains[ci];
+            const unsigned char* pool = pools[chain.poolIndex].data();
+
+            score_engine::ScoreBpp9000<ProductionConfig>::ANN parent;
+            engine->deriveRootANN(chain.pubkey.m256i_u8, pool, parent);   // depth 0's parent = the derived root
+            for (size_t d = 0; d < chain.nodes.size(); ++d)
+            {
+                const AntNode& node = chain.nodes[d];
+                const unsigned int score = engine->computeScoreFromParent(
+                    parent, chain.pubkey.m256i_u8, node.nonce.m256i_u8, node.anchor.m256i_u8, pool);
+                EXPECT_EQ(score, node.score) << "gt_ant chain " << ci << " depth " << d;
+                engine->getBestANN(parent);   // this node becomes the next depth's parent
+            }
+        }
+    });
+}
+
 // TestBpp9000, internal score vs the score reference from Qiner
 TEST(TestQubicScoreFunction, Bpp9000EngineVsReference)
 {
@@ -506,5 +687,678 @@ TEST(TestQubicScoreFunction, Bpp9000Profile)
 }
 #endif
 
+// =============================================================================
+// Ant-colony related 
 
+namespace
+{
+using AntCfg = ProductionConfig;
+using AntEngine = score_engine::ScoreBpp9000<AntCfg>;
+
+// Pool + synthetic task + loaded engine. Every ant test starts from one of these.
+template<typename Cfg>
+struct AntFixtureT
+{
+    std::vector<unsigned char> pool;
+    std::vector<unsigned char> taskBytes;
+    std::unique_ptr<score_engine::ScoreBpp9000<Cfg>> engine;
+};
+using AntFixture = AntFixtureT<AntCfg>;
+
+template<typename Cfg>
+static bool makeAntFixtureT(AntFixtureT<Cfg>& f)
+{
+    std::vector<m256i> seeds;
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    loadSamples(seeds, pubkeys, nonces, 1);
+    if (seeds.empty())
+    {
+        ADD_FAILURE() << "missing/short " << SAMPLES_FILE_NAME;
+        return false;
+    }
+    generatePool(seeds[0], f.pool);
+
+    f.taskBytes = readBinaryFile(TASK_FILE_NAME);
+    if (f.taskBytes.size() <= sizeof(score_task_file::TaskFileHeader))
+    {
+        ADD_FAILURE() << "missing/short " << TASK_FILE_NAME;
+        return false;
+    }
+    const TaskBlocks tb = taskSubview<Cfg>(f.taskBytes);
+    f.engine = makeEngine<Cfg>(tb.topo, tb.data);
+    return f.engine != nullptr;
+}
+
+static bool makeAntFixture(AntFixture& f)
+{
+    return makeAntFixtureT<AntCfg>(f);
+}
+
+static m256i makePubkey(unsigned char tag)
+{
+    m256i k = m256i::zero();
+    k.m256i_u8[0] = tag;
+    k.m256i_u8[31] = (unsigned char)(tag * 3 + 1);
+    return k;
+}
+
+// Canonical ant nonce: nonce[0] selects bpp9000, nonce[1] = L, nonce[2] = K, rest is the walk seed.
+static m256i makeAntNonce(unsigned char L, unsigned char K, unsigned char tag)
+{
+    m256i n = m256i::zero();
+    n.m256i_u8[0] = (unsigned char)score_engine::AlgoType::Bpp9000;
+    n.m256i_u8[1] = L;
+    n.m256i_u8[2] = K;
+    n.m256i_u8[3] = tag;
+    n.m256i_u8[17] = (unsigned char)(tag ^ 0x5A);
+    return n;
+}
+
+// Find a nonce whose walk from this parent actually improves on the parent's score. Needed only by
+// tests that compare two children of the SAME parent
+static bool findImprovingNonce(AntEngine& engine, const AntEngine::ANN& parent, const m256i& pk,
+                               const m256i& anchor, const unsigned char* pool, m256i& outNonce)
+{
+    for (unsigned char tag = 1; tag <= 6; ++tag)
+    {
+        const m256i n = makeAntNonce(6, 5, (unsigned char)(50 + tag));
+        const unsigned int sc = engine.computeScoreFromParent(parent, pk.m256i_u8, n.m256i_u8,
+                                                              anchor.m256i_u8, pool);
+        if (sc != score_engine::INVALID_SCORE_VALUE)
+        {
+            outNonce = n;
+            return true;
+        }
+    }
+    return false;
+}
+}
+
+// Make sure the score at the full computeScore flow have the same score with
+// the engine start directly from the best/final LUT
+TEST(TestQubicScoreAntColony, BestAnnReproducesReturnedScore)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(1);
+    const m256i nonce = makeAntNonce(3, 0, 11);
+
+    const unsigned int best = f.engine->computeScore(pk.m256i_u8, nonce.m256i_u8, f.pool.data());
+    // Re-score the LUT the walk kept, taken out and put back through the public form - this also
+    // exercises the compact/expand round trip the tree relies on.
+    AntEngine::ANN bestLut;
+    f.engine->getBestANN(bestLut);
+    f.engine->expand(bestLut, f.engine->currentANN);
+    EXPECT_EQ(f.engine->score(), best);
+}
+
+// Make sure the score at the full computeScoreFromParent flow have the same score with
+// the engine start directly from the best/final LUT
+TEST(TestQubicScoreAntColony, BestAnnReproducesScoreFromParent)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(2);
+    const m256i nonce = makeAntNonce(4, 2, 23);
+    const m256i anchor = makePubkey(9);
+
+    AntEngine::ANN root;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), root);
+
+    const unsigned int childScore = f.engine->computeScoreFromParent(
+        root, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+
+    // Re-score the LUT the walk kept, taken out and put back through the public form - this also
+    // exercises the compact/expand round trip the tree relies on.
+    AntEngine::ANN bestLut;
+    f.engine->getBestANN(bestLut);
+    f.engine->expand(bestLut, f.engine->currentANN);
+    EXPECT_EQ(f.engine->score(), childScore);
+}
+
+// An ANN is exactly its LUT: no storage padding escapes the engine, so hashing or shipping one is
+// just sizeof(ANN) and a future change to lutStride cannot alter a digest or the wire format.
+TEST(TestQubicScoreAntColony, AnnCarriesOnlyTheLut)
+{
+    static_assert(sizeof(AntEngine::ANN) == AntCfg::populationThreshold * AntEngine::lutSize,
+                  "ANN must be the LUT and nothing else");
+    static_assert(sizeof(AntEngine::ANN) < sizeof(AntEngine::PaddedLut),
+                  "the working layout is the padded one, not the other way round");
+
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(3);
+    AntEngine::ANN root;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), root);
+
+    // Every byte handed out is a trit; nothing from the padded rows leaked in.
+    for (unsigned long long i = 0; i < sizeof(root.lut); ++i)
+    {
+        ASSERT_LT(root.lut[i], 3) << "byte " << i << " of the returned ANN is not a trit";
+    }
+
+    // Scribbling on the working layout's padding cannot change what comes out of it.
+    AntEngine::PaddedLut working;
+    f.engine->expand(root, working);
+    for (unsigned long long k = 0; k < AntEngine::maxNumberOfNeurons; ++k)
+    {
+        for (unsigned long long b = AntEngine::lutSize; b < AntEngine::lutStride; ++b)
+        {
+            working.lut[k * AntEngine::lutStride + b] = (unsigned char)(0xA5 + k + b);
+        }
+    }
+    AntEngine::ANN again;
+    f.engine->compact(working, again);
+    EXPECT_EQ(memcmp(&again, &root, sizeof(root)), 0) << "storage padding reached the ANN";
+}
+
+// expand/compact must be lossless, since every parent read from the tree goes through expand and
+// every child written back goes through compact.
+TEST(TestQubicScoreAntColony, AnnSurvivesExpandAndCompact)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    AntEngine::ANN original;
+    f.engine->deriveRootANN(makePubkey(44).m256i_u8, f.pool.data(), original);
+
+    AntEngine::PaddedLut working;
+    f.engine->expand(original, working);
+    AntEngine::ANN restored;
+    f.engine->compact(working, restored);
+
+    EXPECT_EQ(memcmp(&restored, &original, sizeof(original)), 0) << "expand/compact is not lossless";
+}
+
+TEST(TestQubicScoreAntColony, RootAnnIsDeterministicAndPerIdentity)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pkA = makePubkey(4);
+    const m256i pkB = makePubkey(5);
+
+    AntEngine::ANN a1;
+    AntEngine::ANN a2;
+    AntEngine::ANN b1;
+
+    f.engine->deriveRootANN(pkA.m256i_u8, f.pool.data(), a1);
+    // Deriving another identity's root overwrites initValue.lutInit, which is the state a1 came from.
+    f.engine->deriveRootANN(pkB.m256i_u8, f.pool.data(), b1);
+    f.engine->deriveRootANN(pkA.m256i_u8, f.pool.data(), a2);
+
+    EXPECT_EQ(memcmp(&a1, &a2, sizeof(a1)), 0) << "root depends on engine state";
+    EXPECT_NE(memcmp(&a1, &b1, sizeof(a1)), 0) << "two identities share a root";
+}
+
+// A child is a function of (parent, pubkey, nonce, anchor). Same inputs must give the same score AND
+// the same inherited LUT; a different parent must not give the same child.
+TEST(TestQubicScoreAntColony, ChildIsDeterministicAndInheritsParent)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(6);
+    const m256i nonce = makeAntNonce(5, 3, 41);
+    const m256i anchor = makePubkey(12);
+
+    AntEngine::ANN parentA;
+    AntEngine::ANN parentB;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parentA);
+    f.engine->deriveRootANN(makePubkey(7).m256i_u8, f.pool.data(), parentB);
+
+    const unsigned int s1 = f.engine->computeScoreFromParent(
+        parentA, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+    AntEngine::ANN child1;
+    f.engine->getBestANN(child1);
+
+    const unsigned int s2 = f.engine->computeScoreFromParent(
+        parentA, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+
+    EXPECT_EQ(s1, s2) << "same inputs gave different scores";
+    AntEngine::ANN child2;
+    f.engine->getBestANN(child2);
+    EXPECT_EQ(memcmp(&child1, &child2, sizeof(child1)), 0) << "same inputs gave a different child LUT";
+
+    f.engine->computeScoreFromParent(parentB, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+    AntEngine::ANN child3;
+    f.engine->getBestANN(child3);
+    EXPECT_NE(memcmp(&child1, &child3, sizeof(child1)), 0) << "the parent LUT was not inherited";
+}
+
+// The anchor digest is part of the child's walk seed, so the same nonce on the same parent must not
+// produce the same child at a different anchor.
+TEST(TestQubicScoreAntColony, ChildDependsOnAnchorDigest)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(8);
+    const m256i anchorA = makePubkey(20);
+    const m256i anchorB = makePubkey(21);
+
+    AntEngine::ANN parent;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parent);
+
+    m256i nonce;
+    ASSERT_TRUE(findImprovingNonce(*f.engine, parent, pk, anchorA, f.pool.data(), nonce))
+        << "no nonce improved on this parent, so bestANN would not move and the comparison below "
+           "would be vacuous";
+
+    f.engine->computeScoreFromParent(parent, pk.m256i_u8, nonce.m256i_u8, anchorA.m256i_u8, f.pool.data());
+    AntEngine::ANN c1;
+    f.engine->getBestANN(c1);
+
+    f.engine->computeScoreFromParent(parent, pk.m256i_u8, nonce.m256i_u8, anchorB.m256i_u8, f.pool.data());
+    AntEngine::ANN c2;
+    f.engine->getBestANN(c2);
+
+    EXPECT_NE(memcmp(&c1, &c2, sizeof(c1)), 0) << "anchor digest does not reach the walk";
+}
+
+// Non-canonical nonces are refused by the scorer itself, so no caller can score first and check after.
+TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(10);
+    const m256i anchor = makePubkey(30);
+    AntEngine::ANN parentA;
+    AntEngine::ANN parentB;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parentA);
+    f.engine->deriveRootANN(makePubkey(11).m256i_u8, f.pool.data(), parentB);
+
+    constexpr unsigned char maxK = (unsigned char)AntCfg::numberOfMutations;
+    const m256i good = makeAntNonce(3, 5, 62);
+
+    // A rejected nonce and a timed-out walk
+    f.engine->computeScoreFromParent(parentA, pk.m256i_u8, good.m256i_u8, anchor.m256i_u8, f.pool.data());
+    AntEngine::ANN afterA;
+    f.engine->getBestANN(afterA);
+
+    // L below range, L above range, K above numberOfMutations, wrong algorithm slot.
+    static constexpr unsigned int numberOfBadNonces = 4;
+    m256i bad[numberOfBadNonces];
+    bad[0] = makeAntNonce(0, 0, 64);
+    bad[1] = makeAntNonce((unsigned char)(score_engine::MAX_LUT_ENTRIES_PER_STEP + 1), 0, 65);
+    bad[2] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
+    bad[3] = makeAntNonce(3, 0, 67);
+    bad[3].m256i_u8[0] = (unsigned char)score_engine::AlgoType::Neuraxon;
+
+    for (unsigned int i = 0; i < numberOfBadNonces; i++)
+    {
+        // The bad nonce is early rejected in computeScoreFromParent()
+        EXPECT_EQ(f.engine->computeScoreFromParent(parentB, pk.m256i_u8, bad[i].m256i_u8, anchor.m256i_u8, f.pool.data()),
+                  score_engine::INVALID_SCORE_VALUE) << "non-canonical nonce " << i << " accepted";
+
+        AntEngine::ANN now;
+        f.engine->getBestANN(now);
+        EXPECT_EQ(memcmp(&now, &afterA, sizeof(now)), 0) << "rejected nonce " << i << " still ran the walk";
+    }
+
+    // Now after bad nonce, we feed good nonce, we expect this is ok
+    f.engine->computeScoreFromParent(parentB, pk.m256i_u8, good.m256i_u8, anchor.m256i_u8, f.pool.data());
+    AntEngine::ANN afterB;
+    f.engine->getBestANN(afterB);
+    EXPECT_NE(memcmp(&afterB, &afterA, sizeof(afterB)), 0) << "canonical nonce was not scored";
+}
+
+
+// L and K boundaries of the canonical rule, checked as a pure predicate so no walk is needed.
+TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
+{
+    using AntScorer = score_engine::ScoreBpp9000<AntCfg>;
+    constexpr unsigned char maxL = (unsigned char)score_engine::MAX_LUT_ENTRIES_PER_STEP;
+    constexpr unsigned char maxK = (unsigned char)AntScorer::numberOfMutations;
+
+    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(1, 0, 70).m256i_u8));
+    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(maxL, 0, 71).m256i_u8));
+    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, maxK, 72).m256i_u8));
+
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(0, 0, 73).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 74).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 75).m256i_u8));
+}
+
+
+// ---------------------------------------------------------------------------
+// ScoreFunction task queue.
+
+typedef ScoreFunction<1> TaskQueueScoreFunction;
+
+static constexpr unsigned int TASK_QUEUE_PROBE_CAPACITY = 256;
+
+// What the work functions record, so a test can see which tasks ran and what they received.
+struct TaskQueueProbe
+{
+    std::atomic<unsigned int> runCount[TASK_QUEUE_PROBE_CAPACITY];
+    std::atomic<unsigned int> altRunCount;
+    std::atomic<unsigned int> payloadMismatches;
+    std::atomic<unsigned int> started;
+    std::atomic<unsigned int> finished;
+
+    void reset()
+    {
+        for (unsigned int i = 0; i < TASK_QUEUE_PROBE_CAPACITY; i++)
+        {
+            runCount[i].store(0);
+        }
+        altRunCount.store(0);
+        payloadMismatches.store(0);
+        started.store(0);
+        finished.store(0);
+    }
+};
+
+struct TaskQueuePayload
+{
+    TaskQueueProbe* probe;
+    unsigned int id;
+    unsigned int patternSize;
+    unsigned char pattern[64];
+};
+static_assert(sizeof(TaskQueuePayload) <= TaskQueueScoreFunction::TASK_PAYLOAD_MAX,
+    "TaskQueuePayload must fit one queue slot");
+
+// Bigger than one slot, but starts with a valid payload so a wrongly accepted task records the run
+// instead of dereferencing garbage.
+struct TaskQueueOversizedPayload
+{
+    TaskQueuePayload base;
+    unsigned char extra[TaskQueueScoreFunction::TASK_PAYLOAD_MAX];
+};
+
+static TaskQueueProbe gTaskQueueProbe;
+static std::unique_ptr<TaskQueueScoreFunction> gTaskQueueOwner;
+static std::atomic<bool> gTaskQueueHelpersStop;
+
+static TaskQueuePayload makeTaskQueuePayload(unsigned int id, unsigned int patternSize = sizeof(TaskQueuePayload::pattern))
+{
+    TaskQueuePayload task;
+    setMem(&task, sizeof(task), 0);
+    task.probe = &gTaskQueueProbe;
+    task.id = id;
+    task.patternSize = patternSize;
+    // Fill the pattern with id+i, so it varies by task and by position
+    for (unsigned int i = 0; i < patternSize; i++)
+    {
+        task.pattern[i] = (unsigned char)(id + i);
+    }
+    return task;
+}
+
+// Records the run and checks the payload survived the copy into and out of the queue.
+static void countTaskRun(unsigned long long, void* payload)
+{
+    const TaskQueuePayload* task = (const TaskQueuePayload*)payload;
+    if (task->id >= TASK_QUEUE_PROBE_CAPACITY)
+    {
+        // Surfaces as a failed test rather than a write past runCount.
+        task->probe->payloadMismatches.fetch_add(1);
+        return;
+    }
+    if (task->patternSize > sizeof(task->pattern))
+    {
+        // A scalar that did not survive the copy is itself a mismatch, and it must not be trusted as
+        // the loop bound below.
+        task->probe->payloadMismatches.fetch_add(1);
+        return;
+    }
+    for (unsigned int i = 0; i < task->patternSize; i++)
+    {
+        if (task->pattern[i] != (unsigned char)(task->id + i))
+        {
+            task->probe->payloadMismatches.fetch_add(1);
+            break;
+        }
+    }
+    task->probe->runCount[task->id].fetch_add(1);
+}
+
+class TestQubicScoreTaskQueue : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        if (gTaskQueueOwner.get() == nullptr)
+        {
+            gTaskQueueOwner.reset(new TaskQueueScoreFunction());
+        }
+        gTaskQueueOwner->resetTaskQueue();
+        gTaskQueueProbe.reset();
+        gTaskQueueHelpersStop.store(false);
+    }
+
+    TaskQueueScoreFunction& queue()
+    {
+        return *gTaskQueueOwner;
+    }
+};
+
+// Task run once. Normal case
+TEST_F(TestQubicScoreTaskQueue, EveryTaskRunsExactlyOnce)
+{
+    const unsigned int taskCount = TASK_QUEUE_PROBE_CAPACITY;
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        const TaskQueuePayload task = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(countTaskRun, &task, sizeof(task)));
+    }
+
+    // Try to process every task in queue until all done
+    queue().runUntilDone(0);
+
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        // Each task is expected run once
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "task " << i;
+    }
+}
+
+// Mixed mutiple size of tasks
+TEST_F(TestQubicScoreTaskQueue, PayloadArrivesIntact)
+{
+    // Bytes a task of this pattern length hands to addTask.
+    const auto taskQueuePayloadBytes = [](unsigned int patternSize) -> unsigned int
+    {
+        return (unsigned int)offsetof(TaskQueuePayload, pattern) + patternSize;
+    };
+
+    const unsigned int patternSizes[] = { 0, sizeof(TaskQueuePayload::pattern) };
+    const unsigned int sizeCount = (unsigned int)(sizeof(patternSizes) / sizeof(patternSizes[0]));
+    const unsigned int perSize = 4;
+
+    unsigned int id = 0;
+    for (unsigned int s = 0; s < sizeCount; s++)
+    {
+        for (unsigned int i = 0; i < perSize; i++)
+        {
+            const TaskQueuePayload task = makeTaskQueuePayload(id, patternSizes[s]);
+            EXPECT_TRUE(queue().addTask(countTaskRun, &task, taskQueuePayloadBytes(patternSizes[s])));
+            id++;
+        }
+    }
+
+    // Try to process every task in queue until all done
+    queue().runUntilDone(0);
+
+    EXPECT_EQ(gTaskQueueProbe.payloadMismatches.load(), 0u);
+    for (unsigned int i = 0; i < id; i++)
+    {
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "task " << i;
+    }
+}
+
+// A payload larger than one slot must be refused, not truncated into the slot or written past it.
+TEST_F(TestQubicScoreTaskQueue, OversizedPayloadIsRejected)
+{
+    TaskQueueOversizedPayload oversized;
+    setMem(&oversized, sizeof(oversized), 0);
+    oversized.base = makeTaskQueuePayload(0);
+
+    EXPECT_FALSE(queue().addTask(countTaskRun, &oversized, sizeof(oversized)));
+
+    // Nothing was queued, so the drain has nothing to run.
+    queue().runUntilDone(0);
+    EXPECT_EQ(gTaskQueueProbe.runCount[0].load(), 0u);
+}
+
+// The queue is bounded. Filling it until addTask refuses shows where the bound is, and that going
+// past it fails instead of writing off the end of the array.
+TEST_F(TestQubicScoreTaskQueue, QueueRejectsOverflow)
+{
+    unsigned long long accepted = 0;
+    for (unsigned long long i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK + 16; i++)
+    {
+        const TaskQueuePayload task = makeTaskQueuePayload(0);
+        const bool added = queue().addTask(countTaskRun, &task, sizeof(task));
+        if (!added)
+        {
+            break;
+        }
+        accepted++;
+    }
+
+    EXPECT_EQ(accepted, NUMBER_OF_TRANSACTIONS_PER_TICK);
+}
+
+// The drain must return only after every task has finished, including the ones other threads picked
+// up. Returning once the last task was merely taken would leave work still running.
+TEST_F(TestQubicScoreTaskQueue, DrainWaitsForTasksRunningOnOtherThreads)
+{
+    // Stays in flight long enough that a drain returning on tasks taken, rather than tasks finished,
+    // would be visible.
+    const TaskQueueScoreFunction::WorkFunc slowTaskRun = [](unsigned long long, void* payload)
+    {
+        const TaskQueuePayload* task = (const TaskQueuePayload*)payload;
+        task->probe->started.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        task->probe->finished.fetch_add(1);
+    };
+
+    const unsigned int taskCount = 64;
+    const unsigned int helperCount = 4;
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        const TaskQueuePayload task = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(slowTaskRun, &task, sizeof(task)));
+    }
+
+    // Create another threads for process some tasks in queues
+    std::vector<std::thread> helpers;
+    for (unsigned int t = 0; t < helperCount; t++)
+    {
+        const unsigned long long helperProcessorNumber = t + 1;
+        helpers.emplace_back([helperProcessorNumber]()
+        {
+            // What a request processor does: keep offering to run queued work until told to stop.
+            while (!gTaskQueueHelpersStop.load())
+            {
+                gTaskQueueOwner->tryProcessOneTask(helperProcessorNumber);
+            }
+        });
+    }
+
+    // Mark the task queue ready and process remained task
+    queue().runUntilDone(0);
+    const unsigned int finishedOnReturn = gTaskQueueProbe.finished.load();
+
+    gTaskQueueHelpersStop.store(true);
+    for (unsigned int t = 0; t < helperCount; t++)
+    {
+        helpers[t].join();
+    }
+
+    // Expect all task are done
+    EXPECT_EQ(finishedOnReturn, taskCount);
+    EXPECT_EQ(gTaskQueueProbe.started.load(), taskCount);
+}
+
+// Tasks are queued before the drain opens the queue. Until it does, a helper must pick up nothing, so
+// a half-built batch is never started.
+TEST_F(TestQubicScoreTaskQueue, ClosedQueueHandsOutNothing)
+{
+    const unsigned int taskCount = 8;
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        const TaskQueuePayload task = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(countTaskRun, &task, sizeof(task)));
+    }
+
+    // Try to run many task but no thing run because the queue is not ready
+    for (unsigned int i = 0; i < 32; i++)
+    {
+        queue().tryProcessOneTask(0);
+    }
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 0u) << "task " << i << " ran before the drain";
+    }
+
+    // Process all items
+    queue().runUntilDone(0);
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "task " << i;
+    }
+}
+
+// Every tick resets the queue and refills it, so a second batch must behave like the first. It will
+// not if reset leaves any of the three counters behind.
+TEST_F(TestQubicScoreTaskQueue, QueueIsReusableAfterReset)
+{
+    const unsigned int taskCount = 16;
+    for (unsigned int batch = 0; batch < 2; batch++)
+    {
+        queue().resetTaskQueue();
+        gTaskQueueProbe.reset();
+
+        for (unsigned int i = 0; i < taskCount; i++)
+        {
+            const TaskQueuePayload task = makeTaskQueuePayload(i);
+            EXPECT_TRUE(queue().addTask(countTaskRun, &task, sizeof(task)));
+        }
+
+        queue().runUntilDone(0);
+
+        for (unsigned int i = 0; i < taskCount; i++)
+        {
+            EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "batch " << batch << " task " << i;
+        }
+    }
+}
+
+// Each task carries its own work function, so one batch can mix kinds. This is what lets a second
+// caller share the queue without changing it.
+TEST_F(TestQubicScoreTaskQueue, OneBatchCarriesDifferentWorkFunctions)
+{
+    // A second work function, so a batch can be shown to carry more than one kind of task.
+    const TaskQueueScoreFunction::WorkFunc countAltTaskRun = [](unsigned long long, void* payload)
+    {
+        const TaskQueuePayload* task = (const TaskQueuePayload*)payload;
+        task->probe->altRunCount.fetch_add(1);
+    };
+
+    const unsigned int pairCount = 32;
+    for (unsigned int i = 0; i < pairCount; i++)
+    {
+        const TaskQueuePayload counted = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(countTaskRun, &counted, sizeof(counted)));
+        const TaskQueuePayload alt = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(countAltTaskRun, &alt, sizeof(alt)));
+    }
+
+    queue().runUntilDone(0);
+
+    for (unsigned int i = 0; i < pairCount; i++)
+    {
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "task " << i;
+    }
+    EXPECT_EQ(gTaskQueueProbe.altRunCount.load(), pairCount);
+}
 
