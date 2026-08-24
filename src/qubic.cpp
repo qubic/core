@@ -2,6 +2,7 @@
 
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
+// #define OLD_QRAFFLE
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
