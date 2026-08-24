@@ -364,6 +364,23 @@ unsigned char status;         // 0 = OK, 1 = NOT_FOUND, 2 = IS_ROOT (derive your
 unsigned char padding[3];
 ```
 
+**Canonical ANN layout.** The same byte form is used everywhere ANN bytes leave the node: this response, the snapshot pool, and the epoch export. Under the current bpp9000 parameters it is 1'728 bytes = 64 rows of 27:
+
+```
+row k, k = 0..45     LUT of neuron updatedNeuronIndices[k]: the k-th NON-INPUT neuron in
+                     ascending absolute index (input neurons have no LUT; which indices are
+                     inputs comes from the task topology)
+row k, k = 46..63    zero (the row count is fixed at the population size, the live count is
+                     population minus inputs and so task-dependent)
+
+byte[line] of a row, line = t0 + 3*t1 + 9*t2
+                     the neuron's next trit for that neighbor state; t0, t1, t2 are the
+                     current trits {0,1,2} of its three wired neighbors in task wiring
+                     order (2 = UNKNOWN is an ordinary value)
+```
+
+Rows are ordered **by updated-neuron position, not by absolute neuron index**. A miner or tool that keeps LUTs indexed by absolute neuron number must convert through the task's `updatedNeuronIndices` mapping before comparing or reusing these bytes.
+
 ### 2.8 Network message + transaction types
 
 | Type | Value | Signed | Direction |
