@@ -173,6 +173,10 @@ stored. The same every time for the epoch.
 **Anchor digest.** `anchorTickDigest = K12(anchorTick || transactionDigest)`, where `transactionDigest`
 is `K12(TickData)` of the anchor tick's `TickData` (`REQUEST_TICK_DATA`). This binds a solution to a tick.
 
+**Empty ticks carry no anchor.** A tick without `TickData` records no anchor digest, and a published
+solution whose `anchorTick` is an empty tick is rejected (`RejectStale`) with the **deposit
+forfeited**. Anchor only on ticks that have `TickData`, make sure select a non-empty tick as an anchor tick.
+
 Score is an error count in `[0, 8088]`; lower is better.
 
 ### 2.4 Accept rules
