@@ -5,7 +5,7 @@ using namespace QPI;
 *
 * Generic read of a SINGLE Qubic log event: given (tick, txHash, logId) the oracle machine
 * returns that one log verbatim - its type, emitting contract index and raw body bytes. logId is
-* the GLOBAL log id (counted from the chain's first log event onward), matched against the logId
+* the GLOBAL log id (counted from epoch's first log event onward), matched against the logId
 * of each log in the transaction's receipt. No semantics are baked in; the querying smart
 * contract decodes the raw bytes itself.
 *
@@ -51,7 +51,7 @@ struct QubicLogRead
         /// Transaction hash (32-byte digest).
         Array<uint8, 32> txHash; // [8..40)
 
-        /// Global log id of the requested log event (counted from the chain's first log).
+        /// Global log id of the requested log event (counted from epoch's first log).
         uint64 logId;            // [40..48)
     };
 

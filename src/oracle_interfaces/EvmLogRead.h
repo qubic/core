@@ -39,6 +39,7 @@ struct EvmLogRead
     //
     // Codes 3/4 are time-varying observations: treat as retriable, never proof of permanent
     // absence; near the finality boundary computors may split and the query just times out.
+    // Retrying is the job of querier and not part of the oracle machine.
 
     /// Oracle query data / input to the oracle machine. Fixed 48 bytes.
     struct OracleQuery
