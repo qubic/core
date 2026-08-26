@@ -11,16 +11,6 @@ namespace score_engine
 // Largest L (mutations per step) the scorer clamps nonce[1] to
 static constexpr unsigned int MAX_LUT_ENTRIES_PER_STEP = 10;
 
-// A bpp9000 nonce is canonical iff its score-irrelevant knob bytes are canonical:
-// nonce[0] = algo (enforced by routing), nonce[1] = L in [1, MAX_LUT_ENTRIES_PER_STEP], nonce[2] = K = 0
-static bool isCanonicalBpp9000Nonce(const unsigned char* nonce)
-{
-    return (getAlgoType(nonce) == AlgoType::Bpp9000)
-        && (nonce[1] >= 1)
-        && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
-        && (nonce[2] == 0);
-}
-
 template<typename Params>
 struct ScoreBpp9000
 {
@@ -44,6 +34,17 @@ struct ScoreBpp9000
     static constexpr unsigned long long lutStride = 32;
 
     static_assert(lutSize <= lutStride, "LUT rows must fit the padded stride");
+
+    // A nonce is canonical iff its score-irrelevant knob bytes are canonical:
+    // nonce[0] = algo (enforced by routing), nonce[1] = L in [1, MAX_LUT_ENTRIES_PER_STEP],
+    // nonce[2] = K. The standalone walk pins K to 0, so only 0 is canonical there.
+    static bool isCanonicalStandaloneNonce(const unsigned char* nonce)
+    {
+        return (getAlgoType(nonce) == AlgoType::Bpp9000)
+            && (nonce[1] >= 1)
+            && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
+            && (nonce[2] == 0);
+    }
 
     // K is a real degree of freedom here: the walk restores K = nonce[2] as its explore-step count
     static bool isCanonicalAntNonce(const unsigned char* nonce)

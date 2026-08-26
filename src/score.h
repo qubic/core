@@ -217,7 +217,7 @@ public:
     {
         const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
         LockGuard guard(solutionEngineLock[solutionBufIdx]);
-        score_engine::ScoreBpp9000T& engine = _computeBuffer[solutionBufIdx]._bpp9000Score;
+        score_engine::ScoreEngineT& engine = _computeBuffer[solutionBufIdx];
 
         // Derived into this slot's scratch rather than the engine's own buffer: deriveRootANN() uses
         // currentANN as working space
@@ -225,17 +225,17 @@ public:
         // Depth 1, the start node of every public key
         if (parent == nullptr)
         {
-            engine.deriveRootANN(publicKey.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
+            engine.deriveAntRootANN(publicKey.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
             parent = &_antRootScratch[solutionBufIdx];
         }
 
-        const unsigned int childScore = engine.computeScoreFromParent(
+        const unsigned int childScore = engine.computeAntScoreFromParent(
             *parent, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
         if (childScore == score_engine::INVALID_SCORE_VALUE)
         {
             return childScore;
         }
-        engine.getBestANN(outChildAnn);
+        engine.getAntBestANN(outChildAnn);
         return childScore;
     }
     // main score function
@@ -243,17 +243,9 @@ public:
     {
         PROFILE_SCOPE();
 
-        switch (score_engine::getAlgoType(nonce.m256i_u8))
+        if (!score_engine::ScoreEngineT::isCanonicalStandaloneNonce(nonce.m256i_u8))
         {
-            case score_engine::AlgoType::Bpp9000:
-                if (!score_engine::isCanonicalBpp9000Nonce(nonce.m256i_u8))
-                {
-                    return score_engine::INVALID_SCORE_VALUE;
-                }
-                break;
-            default:
-                // Unsupported algo
-                return score_engine::INVALID_SCORE_VALUE;
+            return score_engine::INVALID_SCORE_VALUE;
         }
 
         if (isZero(miningSeed) || miningSeed != currentRandomSeed)
