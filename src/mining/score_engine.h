@@ -61,6 +61,20 @@ struct ScoreEngine
         }
     }
 
+    // Each engine owns its canonical ant-nonce rule; this switch is the algorithm seam, so ingress
+    // code stays algorithm-agnostic. Neuraxon is reserved and not ant-minable, so no nonce in its
+    // slot is canonical.
+    static bool isCanonicalAntNonce(const unsigned char* nonce)
+    {
+        switch (getAlgoType(nonce))
+        {
+        case AlgoType::Bpp9000:
+            return ScoreBpp9000<Bpp9000ParamsT>::isCanonicalAntNonce(nonce);
+        default:
+            return false;
+        }
+    }
+
     // returns last computed output neurons of the active bpp9000 slot
     m256i getLastOutput()
     {

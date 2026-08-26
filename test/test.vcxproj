@@ -176,9 +176,12 @@
     <ClCompile Include="network_messages.cpp" />
     <ClCompile Include="platform.cpp" />
     <ClCompile Include="qpi.cpp" />
+    <ClCompile Include="ant_colony.cpp" />
+    <ClCompile Include="ant_pending_solutions.cpp" />
     <ClCompile Include="score.cpp" />
     <ClCompile Include="score_cache.cpp" />
     <ClCompile Include="tick_storage.cpp" />
+    <ClCompile Include="trit_pack.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="vote_counter.cpp" />
   </ItemGroup>

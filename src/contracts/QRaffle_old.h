@@ -13,20 +13,10 @@ constexpr uint32 QRAFFLE_REGISTER_FEE = 5; // percent
 constexpr uint32 QRAFFLE_FEE = 1; // percent
 constexpr uint32 QRAFFLE_CHARITY_FEE = 1; // percent
 constexpr uint32 QRAFFLE_SHAREHOLDER_FEE = 8; // percent
-// Retained in the contract's own balance (never transferred out) to fund RANDOM
-// entropy purchases in END_EPOCH; builds a self-sustaining reserve over time.
-constexpr uint32 QRAFFLE_ENTROPY_FEE = 1; // percent
-
-// RANDOM smart contract entropy purchase: mixed into the winner-selection seed
-// once per END_EPOCH. Mirrors RL_RANDOM_* in RandomLottery.h.
-constexpr uint16 QRAFFLE_RANDOM_ENTROPY_BITS = 256;
-constexpr uint8 QRAFFLE_RANDOM_COLLATERAL_TIER = 0;
-constexpr uint64 QRAFFLE_RANDOM_ENTROPY_FEE = RANDOM_BITFEE * QRAFFLE_RANDOM_ENTROPY_BITS;
-
 constexpr uint32 QRAFFLE_MAX_EPOCH = 65536;
 constexpr uint32 QRAFFLE_MAX_PROPOSAL_EPOCH = 128;
 constexpr uint32 QRAFFLE_MAX_MEMBER = 65536;
-constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 1000000ull;
+constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 10000000ull;
 constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
 // Ended token-raffle ring: 16 384 slots × ~96 B ≈ 1.5 MB.
@@ -1419,7 +1409,16 @@ protected:
 				LOG_INFO(locals.log);
 				return;
 			}
-			
+			// QRAFFLE and QXMR are reserved for dividends/registration; disallow in bundles.
+			if ((locals.item.asset.assetName == QRAFFLE_ASSET_NAME && locals.item.asset.issuer == NULL_ID)
+				|| (locals.item.asset.assetName == QRAFFLE_QXMR_ASSET_NAME && locals.item.asset.issuer == state.get().QXMRIssuer))
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				output.returnCode = QRAFFLE_INVALID_BUNDLE;
+				locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidBundle, 0 };
+				LOG_INFO(locals.log);
+				return;
+			}
 			// Duplicate-asset check within the bundle; O(N²) acceptable for N ≤ 4.
 			locals.dupFound = 0;
 			for (locals.j = 0; locals.j < locals.i; locals.j++)
@@ -2219,16 +2218,6 @@ protected:
 		sint64 transferResult;
 		uint64 sumOfEntryAmountSubmitted, r, winnerRevenue, burnAmount, charityRevenue, shareholderRevenue, registerRevenue, fee, oneShareholderRev;
 		uint64 tokenPool;
-		// RANDOM entropy purchase (winner-selection seed strengthening).
-		Entity entity;
-		RANDOM::BuyEntropy_input buyEntropyInput;
-		RANDOM::BuyEntropy_output buyEntropyOutput;
-		uint64 entropyReserveAmount; // per-block carve-out, recomputed fresh in each of the 3 fee blocks
-		struct EntropyMixData
-		{
-			id baseSeed;
-			bit_4096 entropy;
-		} entropyMixData;
 		uint64 shareholderPerShareUnit;
 		uint64 registerPerShareUnit;
 		uint64 actualShareholderTotal;
@@ -2292,28 +2281,6 @@ protected:
 			locals.digest.u64._2 ^ locals.computerDigest.u64._2,
 			locals.digest.u64._3 ^ locals.computerDigest.u64._3));
 
-		// Strengthen the seed with entropy from the RANDOM smart contract's independent
-		// commit-reveal miner pool, on top of the digest-based value above. This is
-		// additive, not a replacement: if the purchase fails (insufficient reserve, or
-		// RANDOM's pool is empty this cycle) baseSeed simply stays digest-only and
-		// raffle settlement proceeds unchanged -- member funds are already committed,
-		// so degrading gracefully is safer than blocking settlement.
-		qpi.getEntity(SELF, locals.entity);
-		if (locals.entity.incomingAmount - locals.entity.outgoingAmount >= (sint64)QRAFFLE_RANDOM_ENTROPY_FEE)
-		{
-			locals.buyEntropyInput.collateralTier = QRAFFLE_RANDOM_COLLATERAL_TIER;
-			locals.buyEntropyInput.numberOfBits = QRAFFLE_RANDOM_ENTROPY_BITS;
-			locals.buyEntropyInput.trustee = id::zero();
-			INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, QRAFFLE_RANDOM_ENTROPY_FEE);
-
-			if (interContractCallError == NoCallError && !(locals.buyEntropyOutput.entropy == BIT4096_ZERO))
-			{
-				locals.entropyMixData.baseSeed = locals.baseSeed;
-				locals.entropyMixData.entropy = locals.buyEntropyOutput.entropy;
-				locals.baseSeed = qpi.K12(locals.entropyMixData);
-			}
-		}
-
 		// Asset descriptor reused by the QXMR distribution and per-token-raffle shareholder
 		// payout loops below; both iterate QRAFFLE_ASSET possessors directly via locals.iter.
 		locals.QraffleAsset.assetName = QRAFFLE_ASSET_NAME;
@@ -2334,15 +2301,12 @@ protected:
 			locals.shareholderRevenue = div<uint64>(locals.tokenPool * QRAFFLE_SHAREHOLDER_FEE, 100);
 			locals.registerRevenue = div<uint64>(locals.tokenPool * QRAFFLE_REGISTER_FEE, 100);
 			locals.fee = div<uint64>(locals.tokenPool * QRAFFLE_FEE, 100);
-			// Entropy reserve: retained in the contract's own balance (never transferred),
-			// funding future RANDOM entropy purchases in END_EPOCH.
-			locals.entropyReserveAmount = div<uint64>(locals.tokenPool * QRAFFLE_ENTROPY_FEE, 100);
 			// Round down per-share amounts; winner gets the remainder.
 			locals.shareholderPerShareUnit = div<uint64>(locals.shareholderRevenue, NUMBER_OF_COMPUTORS);
 			locals.actualShareholderTotal = locals.shareholderPerShareUnit * NUMBER_OF_COMPUTORS;
 			locals.registerPerShareUnit = div<uint64>(locals.registerRevenue, state.get().numberOfRegisters);
 			locals.actualRegisterTotal = locals.registerPerShareUnit * state.get().numberOfRegisters;
-			locals.winnerRevenue = locals.tokenPool - locals.burnAmount - locals.charityRevenue - locals.actualShareholderTotal - locals.actualRegisterTotal - locals.fee - locals.entropyReserveAmount;
+			locals.winnerRevenue = locals.tokenPool - locals.burnAmount - locals.charityRevenue - locals.actualShareholderTotal - locals.actualRegisterTotal - locals.fee;
 
 			locals.revenueLog = RevenueLogger{
 				QRAFFLE_CONTRACT_INDEX,
@@ -2602,7 +2566,7 @@ protected:
 					}
 				}
 
-				// Qu pool distribution: 79% to creator, 21% to fee buckets (incl. entropy reserve).
+				// Qu pool distribution: 80% to creator, 20% to fee buckets.
 				// Always executed when reserve is met, regardless of per-item delivery outcome.
 				// (Assets already delivered to winner; we cannot recall them from a user's wallet.)
 				locals.arBurn            = div<uint64>(locals.arGross * (uint64)QRAFFLE_BURN_FEE,        100ull);
@@ -2610,9 +2574,6 @@ protected:
 				locals.arShareholderRev  = div<uint64>(locals.arGross * (uint64)QRAFFLE_SHAREHOLDER_FEE, 100ull);
 				locals.arRegisterRev     = div<uint64>(locals.arGross * (uint64)QRAFFLE_REGISTER_FEE,    100ull);
 				locals.arFee             = div<uint64>(locals.arGross * (uint64)QRAFFLE_FEE,             100ull);
-				// Entropy reserve: retained in the contract's own balance (never transferred),
-				// funding future RANDOM entropy purchases in END_EPOCH.
-				locals.entropyReserveAmount = div<uint64>(locals.arGross * (uint64)QRAFFLE_ENTROPY_FEE, 100ull);
 				// Round down per-share amounts; all rounding dust goes to creator.
 				locals.arShareholderPerShare    = div<uint64>(locals.arShareholderRev, (uint64)NUMBER_OF_COMPUTORS);
 				locals.arRegisterPerShare       = (state.get().numberOfRegisters > 0)
@@ -2625,8 +2586,7 @@ protected:
 					- locals.arCharity
 					- (locals.arShareholderPerShare * (uint64)NUMBER_OF_COMPUTORS)
 					- locals.arRegisterPerShareActual
-					- locals.arFee
-					- locals.entropyReserveAmount;
+					- locals.arFee;
 
 				qpi.transfer(locals.arInfo.creator, locals.arCreatorPay);
 				qpi.burn(locals.arBurn);

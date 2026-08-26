@@ -45,6 +45,15 @@ struct ScoreBpp9000
 
     static_assert(lutSize <= lutStride, "LUT rows must fit the padded stride");
 
+    // K is a real degree of freedom here: the walk restores K = nonce[2] as its explore-step count
+    static bool isCanonicalAntNonce(const unsigned char* nonce)
+    {
+        return (getAlgoType(nonce) == AlgoType::Bpp9000)
+            && (nonce[1] >= 1)
+            && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
+            && (nonce[2] <= numberOfMutations);
+    }
+
     // random2 draw sizes padded up to a multiple of 64 bytes; leading bytes bit-exact with reference.
     static constexpr unsigned long long lutInitBytes = maxNumberOfNeurons * lutSize;
     static constexpr unsigned long long lutInitPaddedBytes = ((lutInitBytes + 63) / 64) * 64;
@@ -79,13 +88,26 @@ struct ScoreBpp9000
         kEvolution,
     };
 
-    // Rollback/snapshot state: just the per-neuron LUT.
+    // An ANN is its per-neuron LUT: maxNumberOfNeurons rows of lutSize entries
+    // resourceTestingDigest, written to snapshots, sent to miners...
     struct ANN
+    {
+        unsigned char lut[maxNumberOfNeurons * lutSize];
+    };
+
+    // padding LUT for a SIMD
+    struct PaddedLut
     {
         alignas(64) unsigned char lut[maxNumberOfNeurons * lutStride];
     };
-    ANN currentANN;
-    ANN prevANN;
+
+    PaddedLut currentANN;
+    PaddedLut prevANN;
+
+    // LUT that produced the score returned by the walk, in working layout. The ant colony stores this
+    // as the child's inherited state, so a child branches from the best-ever LUT rather than the last
+    // one walked; read it with getBestANN().
+    PaddedLut bestANN;
 
     struct InitValue
     {
@@ -403,7 +425,8 @@ struct ScoreBpp9000
 #endif
     }
 
-    // Sliding-window self-clocked score via the window-batched SIMD kernel (AVX-512 or AVX2, bit-exact).
+    // Sliding-window self-clocked score via the window-batched SIMD kernel
+    // Apply on the curANN
     unsigned int score()
     {
         // PROFILE_NAMED_SCOPE("bpp9000:score");
@@ -972,44 +995,102 @@ struct ScoreBpp9000
         currentANN.lut[storageIdx] = newTrit;
     }
 
-    // Seed the ANN: root LUT from the pubkey alone (each computor's fixed root); mutation seeds from
-    // pubkey+nonce (nonce[0..2] are the algo/L/K knobs, excluded from the RNG). Returns the start score.
-    unsigned int initializeANN(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* pRandom2Pool)
+    // Derive the root LUT material
+    void deriveRootLut(const unsigned char* publicKey, const unsigned char* pRandom2Pool)
     {
-        // PROFILE_NAMED_SCOPE("bpp9000:initializeANN");
         unsigned char rootHash[32];
         KangarooTwelve(publicKey, 32, rootHash, 32);
         random2(rootHash, pRandom2Pool, (unsigned char*)&initValue.lutInit, lutInitPaddedBytes);
+    }
 
+    // Derive the mutation-walk seeds. nonce[0..2] are the algo/L/K knobs and stay excluded from the RNG,
+    // so K and L can be chosen freely without reseeding the walk. anchorTickDigest == nullptr for the
+    // standalone walk; the ant colony binds a child's walk to the tick it anchors on.
+    void deriveMutationSeeds(
+        const unsigned char* publicKey,
+        const unsigned char* nonce,
+        const unsigned char* anchorTickDigest,
+        const unsigned char* pRandom2Pool)
+    {
         unsigned char searchHash[32];
-        unsigned char combined[64];
+        unsigned char combined[96];
         copyMem(combined, publicKey, 32);
         copyMem(combined + 32, nonce, 32);
         combined[32] = 0;
         combined[33] = 0;
         combined[34] = 0;
-        KangarooTwelve(combined, 64, searchHash, 32);
+        unsigned int combinedSize = 64;
+        if (anchorTickDigest != nullptr)
+        {
+            copyMem(combined + 64, anchorTickDigest, 32);
+            combinedSize = 96;
+        }
+        KangarooTwelve(combined, combinedSize, searchHash, 32);
         random2(searchHash, pRandom2Pool, (unsigned char*)&initValue.mutationSeed, mutationSeedPaddedBytes);
+    }
 
-        // Store the LUT densely by updated-neuron position k (row k): row k holds neuron
-        // updatedNeuronIndices[k]'s LUT. RNG draw into initValue.lutInit unchanged (bit-exact).
+    // Store the LUT densely by updated-neuron position k (row k): row k holds neuron
+    // updatedNeuronIndices[k]'s LUT. RNG draw into initValue.lutInit unchanged (bit-exact).
+    void applyRootLut(PaddedLut& target)
+    {
+        // The loop below writes only rows [0, numberOfUpdatedNeurons) columns [0, lutSize), and the
+        // SIMD path loads whole rows, so the rest has to be initialised rather than left as whatever
+        // the buffer previously held.
+        setMem(&target, sizeof(target), 0);
+
         for (unsigned long long k = 0; k < numberOfUpdatedNeurons; ++k)
         {
             const unsigned long long n = updatedNeuronIndices[k];
             for (unsigned long long line = 0; line < lutSize; ++line)
             {
-                currentANN.lut[k * lutStride + line] = (unsigned char)(initValue.lutInit[n * lutSize + line] % 3);
+                target.lut[k * lutStride + line] = (unsigned char)(initValue.lutInit[n * lutSize + line] % 3);
             }
         }
+    }
+
+    // Working layout to ANN remove the stride padding.
+    void compact(const PaddedLut& src, ANN& out) const
+    {
+        for (unsigned long long k = 0; k < maxNumberOfNeurons; ++k)
+        {
+            copyMem(out.lut + k * lutSize, src.lut + k * lutStride, lutSize);
+        }
+    }
+
+    // Restores the stride and zeroes the padding.
+    void expand(const ANN& src, PaddedLut& out) const
+    {
+        setMem(&out, sizeof(out), 0);
+        for (unsigned long long k = 0; k < maxNumberOfNeurons; ++k)
+        {
+            copyMem(out.lut + k * lutStride, src.lut + k * lutSize, lutSize);
+        }
+    }
+
+    // The LUT behind the score the last walk returned.
+    void getBestANN(ANN& out) const
+    {
+        compact(bestANN, out);
+    }
+
+    // Seed the ANN: root LUT from the pubkey alone (each computor's fixed root); mutation seeds from
+    // pubkey+nonce (nonce[0..2] are the algo/L/K knobs, excluded from the RNG). Returns the start score.
+    unsigned int initializeANN(
+        const unsigned char* publicKey,
+        const unsigned char* nonce,
+        const unsigned char* pRandom2Pool)
+    {
+        // PROFILE_NAMED_SCOPE("bpp9000:initializeANN");
+        deriveRootLut(publicKey, pRandom2Pool);
+        deriveMutationSeeds(publicKey, nonce, nullptr, pRandom2Pool);
+        applyRootLut(currentANN);
 
         return score();
     }
 
-    // Anti-attractor search: L mutations/step; accept worse-or-equal for the first K steps (explore),
-    // then better-or-equal (exploit); one-step rollback; keep and return the best score found.
-    unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* pRandom2Pool)
+    // Miner-chosen number of LUT entries rewritten per step, clamped to the verifiable range.
+    static unsigned int lutEntriesPerStep(const unsigned char* nonce)
     {
-        // PROFILE_NAMED_SCOPE("bpp9000:computeScore");
         unsigned int L = nonce[1];
         if (L < 1)
         {
@@ -1019,11 +1100,17 @@ struct ScoreBpp9000
         {
             L = MAX_LUT_ENTRIES_PER_STEP;
         }
-        // Explore disabled pre-ant-colony (K=0); restore K = nonce[2] when ants return.
-        const unsigned long long K = 0;
+        return L;
+    }
 
-        unsigned int cur = initializeANN(publicKey, nonce, pRandom2Pool);
+    // Anti-attractor walk starting from the LUT already in currentANN: L mutations/step; accept
+    // worse-or-equal for the first K steps (explore), then better-or-equal (exploit); one-step rollback.
+    // Returns the best score found and leaves the LUT that produced it in bestANN.
+    unsigned int computeScoreFromCurrent(unsigned int L, unsigned long long K, unsigned int startScore)
+    {
+        unsigned int cur = startScore;
         unsigned int best = cur;
+        copyMem(&bestANN, &currentANN, sizeof(bestANN));
 
         for (unsigned long long s = 0; s < numberOfMutations; ++s)
         {
@@ -1058,9 +1145,66 @@ struct ScoreBpp9000
             if (cur < best)
             {
                 best = cur;
+                copyMem(&bestANN, &currentANN, sizeof(bestANN));
             }
         }
         return best;
+    }
+
+    // Anti-attractor search: L mutations/step; accept worse-or-equal for the first K steps (explore),
+    // then better-or-equal (exploit); one-step rollback; keep and return the best score found.
+    unsigned int computeScore(
+        const unsigned char* publicKey,
+        const unsigned char* nonce,
+        const unsigned char* pRandom2Pool)
+    {
+        // PROFILE_NAMED_SCOPE("bpp9000:computeScore");
+        const unsigned int L = lutEntriesPerStep(nonce);
+        // Explore disabled for the standalone algorithm (K=0); the ant colony passes K = nonce[2].
+        const unsigned long long K = 0;
+
+        const unsigned int cur = initializeANN(publicKey, nonce, pRandom2Pool);
+
+        return computeScoreFromCurrent(L, K, cur);
+    }
+
+    // Ant colony: the network every one of an identity's lineages starts from. Written to a buffer the
+    // caller owns, so two roots can be derived on one engine without the first silently becoming the
+    // second - a child scored against the wrong root would differ only in resourceTestingDigest.
+    // Uses currentANN as its working buffer, so it destroys whatever the engine was holding. Callers
+    // derive a root and then score from it, which overwrites currentANN anyway.
+    void deriveRootANN(const unsigned char* publicKey, const unsigned char* pRandom2Pool, ANN& out)
+    {
+        deriveRootLut(publicKey, pRandom2Pool);
+        applyRootLut(currentANN);
+        compact(currentANN, out);
+    }
+
+    // Ant colony: score a child by inheriting the parent's LUT and walking it with the child's own seeds
+    unsigned int computeScoreFromParent(
+        const ANN& parentANN, 
+        const unsigned char* publicKey,
+        const unsigned char* nonce,
+        const unsigned char* anchorTickDigest,
+        const unsigned char* pRandom2Pool)
+    {
+        // The canonical rule
+        if (!isCanonicalAntNonce(nonce))
+        {
+            return INVALID_SCORE_VALUE;
+        }
+
+        // Get the ANN from parent, also init the new mutation starting point
+        expand(parentANN, currentANN);
+        deriveMutationSeeds(publicKey, nonce, anchorTickDigest, pRandom2Pool);
+
+        // Both knobs are already in range: the check above is what puts them there.
+        const unsigned int L = lutEntriesPerStep(nonce);
+        const unsigned long long K = nonce[2];
+
+        const unsigned int cur = score();
+
+        return computeScoreFromCurrent(L, K, cur);
     }
 
     int getLastOutput(unsigned char* requestedOutput, int requestedSizeInBytes)
