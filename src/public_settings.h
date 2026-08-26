@@ -25,6 +25,9 @@
 #define SCORE_CACHE_SIZE 2000000 // the larger the better
 #define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
 
+// Persist the ant-colony replay cache (mirror of USE_SCORE_CACHE for the standalone score cache).
+#define ANT_USE_SCORE_CACHE 1
+
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
@@ -60,7 +63,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 0
+#define START_NETWORK_FROM_SCRATCH 1
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -70,12 +73,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 301
-#define VERSION_C 6
+#define VERSION_B 302
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 226
-#define TICK 73857162
+#define EPOCH 228
+#define TICK 76550000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -93,6 +96,13 @@ static unsigned short REVENUE_DATA_END_OF_EPOCH_FILE_NAME[] = L"revenue_data.eoe
 static unsigned short REVENUE_DATA_SNAPSHOT_FILE_NAME[] = L"revenue_data.???";
 static unsigned short MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[] = L"revenue_data_multi.???";
 static unsigned short MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"revenue_data_multi.eoe";
+// Ant colony files. The header file carries the meta, the anchor ring and the export set together
+static unsigned short ANT_SNAPSHOT_HEADER_FILENAME[] = L"snapshotAntColonyHeader.???";
+static unsigned short ANT_SNAPSHOT_RECORDS_FILENAME[] = L"snapshotAntColonyRecords.???";
+static unsigned short ANT_SNAPSHOT_POOL_FILENAME[] = L"snapshotAntColonyPool.???";
+static unsigned short ANT_COLONY_REPLAY_CACHE_FILENAME[] = L"antColonyReplayCache.???";
+static unsigned short ANT_COLONY_SOLUTIONS_EOE_FILENAME[] = L"antColonySolutions.eoe";
+static unsigned short ANT_SOL_FLAG_FILE_NAME[] = L"snapshotAntSolutionFlag";
 
 // Neuraxon (even-nonce slot) - reserved for a future algorithm, not yet implemented.
 static constexpr unsigned long long NEURAXON_NUMBER_OF_INPUT_NEURONS = 1;
@@ -124,7 +134,24 @@ static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
 // Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
 // better, and a solution passes when score <= threshold.
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
-static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3838;
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4000;
+
+// Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
+static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;
+
+// Per-parent child cap: a parent accepts at most this many children - a miner's parallel branches
+// off one node. 0 means unbound (no cap). A child's score must still strictly beat its parent's.
+// A child over the cap is rejected without a refund, so miners should stop submitting to a full parent.
+static constexpr unsigned int ANT_MAX_CHILDREN_PER_PARENT = 0;
+
+// Ant colony: tree nodes recorded per epoch; one per accepted solution.
+static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
+
+// Ant colony: replay-cache entries, scores this node already computed so a restart does not
+// recompute them. Node-local, not consensus; a miss only costs time.
+static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 20;
+static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
+    "ANT_REPLAY_CACHE_SIZE must be a power of two, the slot index masks with it");
 
 // Multipler of score
 static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;

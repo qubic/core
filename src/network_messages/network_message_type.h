@@ -51,6 +51,12 @@ enum NetworkMessageType : unsigned char
     BROADCAST_CUSTOM_MINING_SOLUTION = 69,
     REQUEST_REVENUE_DATA = 70,
     RESPOND_REVENUE_DATA = 71,
+    REQUEST_ANT_IDENTITY_TREE = 72,
+    RESPOND_ANT_IDENTITY_TREE = 73,
+    REQUEST_ANT_PARENT_ANN = 74,
+    RESPOND_ANT_PARENT_ANN = 75,
+    REQUEST_ANT_EPOCH_CONTEXT = 76,
+    RESPOND_ANT_EPOCH_CONTEXT = 77,
     ORACLE_MACHINE_QUERY = 190, // only on communication channel Core node <-> OM node
     ORACLE_MACHINE_REPLY = 191, // only on communication channel Core node <-> OM node
     OC_MACHINE_INVOCATION = 192, // only on communication channel Core node <-> OC machine

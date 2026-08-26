@@ -1335,169 +1335,90 @@ public:
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(DepositAutoParticipation)
 	{
-		if (qpi.tick() > 74430000)
-		{
-			if (state.get().autoParticipants.population() >= state.get().autoParticipants.capacity())
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				output.returnCode = EReturnCode::AUTO_PARTICIPANTS_FULL;
-				return;
-			}
-
-			if (input.amount <= 0 || input.desiredTickets <= 0)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				output.returnCode = EReturnCode::INVALID_VALUE;
-				return;
-			}
-
-			if (state.get().maxAutoTicketsPerUser > 0)
-			{
-				input.desiredTickets = RL::min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
-			}
-
-			locals.userBalance =
-				qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
-			input.amount = RL::min(locals.userBalance, input.amount);
-
-			locals.totalPrice = smul(state.get().ticketPrice, static_cast<sint64>(input.desiredTickets));
-			if (input.amount < locals.totalPrice)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				output.returnCode = EReturnCode::TICKET_INVALID_PRICE;
-				return;
-			}
-
-			if (input.buyNow && isSellingOpen(state))
-			{
-				locals.buyRandomTicketsInput.count = input.desiredTickets;
-				CALL(BuyRandomTickets, locals.buyRandomTicketsInput, locals.buyRandomTicketsOutput);
-				if (locals.buyRandomTicketsOutput.returnCode != EReturnCode::SUCCESS)
-				{
-					output.returnCode = locals.buyRandomTicketsOutput.returnCode;
-					return;
-				}
-
-				input.buyNow = false;
-				input.amount = input.amount - locals.totalPrice;
-
-				// The entire deposit was spent
-				if (input.amount <= 0)
-				{
-					output.returnCode = EReturnCode::SUCCESS;
-					return;
-				}
-			}
-			else if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-
-			state.get().autoParticipants.get(qpi.invocator(), locals.entry);
-			locals.entry.player = qpi.invocator();
-
-			locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(),
-				qpi.invocator(), input.amount, SELF);
-			if (locals.transferResult < 0)
-			{
-				output.returnCode = EReturnCode::TRANSFER_TO_PULSE_FAILED;
-				return;
-			}
-
-			locals.entry.deposit = sadd(locals.entry.deposit, input.amount);
-			if (input.desiredTickets > 0)
-			{
-				locals.entry.desiredTickets = input.desiredTickets;
-			}
-
-			state.mut().autoParticipants.set(qpi.invocator(), locals.entry);
-			output.returnCode = EReturnCode::SUCCESS;
-		}
-		else
+		if (state.get().autoParticipants.population() >= state.get().autoParticipants.capacity())
 		{
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-
-			if (state.get().autoParticipants.population() >= state.get().autoParticipants.capacity())
-			{
-				output.returnCode = EReturnCode::AUTO_PARTICIPANTS_FULL;
-				return;
-			}
-
-			if (input.amount <= 0 || input.desiredTickets <= 0)
-			{
-				output.returnCode = EReturnCode::INVALID_VALUE;
-				return;
-			}
-
-			if (state.get().maxAutoTicketsPerUser > 0)
-			{
-				input.desiredTickets = RL::min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
-			}
-
-			locals.userBalance =
-				qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
-			input.amount = RL::min(locals.userBalance, input.amount);
-
-			locals.totalPrice = smul(state.get().ticketPrice, static_cast<sint64>(input.desiredTickets));
-			if (input.amount < locals.totalPrice)
-			{
-				output.returnCode = EReturnCode::TICKET_INVALID_PRICE;
-				return;
-			}
-
-			if (input.buyNow && isSellingOpen(state))
-			{
-				locals.buyRandomTicketsInput.count = input.desiredTickets;
-				CALL(BuyRandomTickets, locals.buyRandomTicketsInput, locals.buyRandomTicketsOutput);
-				if (locals.buyRandomTicketsOutput.returnCode != EReturnCode::SUCCESS)
-				{
-					output.returnCode = locals.buyRandomTicketsOutput.returnCode;
-					return;
-				}
-
-				input.buyNow = false;
-				input.amount = input.amount - locals.totalPrice;
-
-				// The entire deposit was spent
-				if (input.amount <= 0)
-				{
-					output.returnCode = EReturnCode::SUCCESS;
-					return;
-				}
-			}
-
-			state.get().autoParticipants.get(qpi.invocator(), locals.entry);
-			locals.entry.player = qpi.invocator();
-
-			locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(),
-				qpi.invocator(), input.amount, SELF);
-			if (locals.transferResult < 0)
-			{
-				output.returnCode = EReturnCode::TRANSFER_TO_PULSE_FAILED;
-				return;
-			}
-
-			locals.entry.deposit = sadd(locals.entry.deposit, input.amount);
-			if (input.desiredTickets > 0)
-			{
-				locals.entry.desiredTickets = input.desiredTickets;
-			}
-
-			state.mut().autoParticipants.set(qpi.invocator(), locals.entry);
-			output.returnCode = EReturnCode::SUCCESS;
+			output.returnCode = EReturnCode::AUTO_PARTICIPANTS_FULL;
+			return;
 		}
+
+		if (input.amount <= 0 || input.desiredTickets <= 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.returnCode = EReturnCode::INVALID_VALUE;
+			return;
+		}
+
+		if (state.get().maxAutoTicketsPerUser > 0)
+		{
+			input.desiredTickets = RL::min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
+		}
+
+		locals.userBalance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		input.amount = RL::min(locals.userBalance, input.amount);
+
+		locals.totalPrice = smul(state.get().ticketPrice, static_cast<sint64>(input.desiredTickets));
+		if (input.amount < locals.totalPrice)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.returnCode = EReturnCode::TICKET_INVALID_PRICE;
+			return;
+		}
+
+		if (input.buyNow && isSellingOpen(state))
+		{
+			locals.buyRandomTicketsInput.count = input.desiredTickets;
+			CALL(BuyRandomTickets, locals.buyRandomTicketsInput, locals.buyRandomTicketsOutput);
+			if (locals.buyRandomTicketsOutput.returnCode != EReturnCode::SUCCESS)
+			{
+				output.returnCode = locals.buyRandomTicketsOutput.returnCode;
+				return;
+			}
+
+			input.buyNow = false;
+			input.amount = input.amount - locals.totalPrice;
+
+			// The entire deposit was spent
+			if (input.amount <= 0)
+			{
+				output.returnCode = EReturnCode::SUCCESS;
+				return;
+			}
+		}
+		else if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		state.get().autoParticipants.get(qpi.invocator(), locals.entry);
+		locals.entry.player = qpi.invocator();
+
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(),
+		                                                                qpi.invocator(), input.amount, SELF);
+		if (locals.transferResult < 0)
+		{
+			output.returnCode = EReturnCode::TRANSFER_TO_PULSE_FAILED;
+			return;
+		}
+
+		locals.entry.deposit = sadd(locals.entry.deposit, input.amount);
+		if (input.desiredTickets > 0)
+		{
+			locals.entry.desiredTickets = input.desiredTickets;
+		}
+
+		state.mut().autoParticipants.set(qpi.invocator(), locals.entry);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	/**
