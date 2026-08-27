@@ -126,9 +126,6 @@
     <ClInclude Include="contracts\QRaffle.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="contracts\QRaffle_old.h">
-      <Filter>contracts</Filter>
-    </ClInclude>
     <ClInclude Include="contracts\QBond.h">
       <Filter>contracts</Filter>
     </ClInclude>
