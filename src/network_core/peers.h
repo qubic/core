@@ -6,6 +6,7 @@
 #include <lib/platform_common/processor.h>
 #include <lib/platform_efi/uefi.h>
 #include "platform/random.h"
+#include "platform/stage_probe.h"
 #include "platform/concurrency.h"
 #include "platform/profiling.h"
 
@@ -1065,6 +1066,7 @@ static void receiveData(unsigned int i, unsigned int salt)
                 if (peers[i].receiveData.DataLength)
                 {
                     EFI_TCP4_CONNECTION_STATE state;
+                    gMainStage = EFI_STAGE_RECV_GETMODEDATA;
                     if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
                         || state == Tcp4StateClosed)
                     {
@@ -1074,6 +1076,7 @@ static void receiveData(unsigned int i, unsigned int salt)
                     {
                         // Initiate receiving data. At the same moment buffer may already contain a message of
                         // up to 16MB size, we don't wait for this message to be passed on to processing thread.
+                        gMainStage = EFI_STAGE_RECEIVE;
                         if (status = peers[i].tcp4Protocol->Receive(peers[i].tcp4Protocol, &peers[i].receiveToken))
                         {
                             if (status != EFI_CONNECTION_FIN)
@@ -1176,6 +1179,7 @@ static void transmitData(unsigned int i, unsigned int salt)
         if (peers[i].dataToTransmitSize && !peers[i].isTransmitting && peers[i].isConnectedAccepted && !peers[i].isClosing)
         {
             EFI_TCP4_CONNECTION_STATE state;
+            gMainStage = EFI_STAGE_XMIT_GETMODEDATA;
             if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
                 || state == Tcp4StateClosed)
             {
@@ -1186,6 +1190,7 @@ static void transmitData(unsigned int i, unsigned int salt)
                 // initiate transmission
                 copyMem(peers[i].transmitData.FragmentTable[0].FragmentBuffer, peers[i].dataToTransmit, peers[i].transmitData.DataLength = peers[i].transmitData.FragmentTable[0].FragmentLength = peers[i].dataToTransmitSize);
                 peers[i].dataToTransmitSize = 0;
+                gMainStage = EFI_STAGE_TRANSMIT;
                 if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
                 {
                     logStatusToConsole(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
@@ -1215,7 +1220,9 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         PROFILE_SCOPE();
+        gMainStage = EFI_STAGE_POLL;
         peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
+        gMainStage = MAIN_STAGE_PEER_RECEIVE_TRANSMIT;
         processReceivedData(i, salt);
         receiveData(i, salt);
         processTransmittedData(i, salt);
@@ -1308,10 +1315,12 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 }
                 if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
                 {
+                    gMainStage = EFI_STAGE_GET_TCP4;
                     if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
                     {
                         peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
 
+                        gMainStage = EFI_STAGE_CONNECT;
                         if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
                         {
                             logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
@@ -1345,6 +1354,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 peers[i].isIncommingConnection = TRUE;
                 peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
 
+                gMainStage = EFI_STAGE_ACCEPT;
                 if (status = peerTcp4Protocol->Accept(peerTcp4Protocol, &peers[i].connectAcceptToken))
                 {
                     logStatusToConsole(L"EFI_TCP4_PROTOCOL.Accept() fails", status, __LINE__);

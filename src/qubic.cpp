@@ -141,19 +141,6 @@ static volatile bool forceSwitchEpoch = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
 
-static constexpr unsigned int MAIN_STAGE_LOOP_TOP = 100;
-static constexpr unsigned int MAIN_STAGE_CLOCK = 101;
-static constexpr unsigned int MAIN_STAGE_PEER_RECEIVE_TRANSMIT = 110;
-static constexpr unsigned int MAIN_STAGE_PEER_RECONNECT = 111;
-static constexpr unsigned int MAIN_STAGE_PEER_MACHINE_TIMEOUT = 112;
-static constexpr unsigned int MAIN_STAGE_PEER_REFRESH = 113;
-static constexpr unsigned int MAIN_STAGE_RESPONSE_QUEUE = 120;
-static constexpr unsigned int MAIN_STAGE_STATE_SAVE = 130;
-static constexpr unsigned int MAIN_STAGE_CLOSE_ALL_PEERS = 140;
-static constexpr unsigned int MAIN_STAGE_KEY_PRESSES = 150;
-static constexpr unsigned int MAIN_STAGE_NODE_STATE_SAVE = 160;
-static constexpr unsigned int MAIN_STAGE_LOGGING = 170;
-static constexpr unsigned int MAIN_STAGE_ASYNC_IO_FLUSH = 190;
 
 static constexpr unsigned long long MAIN_STALL_BREADCRUMB_SECS = 2;
 static constexpr unsigned long long TICKPROC_STALL_WARN_SECS = 60;
@@ -161,21 +148,7 @@ static constexpr unsigned long long MAIN_STALL_TEST_SECS = 10;
 static constexpr unsigned int MAIN_STAGE_FREEZE_TEST = 0x5555;
 static constexpr unsigned int MAIN_DETAIL_FREEZE_TEST = 0x0F0F;
 
-static constexpr unsigned int TICK_STAGE_RUNNING = 200;
-static constexpr unsigned int TICK_STAGE_TRANSITION_WAIT_PROCESSORS = 210;
-static constexpr unsigned int TICK_STAGE_END_EPOCH = 211;
-static constexpr unsigned int TICK_STAGE_ANT_EXPORT = 212;
-static constexpr unsigned int TICK_STAGE_SYSTEM_SAVE = 213;
-static constexpr unsigned int TICK_STAGE_BEGIN_EPOCH = 214;
-static constexpr unsigned int TICK_STAGE_APPLY_TASK = 215;
-static constexpr unsigned int TICK_STAGE_STATE_SAVE = 216;
-static constexpr unsigned int TICK_STAGE_TRANSITION_DONE = 217;
 
-static volatile unsigned int gMainStage = 0;
-static volatile unsigned int gMainStageDetail = 0;
-static volatile unsigned long long gMainLoopIterations = 0;
-static volatile unsigned int gTickStage = 0;
-static volatile unsigned long long gTickProcIterations = 0;
 static constexpr int FREEZE_LOG_SLOTS = 64;
 static constexpr int FREEZE_LOG_LENGTH = 160;
 static CHAR16 gFreezeLog[2][FREEZE_LOG_SLOTS][FREEZE_LOG_LENGTH];
