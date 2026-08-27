@@ -33,6 +33,7 @@
 #include "platform/time_stamp_counter.h"
 #include "platform/memory_util.h"
 #include "platform/profiling.h"
+#include "platform/framebuffer.h"
 
 #include "platform/custom_stack.h"
 
@@ -139,6 +140,95 @@ static volatile bool forceNextTick = false;
 static volatile bool forceSwitchEpoch = false;
 static volatile char criticalSituation = 0;
 static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, universeMustBeSaved = false, computerMustBeSaved = false;
+
+static constexpr unsigned int MAIN_STAGE_LOOP_TOP = 100;
+static constexpr unsigned int MAIN_STAGE_CLOCK = 101;
+static constexpr unsigned int MAIN_STAGE_PEER_RECEIVE_TRANSMIT = 110;
+static constexpr unsigned int MAIN_STAGE_PEER_RECONNECT = 111;
+static constexpr unsigned int MAIN_STAGE_PEER_MACHINE_TIMEOUT = 112;
+static constexpr unsigned int MAIN_STAGE_PEER_REFRESH = 113;
+static constexpr unsigned int MAIN_STAGE_RESPONSE_QUEUE = 120;
+static constexpr unsigned int MAIN_STAGE_STATE_SAVE = 130;
+static constexpr unsigned int MAIN_STAGE_CLOSE_ALL_PEERS = 140;
+static constexpr unsigned int MAIN_STAGE_KEY_PRESSES = 150;
+static constexpr unsigned int MAIN_STAGE_NODE_STATE_SAVE = 160;
+static constexpr unsigned int MAIN_STAGE_LOGGING = 170;
+static constexpr unsigned int MAIN_STAGE_ASYNC_IO_FLUSH = 190;
+
+static constexpr unsigned long long MAIN_STALL_BREADCRUMB_SECS = 2;
+static constexpr unsigned long long TICKPROC_STALL_WARN_SECS = 60;
+static constexpr unsigned long long MAIN_STALL_TEST_SECS = 10;
+static constexpr unsigned int MAIN_STAGE_FREEZE_TEST = 0x5555;
+static constexpr unsigned int MAIN_DETAIL_FREEZE_TEST = 0x0F0F;
+
+static constexpr unsigned int TICK_STAGE_RUNNING = 200;
+static constexpr unsigned int TICK_STAGE_TRANSITION_WAIT_PROCESSORS = 210;
+static constexpr unsigned int TICK_STAGE_END_EPOCH = 211;
+static constexpr unsigned int TICK_STAGE_ANT_EXPORT = 212;
+static constexpr unsigned int TICK_STAGE_SYSTEM_SAVE = 213;
+static constexpr unsigned int TICK_STAGE_BEGIN_EPOCH = 214;
+static constexpr unsigned int TICK_STAGE_APPLY_TASK = 215;
+static constexpr unsigned int TICK_STAGE_STATE_SAVE = 216;
+static constexpr unsigned int TICK_STAGE_TRANSITION_DONE = 217;
+
+static volatile unsigned int gMainStage = 0;
+static volatile unsigned int gMainStageDetail = 0;
+static volatile unsigned long long gMainLoopIterations = 0;
+static volatile unsigned int gTickStage = 0;
+static volatile unsigned long long gTickProcIterations = 0;
+static constexpr int FREEZE_LOG_SLOTS = 64;
+static constexpr int FREEZE_LOG_LENGTH = 160;
+static CHAR16 gFreezeLog[2][FREEZE_LOG_SLOTS][FREEZE_LOG_LENGTH];
+static volatile int gFreezeLogActive = 0;
+static volatile int gFreezeLogCount = 0;
+static volatile int gFreezeLogDropped = 0;
+static volatile char gFreezeLogLock = 0;
+
+static void logFreezeEvent(const CHAR16* text)
+{
+    ACQUIRE_WITHOUT_DEBUG_LOGGING(gFreezeLogLock);
+    if (gFreezeLogCount < FREEZE_LOG_SLOTS)
+    {
+        setText(gFreezeLog[gFreezeLogActive][gFreezeLogCount], text);
+        gFreezeLogCount++;
+    }
+    else
+    {
+        gFreezeLogDropped++;
+    }
+    RELEASE(gFreezeLogLock);
+}
+
+static void printFreezeEvents()
+{
+    if (!gFreezeLogCount && !gFreezeLogDropped)
+    {
+        return;
+    }
+
+    ACQUIRE_WITHOUT_DEBUG_LOGGING(gFreezeLogLock);
+    const int flushed = gFreezeLogActive;
+    const int count = gFreezeLogCount;
+    const int dropped = gFreezeLogDropped;
+    gFreezeLogActive = 1 - gFreezeLogActive;
+    gFreezeLogCount = 0;
+    gFreezeLogDropped = 0;
+    RELEASE(gFreezeLogLock);
+
+    for (int i = 0; i < count; i++)
+    {
+        outputStringToConsole(gFreezeLog[flushed][i]);
+        outputStringToConsole(L"\r\n");
+    }
+    if (dropped)
+    {
+        CHAR16 dropMsg[64];
+        setText(dropMsg, L"[evlog] dropped ");
+        appendNumber(dropMsg, dropped, FALSE);
+        appendText(dropMsg, L"\r\n");
+        outputStringToConsole(dropMsg);
+    }
+}
 
 static int misalignedState = 0;
 
@@ -6428,6 +6518,30 @@ static void tickProcessor(void*)
 
         checkinTime(processorNumber);
 
+        gTickProcIterations++;
+        gTickStage = TICK_STAGE_RUNNING;
+
+        {
+            const unsigned long long watchdogTick = __rdtsc();
+            static unsigned long long lastSeenMainLoopIterations = 0;
+            static unsigned long long mainStallStartTick = 0;
+            static bool breadcrumbPainted = false;
+            if (gMainLoopIterations != lastSeenMainLoopIterations)
+            {
+                lastSeenMainLoopIterations = gMainLoopIterations;
+                mainStallStartTick = watchdogTick;
+                breadcrumbPainted = false;
+            }
+            else if (!breadcrumbPainted && mainStallStartTick && frequency
+                && (watchdogTick - mainStallStartTick) / frequency >= MAIN_STALL_BREADCRUMB_SECS)
+            {
+                breadcrumbPainted = true;
+                drawBreadcrumbRow(0, gMainStage, 0x0000FF00);
+                drawBreadcrumbRow(1, gTickStage, 0x00FFFF00);
+                drawBreadcrumbRow(2, gMainStageDetail, 0x00FF0000);
+            }
+        }
+
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
 
@@ -6795,10 +6909,14 @@ static void tickProcessor(void*)
                                 {
 
                                     // wait until all request processors are in waiting state
+                                    gTickStage = TICK_STAGE_TRANSITION_WAIT_PROCESSORS;
                                     WAIT_WHILE(epochTransitionWaitingRequestProcessors < nRequestProcessorIDs);
 
                                     // end current epoch
+                                    gTickStage = TICK_STAGE_END_EPOCH;
+                                    logFreezeEvent(L"[transition] endEpoch start");
                                     endEpoch();
+                                    logFreezeEvent(L"[transition] endEpoch done");
 
                                     // Save the file of revenue. This blocking save can be called from any thread
                                     // Revenue v2 data
@@ -6814,7 +6932,9 @@ static void tickProcessor(void*)
                                         logToConsole(dbg);
                                     }
 #endif
+                                    gTickStage = TICK_STAGE_ANT_EXPORT;
                                     gAntColony.exportBestSolutions(system.epoch, NULL);
+                                    logFreezeEvent(L"[transition] ant export queued");
 
                                     // Reorder futureComputors so requalifying computors keep their index
                                     // This is needed for correct execution fee reporting across epoch boundaries
@@ -6825,17 +6945,24 @@ static void tickProcessor(void*)
                                     commonBuffers.releaseBuffer(reorgBuffer);
 
                                     // instruct main loop to save system and wait until it is done
+                                    gTickStage = TICK_STAGE_SYSTEM_SAVE;
+                                    logFreezeEvent(L"[transition] system save requested");
                                     systemMustBeSaved = true;
                                     WAIT_WHILE(systemMustBeSaved);
+                                    logFreezeEvent(L"[transition] system saved");
                                     epochTransitionState = 2;
 
+                                    gTickStage = TICK_STAGE_BEGIN_EPOCH;
                                     beginEpoch();
+                                    logFreezeEvent(L"[transition] beginEpoch done");
                                     isBeginEpoch = true;
 
                                     // beginEpoch() called score->initMemory(), which zeroed the scorer, so re-apply
                                     // the task from the resident buffer. This assumes the task is unchanged across the transition; 
                                     // if a future epoch needs a different task file, branch here on the epoch to reload from file 
                                     // instead of re-applying memory
+                                    gTickStage = TICK_STAGE_APPLY_TASK;
+                                    logFreezeEvent(L"[transition] applying task");
                                     if (!applyBpp9000Task())
                                     {
                                         ASSERT(false);
@@ -6857,6 +6984,8 @@ static void tickProcessor(void*)
                                     ASSERT(minimumComputorScore == NO_MINER_SCORE && minimumCandidateScore == NO_MINER_SCORE);
 
                                     // instruct main loop to save files and wait until it is done
+                                    gTickStage = TICK_STAGE_STATE_SAVE;
+                                    logFreezeEvent(L"[transition] state save requested");
                                     spectrumMustBeSaved = true;
                                     universeMustBeSaved = true;
                                     computerMustBeSaved = true;
@@ -6870,6 +6999,8 @@ static void tickProcessor(void*)
                                     getComputerDigest(etalonTick.saltedComputerDigest);
 
                                     epochTransitionState = 0;
+                                    gTickStage = TICK_STAGE_TRANSITION_DONE;
+                                    logFreezeEvent(L"[transition] complete");
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
@@ -8572,6 +8703,20 @@ static void processKeyPresses()
         * F8 Key
         * Takes a snapshot of tick storage and save it to disk
         */
+        case 0x0B:
+        {
+            logToConsole(L"Pressed F1 key: stalling main loop to test freeze instrumentation");
+            gMainStage = MAIN_STAGE_FREEZE_TEST;
+            gMainStageDetail = MAIN_DETAIL_FREEZE_TEST;
+            const unsigned long long stallUntilTick = __rdtsc() + frequency * MAIN_STALL_TEST_SECS;
+            while (__rdtsc() < stallUntilTick)
+            {
+                _mm_pause();
+            }
+            logToConsole(L"Main loop stall test finished");
+        }
+        break;
+
         case 0x12:
         {
             logToConsole(L"Pressed F8 key");
@@ -8692,6 +8837,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         // Set flag to false BEFORE starting any processors to avoid race condition
         debugLogOnlyMainProcessorRunning = false;
         #endif
+
+        if (initFrameBuffer())
+        {
+            logToConsole(L"Framebuffer breadcrumb enabled.");
+        }
+        else
+        {
+            logToConsole(L"Framebuffer breadcrumb unavailable - no usable graphics output.");
+        }
 
         unsigned int computingProcessorNumber;
         EFI_GUID mpServiceProtocolGuid = EFI_MP_SERVICES_PROTOCOL_GUID;
@@ -8853,8 +9007,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 const unsigned long long curTimeTick = __rdtsc();
 
+                gMainLoopIterations++;
+                gMainStage = MAIN_STAGE_LOOP_TOP;
+
                 if (curTimeTick - clockTick >= (frequency >> 1))
                 {
+                    gMainStage = MAIN_STAGE_CLOCK;
                     clockTick = curTimeTick;
 
                     PROFILE_NAMED_SCOPE("main loop: updateTime()");
@@ -8963,10 +9121,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
 
                     // receive and transmit on active connections
+                    gMainStage = MAIN_STAGE_PEER_RECEIVE_TRANSMIT;
+                    gMainStageDetail = i;
                     peerReceiveAndTransmit(i, salt);
 
                     // reconnect if this peer slot has no active connection
+                    gMainStage = MAIN_STAGE_PEER_RECONNECT;
                     peerReconnectIfInactive(i, PORT);
+
+                    gMainStage = MAIN_STAGE_PEER_MACHINE_TIMEOUT;
 
                     if (peers[i].isOracleMachineNode())
                     {
@@ -9029,6 +9192,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
                 {
+                    gMainStage = MAIN_STAGE_PEER_REFRESH;
                     peerRefreshingTick = curTimeTick;
 
                     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
@@ -9144,6 +9308,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
                 // Add messages from response queue to sending buffer
+                gMainStage = MAIN_STAGE_RESPONSE_QUEUE;
                 const unsigned short responseQueueElementHead = ::responseQueueElementHead;
                 if (responseQueueElementTail != responseQueueElementHead)
                 {
@@ -9176,6 +9341,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                 }
 
+                gMainStage = MAIN_STAGE_STATE_SAVE;
                 if (systemMustBeSaved)
                 {
                     systemDataSavingTick = curTimeTick; // set last save tick to avoid overwrite in main loop
@@ -9201,10 +9367,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 if (forceRefreshPeerList)
                 {
+                    gMainStage = MAIN_STAGE_CLOSE_ALL_PEERS;
                     forceRefreshPeerList = false;
                     closeAllPeers();
                 }
 
+                gMainStage = MAIN_STAGE_KEY_PRESSES;
                 processKeyPresses();
 
 #if TICK_STORAGE_AUTOSAVE_MODE
@@ -9241,6 +9409,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     // Saving node state takes a lot of time -> Close peer connections before to signal that
                     // the peers should connect to another node.
+                    gMainStage = MAIN_STAGE_NODE_STATE_SAVE;
                     closeAllPeers(true);
 
                     logToConsole(L"Saving node state...");
@@ -9263,7 +9432,48 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 if (curTimeTick - loggingTick >= frequency)
                 {
+                    gMainStage = MAIN_STAGE_LOGGING;
                     loggingTick = curTimeTick;
+
+                    {
+                        static unsigned long long lastSeenTickProcIterations = 0;
+                        static unsigned long long tickProcStalledSeconds = 0;
+                        const bool saveInProgress = requestPersistingNodeState
+                            || systemMustBeSaved || spectrumMustBeSaved
+                            || universeMustBeSaved || computerMustBeSaved;
+                        if (gTickProcIterations == lastSeenTickProcIterations && !saveInProgress)
+                        {
+                            tickProcStalledSeconds++;
+                        }
+                        else
+                        {
+                            lastSeenTickProcIterations = gTickProcIterations;
+                            tickProcStalledSeconds = 0;
+                        }
+
+                        CHAR16 stageMsg[192];
+                        setText(stageMsg, L"[stage] main=");
+                        appendNumber(stageMsg, gMainStage, FALSE);
+                        appendText(stageMsg, L" detail=");
+                        appendNumber(stageMsg, gMainStageDetail, FALSE);
+                        appendText(stageMsg, L" tickStage=");
+                        appendNumber(stageMsg, gTickStage, FALSE);
+                        appendText(stageMsg, L" tick=");
+                        appendNumber(stageMsg, system.tick, FALSE);
+                        appendText(stageMsg, L" tickLoop=");
+                        appendNumber(stageMsg, gTickProcIterations, FALSE);
+                        appendText(stageMsg, L" mainLoop=");
+                        appendNumber(stageMsg, gMainLoopIterations, FALSE);
+                        if (tickProcStalledSeconds >= TICKPROC_STALL_WARN_SECS)
+                        {
+                            appendText(stageMsg, L" TICKPROC STALLED ");
+                            appendNumber(stageMsg, tickProcStalledSeconds, FALSE);
+                            appendText(stageMsg, L"s IN STAGE ");
+                            appendNumber(stageMsg, gTickStage, FALSE);
+                        }
+                        appendText(stageMsg, L"\r\n");
+                        outputStringToConsole(stageMsg);
+                    }
 
                     logInfo();
 
@@ -9341,6 +9551,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 // Flush the file system. Only flush one item at a time to avoid the main loop stay too long
                 // Even if the time is not satisfied, when still flush at least some items to make sure the save/load not stuck forever
                 // TODO: profile the read/write speed of the file system at the begining and adjust the number of items to flush
+                printFreezeEvents();
+
+                gMainStage = MAIN_STAGE_ASYNC_IO_FLUSH;
                 int remainedItem = 1;
                 do
                 {
