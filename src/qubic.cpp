@@ -144,6 +144,7 @@ static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, uni
 
 static constexpr unsigned long long MAIN_STALL_BREADCRUMB_SECS = 2;
 static constexpr unsigned long long TICKPROC_STALL_WARN_SECS = 60;
+static constexpr unsigned int EPOCH_START_VERBOSE_TICKS = 10;
 static constexpr unsigned long long MAIN_STALL_TEST_SECS = 10;
 static constexpr unsigned int MAIN_STAGE_FREEZE_TEST = 0x5555;
 static constexpr unsigned int MAIN_DETAIL_FREEZE_TEST = 0x0F0F;
@@ -8963,6 +8964,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #endif
             
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
+            unsigned long long stageTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             autoResendTickVotes.lastTick = system.initialTick;
             autoResendTickVotes.lastCheck = __rdtsc();
@@ -9403,50 +9405,53 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #endif
 #endif
 
+                const unsigned long long stageInterval =
+                    ((system.tick - system.initialTick) < EPOCH_START_VERBOSE_TICKS) ? (frequency / 10) : frequency;
+                if (curTimeTick - stageTick >= stageInterval)
+                {
+                    stageTick = curTimeTick;
+                    static unsigned long long lastSeenTickProcIterations = 0;
+                    static unsigned long long tickProcStallStartTick = 0;
+                    const bool saveInProgress = requestPersistingNodeState
+                        || systemMustBeSaved || spectrumMustBeSaved
+                        || universeMustBeSaved || computerMustBeSaved;
+                    if (gTickProcIterations != lastSeenTickProcIterations || saveInProgress)
+                    {
+                        lastSeenTickProcIterations = gTickProcIterations;
+                        tickProcStallStartTick = curTimeTick;
+                    }
+                    const unsigned long long tickProcStalledSeconds = (tickProcStallStartTick && frequency)
+                        ? ((curTimeTick - tickProcStallStartTick) / frequency) : 0;
+
+                    CHAR16 stageMsg[192];
+                    setText(stageMsg, L"[stage] main=");
+                    appendNumber(stageMsg, gMainStage, FALSE);
+                    appendText(stageMsg, L" detail=");
+                    appendNumber(stageMsg, gMainStageDetail, FALSE);
+                    appendText(stageMsg, L" tickStage=");
+                    appendNumber(stageMsg, gTickStage, FALSE);
+                    appendText(stageMsg, L" tick=");
+                    appendNumber(stageMsg, system.tick, FALSE);
+                    appendText(stageMsg, L" tickLoop=");
+                    appendNumber(stageMsg, gTickProcIterations, FALSE);
+                    appendText(stageMsg, L" mainLoop=");
+                    appendNumber(stageMsg, gMainLoopIterations, FALSE);
+                    if (tickProcStalledSeconds >= TICKPROC_STALL_WARN_SECS)
+                    {
+                        appendText(stageMsg, L" TICKPROC STALLED ");
+                        appendNumber(stageMsg, tickProcStalledSeconds, FALSE);
+                        appendText(stageMsg, L"s IN STAGE ");
+                        appendNumber(stageMsg, gTickStage, FALSE);
+                    }
+                    appendText(stageMsg, L"\r\n");
+                    outputStringToConsole(stageMsg);
+                }
+
                 if (curTimeTick - loggingTick >= frequency)
                 {
                     gMainStage = MAIN_STAGE_LOGGING;
                     loggingTick = curTimeTick;
 
-                    {
-                        static unsigned long long lastSeenTickProcIterations = 0;
-                        static unsigned long long tickProcStalledSeconds = 0;
-                        const bool saveInProgress = requestPersistingNodeState
-                            || systemMustBeSaved || spectrumMustBeSaved
-                            || universeMustBeSaved || computerMustBeSaved;
-                        if (gTickProcIterations == lastSeenTickProcIterations && !saveInProgress)
-                        {
-                            tickProcStalledSeconds++;
-                        }
-                        else
-                        {
-                            lastSeenTickProcIterations = gTickProcIterations;
-                            tickProcStalledSeconds = 0;
-                        }
-
-                        CHAR16 stageMsg[192];
-                        setText(stageMsg, L"[stage] main=");
-                        appendNumber(stageMsg, gMainStage, FALSE);
-                        appendText(stageMsg, L" detail=");
-                        appendNumber(stageMsg, gMainStageDetail, FALSE);
-                        appendText(stageMsg, L" tickStage=");
-                        appendNumber(stageMsg, gTickStage, FALSE);
-                        appendText(stageMsg, L" tick=");
-                        appendNumber(stageMsg, system.tick, FALSE);
-                        appendText(stageMsg, L" tickLoop=");
-                        appendNumber(stageMsg, gTickProcIterations, FALSE);
-                        appendText(stageMsg, L" mainLoop=");
-                        appendNumber(stageMsg, gMainLoopIterations, FALSE);
-                        if (tickProcStalledSeconds >= TICKPROC_STALL_WARN_SECS)
-                        {
-                            appendText(stageMsg, L" TICKPROC STALLED ");
-                            appendNumber(stageMsg, tickProcStalledSeconds, FALSE);
-                            appendText(stageMsg, L"s IN STAGE ");
-                            appendNumber(stageMsg, gTickStage, FALSE);
-                        }
-                        appendText(stageMsg, L"\r\n");
-                        outputStringToConsole(stageMsg);
-                    }
 
                     logInfo();
 
