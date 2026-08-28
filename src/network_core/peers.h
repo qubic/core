@@ -54,6 +54,9 @@ static constexpr unsigned int OC_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Trans
 static constexpr unsigned int OC_MACHINE_GRACEFUL_CLOSE_RETRIES = 3; // Graceful close retries for connecting attempt to OC machine
 static constexpr unsigned long long OC_RECONNECT_COOLDOWN_SECS = 0;
 
+// Set 0 to poll a closing peer as before.
+#define SKIP_POLL_ON_CLOSING_PEER 1
+
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
 static volatile bool listOfPeersIsStatic = false;
@@ -1220,9 +1223,17 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         PROFILE_SCOPE();
-        gMainStage = EFI_STAGE_POLL;
-        peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
-        gMainStage = MAIN_STAGE_PEER_RECEIVE_TRANSMIT;
+#if SKIP_POLL_ON_CLOSING_PEER
+        const bool pollThisPeer = !peers[i].isClosing;
+#else
+        const bool pollThisPeer = true;
+#endif
+        if (pollThisPeer)
+        {
+            gMainStage = EFI_STAGE_POLL;
+            peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
+            gMainStage = MAIN_STAGE_PEER_RECEIVE_TRANSMIT;
+        }
         processReceivedData(i, salt);
         receiveData(i, salt);
         processTransmittedData(i, salt);
