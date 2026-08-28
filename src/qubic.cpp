@@ -3438,7 +3438,7 @@ static void processTickTransactionAntColonySolution(
     }
     else
     {
-        // A null parent record means root, the scorer derives the submitter's own root, since roots
+        // A null parent record means root, the scorer derives the shared epoch root, since roots
         // are never stored and so cannot be handed in.
         const AntColonyBpp9000T::Ann* parentAnn = nullptr;
         if (parentRec != nullptr)
