@@ -23,6 +23,9 @@ static constexpr unsigned int TICK_STAGE_BEGIN_EPOCH = 214;
 static constexpr unsigned int TICK_STAGE_APPLY_TASK = 215;
 static constexpr unsigned int TICK_STAGE_STATE_SAVE = 216;
 static constexpr unsigned int TICK_STAGE_TRANSITION_DONE = 217;
+static constexpr unsigned int TICK_STAGE_WAIT_PERSIST = 220;
+static constexpr unsigned int TICK_STAGE_PROCESS_TICK = 221;
+static constexpr unsigned int TICK_STAGE_CONTRACT_WAIT_BASE = 230;
 
 static constexpr unsigned int EFI_STAGE_POLL = 300;
 static constexpr unsigned int EFI_STAGE_RECV_GETMODEDATA = 301;

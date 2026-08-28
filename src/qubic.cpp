@@ -145,6 +145,7 @@ static volatile bool systemMustBeSaved = false, spectrumMustBeSaved = false, uni
 static constexpr unsigned long long MAIN_STALL_BREADCRUMB_SECS = 2;
 static constexpr unsigned long long TICKPROC_STALL_WARN_SECS = 60;
 static constexpr unsigned int EPOCH_START_VERBOSE_TICKS = 10;
+static constexpr unsigned long long EPOCH_START_VERBOSE_SECS = 120;
 static constexpr unsigned long long MAIN_STALL_TEST_SECS = 10;
 static constexpr unsigned int MAIN_STAGE_FREEZE_TEST = 0x5555;
 static constexpr unsigned int MAIN_DETAIL_FREEZE_TEST = 0x0F0F;
@@ -201,6 +202,29 @@ static void printFreezeEvents()
         appendNumber(dropMsg, dropped, FALSE);
         appendText(dropMsg, L"\r\n");
         outputStringToConsole(dropMsg);
+    }
+}
+
+static volatile unsigned long long gWatchdogLastMainLoop = 0;
+static volatile unsigned long long gWatchdogStallStart = 0;
+static volatile char gWatchdogPainted = 0;
+
+static void paintBreadcrumbIfMainStalled()
+{
+    const unsigned long long now = __rdtsc();
+    if (gMainLoopIterations != gWatchdogLastMainLoop)
+    {
+        gWatchdogLastMainLoop = gMainLoopIterations;
+        gWatchdogStallStart = now;
+        gWatchdogPainted = 0;
+    }
+    else if (!gWatchdogPainted && gWatchdogStallStart && frequency
+        && (now - gWatchdogStallStart) / frequency >= MAIN_STALL_BREADCRUMB_SECS)
+    {
+        gWatchdogPainted = 1;
+        drawBreadcrumbRow(0, gMainStage, 0x0000FF00);
+        drawBreadcrumbRow(1, gTickStage, 0x00FFFF00);
+        drawBreadcrumbRow(2, gMainStageDetail, 0x00FF0000);
     }
 }
 
@@ -2519,6 +2543,7 @@ static void requestProcessor(void* ProcedureArgument)
     while (!shutDownNode)
     {
         checkinTime(processorNumber);
+        paintBreadcrumbIfMainStalled();
         // in epoch transition, wait here
         if (epochTransitionState)
         {
@@ -3081,6 +3106,7 @@ static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& d
     contractProcessorPostIncomingTransferType = type;
     contractProcessorPhase = POST_INCOMING_TRANSFER;
     contractProcessorState = 1;
+    gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
     WAIT_WHILE(contractProcessorState);
 }
 
@@ -3126,6 +3152,7 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
         contractProcessorPostIncomingTransferType = QPI::TransferType::procedureTransaction;
         contractProcessorPhase = USER_PROCEDURE_CALL;
         contractProcessorState = 1;
+        gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
         WAIT_WHILE(contractProcessorState);
 
         return contractProcessorTransactionMoneyflew;
@@ -3138,6 +3165,7 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
         contractProcessorPostIncomingTransferType = QPI::TransferType::standardTransaction;
         contractProcessorPhase = POST_INCOMING_TRANSFER;
         contractProcessorState = 1;
+        gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
         WAIT_WHILE(contractProcessorState);
     }
 
@@ -4142,6 +4170,7 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");        
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
+        gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
         WAIT_WHILE(contractProcessorState);
         PROFILE_SCOPE_END();
 
@@ -4149,6 +4178,7 @@ static void processTick(unsigned long long processorNumber)
         logger.registerNewTx(system.tick, logger.SC_BEGIN_EPOCH_TX);
         contractProcessorPhase = BEGIN_EPOCH;
         contractProcessorState = 1;
+        gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
         WAIT_WHILE(contractProcessorState);
         PROFILE_SCOPE_END();
     }
@@ -4157,6 +4187,7 @@ static void processTick(unsigned long long processorNumber)
     logger.registerNewTx(system.tick, logger.SC_BEGIN_TICK_TX);
     contractProcessorPhase = BEGIN_TICK;
     contractProcessorState = 1;
+    gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
     WAIT_WHILE(contractProcessorState);
     PROFILE_SCOPE_END();
 
@@ -4427,6 +4458,7 @@ static void processTick(unsigned long long processorNumber)
         ASSERT(contractProcessorUserProcedureNotificationInput);
         contractProcessorPhase = USER_PROCEDURE_NOTIFICATION_CALL;
         contractProcessorState = 1;
+        gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
         WAIT_WHILE(contractProcessorState);
 
         oracleNotification = oracleEngine.getNotification();
@@ -4537,6 +4569,7 @@ static void processTick(unsigned long long processorNumber)
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;
+    gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
     WAIT_WHILE(contractProcessorState);
     PROFILE_SCOPE_END();
 
@@ -5105,6 +5138,7 @@ static void endEpoch()
     logger.registerNewTx(system.tick, logger.SC_END_EPOCH_TX);
     contractProcessorPhase = END_EPOCH;
     contractProcessorState = 1;
+    gTickStage = TICK_STAGE_CONTRACT_WAIT_BASE + contractProcessorPhase;
     WAIT_WHILE(contractProcessorState);
 
     // treating endEpoch as a tick, start updating etalonTick:
@@ -6494,27 +6528,7 @@ static void tickProcessor(void*)
 
         gTickProcIterations++;
         gTickStage = TICK_STAGE_RUNNING;
-
-        {
-            const unsigned long long watchdogTick = __rdtsc();
-            static unsigned long long lastSeenMainLoopIterations = 0;
-            static unsigned long long mainStallStartTick = 0;
-            static bool breadcrumbPainted = false;
-            if (gMainLoopIterations != lastSeenMainLoopIterations)
-            {
-                lastSeenMainLoopIterations = gMainLoopIterations;
-                mainStallStartTick = watchdogTick;
-                breadcrumbPainted = false;
-            }
-            else if (!breadcrumbPainted && mainStallStartTick && frequency
-                && (watchdogTick - mainStallStartTick) / frequency >= MAIN_STALL_BREADCRUMB_SECS)
-            {
-                breadcrumbPainted = true;
-                drawBreadcrumbRow(0, gMainStage, 0x0000FF00);
-                drawBreadcrumbRow(1, gTickStage, 0x00FFFF00);
-                drawBreadcrumbRow(2, gMainStageDetail, 0x00FF0000);
-            }
-        }
+        paintBreadcrumbIfMainStalled();
 
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
@@ -6534,9 +6548,11 @@ static void tickProcessor(void*)
                 if (requestPersistingNodeState)
                 {
                     persistingNodeStateTickProcWaiting = 1;
+                    gTickStage = TICK_STAGE_WAIT_PERSIST;
                     WAIT_WHILE(requestPersistingNodeState);
                     persistingNodeStateTickProcWaiting = 0;
                 }
+                gTickStage = TICK_STAGE_PROCESS_TICK;
                 processTick(processorNumber);
                 latestProcessedTick = system.tick;
             }
@@ -9405,8 +9421,18 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #endif
 #endif
 
-                const unsigned long long stageInterval =
-                    ((system.tick - system.initialTick) < EPOCH_START_VERBOSE_TICKS) ? (frequency / 10) : frequency;
+                static unsigned int lastSeenInitialTick = 0;
+                static unsigned long long epochStartTick = 0;
+                if (system.initialTick != lastSeenInitialTick)
+                {
+                    lastSeenInitialTick = system.initialTick;
+                    epochStartTick = curTimeTick;
+                }
+                const bool inVerboseWindow =
+                    ((system.tick - system.initialTick) < EPOCH_START_VERBOSE_TICKS)
+                    && frequency
+                    && ((curTimeTick - epochStartTick) / frequency < EPOCH_START_VERBOSE_SECS);
+                const unsigned long long stageInterval = inVerboseWindow ? (frequency / 10) : frequency;
                 if (curTimeTick - stageTick >= stageInterval)
                 {
                     stageTick = curTimeTick;
