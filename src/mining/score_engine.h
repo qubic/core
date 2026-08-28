@@ -80,10 +80,11 @@ struct ScoreEngine
         }
     }
 
-    // Ant colony: the network every one of an identity's tree starts from
-    void deriveAntRootANN(const unsigned char* publicKey, const unsigned char* randomPool, AntAnn& out)
+    // Ant colony: the shared per-epoch network every identity's tree starts from; rootSeed is the
+    // epoch-start spectrum digest
+    void deriveAntRootANN(const unsigned char* rootSeed, const unsigned char* randomPool, AntAnn& out)
     {
-        _bpp9000Score.deriveRootANN(publicKey, randomPool, out);
+        _bpp9000Score.deriveRootANN(rootSeed, randomPool, out);
     }
 
     // Ant colony: score a child by inheriting the parent's network and walking it with the child's

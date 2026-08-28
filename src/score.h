@@ -203,7 +203,8 @@ public:
 
     // Ant colony main score function
     // score a child by inheriting its parent's network and walking it with the child's own seeds.
-    // parentAnn == nullptr means the parent is the submitter's root, which is derived here from the pubkey
+    // parentAnn == nullptr means the parent is the epoch root, which is derived here from the
+    // epoch-start spectrum digest (currentRandomSeed) and is identical for every identity
     // Returns INVALID_SCORE_VALUE for a non-canonical nonce, in which case outChildAnn is not written
     // bestANN would still hold the previous call's network, and committing that would put one node's
     // stale bytes into childAnnHash.
@@ -222,10 +223,10 @@ public:
         // Derived into this slot's scratch rather than the engine's own buffer: deriveRootANN() uses
         // currentANN as working space
         const score_engine::ScoreBpp9000T::ANN* parent = parentAnn;
-        // Depth 1, the start node of every public key
+        // Depth 1, the shared epoch root every identity starts from
         if (parent == nullptr)
         {
-            engine.deriveAntRootANN(publicKey.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
+            engine.deriveAntRootANN(currentRandomSeed.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
             parent = &_antRootScratch[solutionBufIdx];
         }
 
