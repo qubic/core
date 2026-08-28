@@ -546,7 +546,7 @@ TEST(TestQubicScoreFunction, Bpp9000AntColonyRegression)
             const unsigned char* pool = pools[chain.poolIndex].data();
 
             score_engine::ScoreBpp9000<ProductionConfig>::ANN parent;
-            engine->deriveRootANN(chain.pubkey.m256i_u8, pool, parent);   // depth 0's parent = the derived root
+            engine->deriveRootANN(uniqueSeeds[chain.poolIndex].m256i_u8, pool, parent);   // depth 0's parent = the shared epoch root
             for (size_t d = 0; d < chain.nodes.size(); ++d)
             {
                 const AntNode& node = chain.nodes[d];
