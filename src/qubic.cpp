@@ -608,12 +608,14 @@ static void antColonyBeginEpoch()
     // Every identity's root derives from this one value, so a node that seeded differently builds a
     // different forest and diverges. Logged as an identity so operators can compare it across nodes
     // by eye at epoch start, which is cheaper than finding out from a digest split later.
+#ifndef NDEBUG
     CHAR16 digestChars[60 + 1];
     getIdentity(gAntColony.rootSeed().m256i_u8, digestChars, true);
     CHAR16 msg[128];
     setText(msg, L"[ant-colony] Root seed = ");
     appendText(msg, digestChars);
-    logToConsole(msg);
+    addDebugMessage(msg);
+#endif
 }
 
 // DOGE merged-mining shares
