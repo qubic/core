@@ -263,6 +263,7 @@ static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsign
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static volatile unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
+static volatile EFI_STATUS contractProcessorLastDispatchStatus = 0;
 static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
 static unsigned char contractProcessorPostIncomingTransferType = 0;
@@ -9029,8 +9030,29 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (contractProcessorState == 1)
                 {
                     contractProcessorState = 2;
-                    createEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
-                    mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, contractProcessorIDs[0], contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, &processors[computingProcessorNumber], NULL);
+                    const EFI_STATUS contractEventStatus = createEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
+                    contractProcessorLastDispatchStatus = contractEventStatus;
+                    if (contractEventStatus)
+                    {
+                        setText(message, L"ERROR: createEvent() for contract processor failed with status ");
+                        appendErrorStatus(message, contractEventStatus);
+                        appendText(message, L" in phase ");
+                        appendNumber(message, contractProcessorPhase, FALSE);
+                        logToConsole(message);
+                    }
+                    else
+                    {
+                        const EFI_STATUS contractStartStatus = mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, contractProcessorIDs[0], contractProcessorEvent, MAX_CONTRACT_ITERATION_DURATION * 1000, &processors[computingProcessorNumber], NULL);
+                        contractProcessorLastDispatchStatus = contractStartStatus;
+                        if (contractStartStatus)
+                        {
+                            setText(message, L"ERROR: StartupThisAP() for contract processor failed with status ");
+                            appendErrorStatus(message, contractStartStatus);
+                            appendText(message, L" in phase ");
+                            appendNumber(message, contractProcessorPhase, FALSE);
+                            logToConsole(message);
+                        }
+                    }
                 }
                 /*if (!computationProcessorState && (computation || __computation))
                 {
@@ -9451,7 +9473,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     const unsigned long long tickProcStalledSeconds = (tickProcStallStartTick && frequency)
                         ? ((curTimeTick - tickProcStallStartTick) / frequency) : 0;
 
-                    CHAR16 stageMsg[192];
+                    CHAR16 stageMsg[256];
                     setText(stageMsg, L"[stage] main=");
                     appendNumber(stageMsg, gMainStage, FALSE);
                     appendText(stageMsg, L" detail=");
@@ -9470,6 +9492,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         appendNumber(stageMsg, tickProcStalledSeconds, FALSE);
                         appendText(stageMsg, L"s IN STAGE ");
                         appendNumber(stageMsg, gTickStage, FALSE);
+                        appendText(stageMsg, L" cpState=");
+                        appendNumber(stageMsg, contractProcessorState, FALSE);
+                        appendText(stageMsg, L" cpDispatch=");
+                        appendErrorStatus(stageMsg, contractProcessorLastDispatchStatus);
                     }
                     appendText(stageMsg, L"\r\n");
                     outputStringToConsole(stageMsg);
