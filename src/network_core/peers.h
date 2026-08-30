@@ -54,8 +54,8 @@ static constexpr unsigned int OC_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Trans
 static constexpr unsigned int OC_MACHINE_GRACEFUL_CLOSE_RETRIES = 3; // Graceful close retries for connecting attempt to OC machine
 static constexpr unsigned long long OC_RECONNECT_COOLDOWN_SECS = 0;
 
-// Set 0 to poll a closing peer as before.
-#define SKIP_POLL_ON_CLOSING_PEER 1
+// Set 1 to skip polling a closing peer.
+#define SKIP_POLL_ON_CLOSING_PEER 0
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 

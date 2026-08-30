@@ -264,6 +264,10 @@ static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static volatile unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static volatile EFI_STATUS contractProcessorLastDispatchStatus = 0;
+static volatile long long contractProcEntries = 0;
+static volatile long long contractProcExits = 0;
+static volatile long long contractProcCallbacks = 0;
+static volatile unsigned int contractProcPhaseSeen = 0;
 static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
 static unsigned char contractProcessorPostIncomingTransferType = 0;
@@ -2863,6 +2867,9 @@ OPTIMIZE_ON()
 
 static void contractProcessor(void*)
 {
+    _InterlockedIncrement64(&contractProcEntries);
+    contractProcPhaseSeen = contractProcessorPhase;
+
     enableAVX();
 
     PROFILE_SCOPE();
@@ -3071,6 +3078,8 @@ static void contractProcessor(void*)
     }
     break;
     }
+
+    _InterlockedIncrement64(&contractProcExits);
 
     if (!isVirtualMachine)
     {
@@ -7048,6 +7057,8 @@ static void shutdownCallback(EFI_EVENT Event, void* Context)
 // Required on timeout of callback processor
 static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 {
+    _InterlockedIncrement64(&contractProcCallbacks);
+
     closeEvent(Event);
     if (isVirtualMachine)
     {
@@ -9473,7 +9484,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     const unsigned long long tickProcStalledSeconds = (tickProcStallStartTick && frequency)
                         ? ((curTimeTick - tickProcStallStartTick) / frequency) : 0;
 
-                    CHAR16 stageMsg[256];
+                    CHAR16 stageMsg[384];
                     setText(stageMsg, L"[stage] main=");
                     appendNumber(stageMsg, gMainStage, FALSE);
                     appendText(stageMsg, L" detail=");
@@ -9496,6 +9507,25 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         appendNumber(stageMsg, contractProcessorState, FALSE);
                         appendText(stageMsg, L" cpDispatch=");
                         appendErrorStatus(stageMsg, contractProcessorLastDispatchStatus);
+                        appendText(stageMsg, L" cpEnter=");
+                        appendNumber(stageMsg, (unsigned long long)contractProcEntries, FALSE);
+                        appendText(stageMsg, L" cpExit=");
+                        appendNumber(stageMsg, (unsigned long long)contractProcExits, FALSE);
+                        appendText(stageMsg, L" cpCb=");
+                        appendNumber(stageMsg, (unsigned long long)contractProcCallbacks, FALSE);
+                        appendText(stageMsg, L" cpPhase=");
+                        appendNumber(stageMsg, contractProcPhaseSeen, FALSE);
+                        appendText(stageMsg, L" cpTx=");
+                        if (contractProcessorTransaction)
+                        {
+                            appendNumber(stageMsg, contractProcessorTransaction->destinationPublicKey.m256i_u64[0], FALSE);
+                            appendText(stageMsg, L"/");
+                            appendNumber(stageMsg, contractProcessorTransaction->inputType, FALSE);
+                        }
+                        else
+                        {
+                            appendText(stageMsg, L"none");
+                        }
                     }
                     appendText(stageMsg, L"\r\n");
                     outputStringToConsole(stageMsg);
