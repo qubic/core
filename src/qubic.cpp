@@ -5254,7 +5254,7 @@ static bool signTickVoteRacing(const unsigned char* subseed, const unsigned char
 {
     PROFILE_SCOPE();
 
-    if (done) return false; // skip starting if another core already won
+    if (*done) return false; // skip starting if another core already won
     signWithRandomK_incremental(subseed, publicKey, messageDigest, outSig, TARGET_TICK_VOTE_SIGNATURE);
     return true;
 }
