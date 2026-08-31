@@ -1188,9 +1188,9 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             }
             else
             {
-                // hot fix: only accept "empty" votes for stuck tick 73924308
+                // hot fix: only accept "empty" votes for stuck tick 77259626
                 bool isOk = true;
-                if (request->tick.tick == 73924308)
+                if (request->tick.tick == 77259626)
                 {
                     // only accept zero transactionDigest
                     if (!isZero(request->tick.transactionDigest))
@@ -6556,10 +6556,10 @@ static void tickProcessor(void*)
                 tickDataSuits = true;
             }
 
-            // hot fix: force tick 73924308 to be empty
-            if (system.tick == 73924307)
+            // hot fix: force tick 77259626 to be empty
+            if (system.tick == 77259625)
             {
-                // ignore next tick (73924308)
+                // ignore next tick (77259626)
                 targetNextTickDataDigest = m256i::zero();
                 targetNextTickDataDigestIsKnown = true;
             }
