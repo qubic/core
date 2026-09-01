@@ -29,6 +29,7 @@ enum QIPLogInfo {
     QIP_invalidIssuer = 15,
     QIP_qxAskOrderFound = 16,
     QIP_icoAlreadyExists = 17,
+    QIP_returnFundsError = 18,
 };
 
 struct QIPLogger
@@ -715,9 +716,16 @@ public:
             }
         }
         
-        if (locals.log._type == QIP_success && locals.buyerInfo.isReturned)
+        if (locals.log._type == QIP_success)
         {
-            locals.log._type = QIPLogInfo::QIP_fundsAlreadyReturned;
+            if (qpi.epoch() <= locals.ico.startEpoch + 2)
+            {
+                locals.log._type = QIPLogInfo::QIP_returnFundsError;
+            }
+            else if (locals.buyerInfo.isReturned)
+            {
+                locals.log._type = QIPLogInfo::QIP_fundsAlreadyReturned;
+            }
         }
 
         if (locals.log._type != QIP_success)
