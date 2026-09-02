@@ -166,8 +166,9 @@ identical for every identity**; per-identity variation enters only through the m
 **Child.** `computeScoreFromParent(parentLUT, publicKey, nonce, anchorTickDigest)`:
 
 1. Inherit `parentLUT`.
-2. `mutationSeed = K12(publicKey || nonce[3..31] || anchorTickDigest)` (`nonce[0..2]` zeroed) -
-   still keyed by the mining identity, so different identities walk differently from the shared root.
+2. `mutationSeed = K12(publicKey || nonce || anchorTickDigest)` with `nonce[0..2]` zeroed in place
+   (the full 32-byte nonce is hashed, its first 3 bytes set to 0, not dropped) - still keyed by the
+   mining identity, so different identities walk differently from the shared root.
 3. Walk `numberOfMutations = 100` steps. Each step rewrites `L` LUT entries. For the first `K` steps
    accept a worse-or-equal result (**explore**); after that accept only better-or-equal (**exploit**);
    one-step rollback on reject. Keep and return the **best** score seen. The best is seeded with the
@@ -185,8 +186,9 @@ Score is an error count in `[0, 8088]`; lower is better.
 
 ### 2.4 Accept rules
 
-A submission is accepted (`Valid` or `ValidNotStored`) only if **all** of these hold. The node checks
-in this order; the first failure is the reject reason:
+A submission is accepted (`Valid` or `ValidNotStored`) only if **all** of these hold. On failure the
+reject reason names the rule the node found violated (the exact evaluation order is an internal
+detail and can change):
 
 | Check | Reject reason if it fails |
 |-------|---------------------------|
@@ -237,8 +239,8 @@ BroadcastMessage {              // 96-byte envelope
 }
 // then the payload:
 AntSolutionBroadcastPayload {   // 48 bytes
-    unsigned int parentTick;      // ABSOLUTE tick of the parent node (0 with the index below = root)
-    unsigned int parentSolutionIndexInTick;
+    unsigned int parentTick;      // ABSOLUTE tick of the parent node; the virtual root is (0, 0xFFFFFFFF)
+    unsigned int parentSolutionIndexInTick;  // parent's index within its tick; 0xFFFFFFFF with parentTick 0 = root
     unsigned int anchorTick;      // ABSOLUTE tick number
     unsigned int claimedScore;
     m256i        nonce;           // the 32-byte nonce from 2.2
@@ -285,6 +287,37 @@ the identity tree is used verbatim - there is no epoch-relative offset to conver
 becomes `sourcePublicKey` of the transaction. Workers hold no tree and post no on-chain deposit; they
 hand solutions to the pool's computor, which pre-validates them and risks its own deposit only on
 solutions it expects to be accepted and refunded. Fund the computor identity, not the workers.
+
+### 2.6a Submitting a root (depth-1) solution
+
+A root solution starts a tree: its parent is the epoch's shared virtual root, which is derived rather
+than stored, so you never fetch it. This is the first solution every identity submits, and it differs
+from extending an existing node only in how the parent is named and scored.
+
+1. **Parent is the root.** Set `parentRef = (parentTick = 0, parentSolutionIndexInTick = 0xFFFFFFFF)`.
+   Both fields are load-bearing: `(0, 0xFFFFFFFF)` is the only value the node reads as root; a `0`
+   tick with any other index is treated as a normal parent, found nowhere, and rejected with
+   `RejectParentNotRegistered`.
+2. **Derive the parent LUT yourself.** `deriveRootANN(spectrumDigest, epochPool)` from the epoch
+   context (section 2.3) - do **not** call `REQUEST_ANT_PARENT_ANN` for the root; it answers
+   `status = IS_ROOT` with no ANN payload precisely so you derive it locally. The root is identical
+   for every identity.
+3. **Search.** Pick a canonical nonce (section 2.2), inherit the derived root LUT, run the walk, and
+   take the best score - exactly as for any parent.
+4. **The only score gate is the threshold.** The root's record score is the worst possible value, so
+   the "strictly beats the parent" rule passes trivially; a root child is accepted on score iff its
+   score is `<=` the epoch threshold. The shared root scores far above the threshold, so a valid
+   start still requires real mutation - and since every identity starts from the same root score,
+   ranking reflects search effort alone.
+5. **Anchor and submit.** Choose a non-empty anchor tick within `freshnessWindow` of the publish tick
+   (section 2.3), fill the payload with the root `parentRef` above, and hand it to your computor
+   (section 2.6, stage 1). The computor publishes it as the usual `AntColonyMiningSolutionTransaction`.
+
+On the node, a root submission is recognized by `parentRef.isRoot()`: the parent lookup returns a
+null record (root is not a stored solution), the node derives the shared root itself to recompute
+your `claimedScore`, and root children are de-duplicated per miner because the root is shared by all
+identities. Once accepted, the node becomes a normal parent - extend it by copying its `selfTick` /
+`selfSolutionIndexInTick` from the identity-tree query (section 2.7b) into a child's `parentRef`.
 
 ### 2.7 Read queries
 
@@ -373,7 +406,7 @@ unsigned char status;         // 0 = OK, 1 = NOT_FOUND, 2 = IS_ROOT (derive the 
 unsigned char padding[3];
 ```
 
-**Canonical ANN layout.** The same byte form is used everywhere ANN bytes leave the node: this response, the snapshot pool, and the epoch export. Under the current bpp9000 parameters it is 1'728 bytes = 64 rows of 27:
+**Canonical ANN layout.** The same byte form is used everywhere ANN bytes leave the node: this response, the snapshot pool, and the epoch export. Under the current bpp9000 parameters it is 1728 bytes = 64 rows of 27:
 
 ```
 row k, k = 0..45     LUT of neuron updatedNeuronIndices[k]: the k-th NON-INPUT neuron in
