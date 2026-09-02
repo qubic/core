@@ -145,11 +145,7 @@
 #define CONTRACT_INDEX QSWAP_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
-#ifdef OLD_QSWAP
-#include "contracts/Qswap_old.h"
-#else
 #include "contracts/Qswap.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -209,11 +205,7 @@
 #define CONTRACT_INDEX QRAFFLE_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QRAFFLE
 #define CONTRACT_STATE2_TYPE QRAFFLE2
-#ifdef OLD_QRAFFLE
-#include "contracts/QRaffle_old.h"
-#else
 #include "contracts/QRaffle.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -584,7 +576,7 @@ struct ContractStateChangeInfo
 // When enabling, replace both lines below, e.g.:
 //constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
 //constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QIP_CONTRACT_INDEX, RESET, 224 }, { RANDOM_CONTRACT_INDEX, PADDING, 224 } };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QIP_CONTRACT_INDEX, RESET, 224 }, { RANDOM_CONTRACT_INDEX, PADDING, 224 }, {NOST_CONTRACT_INDEX, MIGRATE, 229}};
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 

@@ -95,7 +95,7 @@ static_assert(sizeof(AntIdentityTreeResponse)
 // RespondAntParentAnnHeader.status values.
 constexpr unsigned char ANT_PARENT_ANN_STATUS_OK = 0;        // ANN bytes follow the header
 constexpr unsigned char ANT_PARENT_ANN_STATUS_NOT_FOUND = 1; // parentRef has no record
-constexpr unsigned char ANT_PARENT_ANN_STATUS_IS_ROOT = 2;   // ROOT_REF; no ANN payload - miner derives its own per-identity root
+constexpr unsigned char ANT_PARENT_ANN_STATUS_IS_ROOT = 2;   // ROOT_REF; no ANN payload - miner derives the shared epoch root
 
 // ONE tree node's stored network, named by parentRef - the ANN state a miner mutates to extend
 // that node. The tree itself is listed by the identity-tree query; this fetches the material for a

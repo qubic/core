@@ -194,7 +194,7 @@ static sint64 getSubscriptionFee(const OracleQuery& query, uint32 notifyPeriodIn
 Additionally, the interface struct may contain other structs or convenience features for contracts using the oracle interface.
 
 All code in the interface header file must respect the same [C++ language feature restrictions as contracts](#restrictions-of-c-language-features) (except for a few differences listed below).
-These are checked with the [Qubic Contract Verification Tool](https://github.com/Franziska-Mueller/qubic-contract-verify).
+These are checked with the [Qubic Contract Verification Tool](https://github.com/qubic/contract-verify).
 
 The C++ language feature restrictions of oracle interfaces differ in the following points from those of contracts:
 

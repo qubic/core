@@ -444,7 +444,7 @@ public:
     // Constraint specific functions
 
     // Resolves a parent for scoring. outParentRec is null for ROOT_REF, the caller derives the
-    // per-identity root from the submitter's pubkey instead.
+    // shared epoch root from the root seed instead.
     ValidityResult tryGetParent(const SolutionRef& parentRef,
         const AntSolutionRecord** outParentRec) const;
 

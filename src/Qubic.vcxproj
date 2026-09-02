@@ -26,7 +26,6 @@
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\qRWA.h" />
     <ClInclude Include="contracts\Qswap.h" />
-    <ClInclude Include="contracts\Qswap_old.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\QDuel.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
@@ -44,7 +43,6 @@
     <ClInclude Include="contracts\QBAY.h" />
     <ClInclude Include="contracts\Nostromo.h" />
     <ClInclude Include="contracts\QRaffle.h" />
-    <ClInclude Include="contracts\QRaffle_old.h" />
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
     <ClInclude Include="contracts\Qusino.h" />

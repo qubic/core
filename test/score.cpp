@@ -546,7 +546,7 @@ TEST(TestQubicScoreFunction, Bpp9000AntColonyRegression)
             const unsigned char* pool = pools[chain.poolIndex].data();
 
             score_engine::ScoreBpp9000<ProductionConfig>::ANN parent;
-            engine->deriveRootANN(chain.pubkey.m256i_u8, pool, parent);   // depth 0's parent = the derived root
+            engine->deriveRootANN(uniqueSeeds[chain.poolIndex].m256i_u8, pool, parent);   // depth 0's parent = the shared epoch root
             for (size_t d = 0; d < chain.nodes.size(); ++d)
             {
                 const AntNode& node = chain.nodes[d];
@@ -874,42 +874,53 @@ TEST(TestQubicScoreAntColony, AnnSurvivesExpandAndCompact)
     EXPECT_EQ(memcmp(&restored, &original, sizeof(original)), 0) << "expand/compact is not lossless";
 }
 
-TEST(TestQubicScoreAntColony, RootAnnIsDeterministicAndPerIdentity)
+// The root is shared per epoch: it is a function of the root seed (the epoch-start spectrum digest)
+// alone, so the same seed must give the identical root every time, and a different seed (a different
+// epoch) must give a different root.
+TEST(TestQubicScoreAntColony, RootAnnIsDeterministicAndShared)
 {
     AntFixture f;
     ASSERT_TRUE(makeAntFixture(f));
 
-    const m256i pkA = makePubkey(4);
-    const m256i pkB = makePubkey(5);
+    const m256i seedA = makePubkey(4);
+    const m256i seedB = makePubkey(5);
 
     AntEngine::ANN a1;
     AntEngine::ANN a2;
     AntEngine::ANN b1;
 
-    f.engine->deriveRootANN(pkA.m256i_u8, f.pool.data(), a1);
-    // Deriving another identity's root overwrites initValue.lutInit, which is the state a1 came from.
-    f.engine->deriveRootANN(pkB.m256i_u8, f.pool.data(), b1);
-    f.engine->deriveRootANN(pkA.m256i_u8, f.pool.data(), a2);
+    f.engine->deriveRootANN(seedA.m256i_u8, f.pool.data(), a1);
+    // Deriving another epoch's root overwrites initValue.lutInit, which is the state a1 came from.
+    f.engine->deriveRootANN(seedB.m256i_u8, f.pool.data(), b1);
+    f.engine->deriveRootANN(seedA.m256i_u8, f.pool.data(), a2);
 
     EXPECT_EQ(memcmp(&a1, &a2, sizeof(a1)), 0) << "root depends on engine state";
-    EXPECT_NE(memcmp(&a1, &b1, sizeof(a1)), 0) << "two identities share a root";
+    EXPECT_NE(memcmp(&a1, &b1, sizeof(a1)), 0) << "two different seeds share a root";
 }
 
 // A child is a function of (parent, pubkey, nonce, anchor). Same inputs must give the same score AND
-// the same inherited LUT; a different parent must not give the same child.
+// the same inherited LUT; a different parent must not give the same child. The root is shared, so
+// the second parent is a mutated child of the root rather than another identity's root.
 TEST(TestQubicScoreAntColony, ChildIsDeterministicAndInheritsParent)
 {
     AntFixture f;
     ASSERT_TRUE(makeAntFixture(f));
 
+    const m256i seed = makePubkey(4);
     const m256i pk = makePubkey(6);
     const m256i nonce = makeAntNonce(5, 3, 41);
     const m256i anchor = makePubkey(12);
 
     AntEngine::ANN parentA;
+    f.engine->deriveRootANN(seed.m256i_u8, f.pool.data(), parentA);
+
+    m256i improvingNonce;
+    ASSERT_TRUE(findImprovingNonce(*f.engine, parentA, pk, anchor, f.pool.data(), improvingNonce))
+        << "no nonce improved on the root, so no distinct second parent can be built";
+    f.engine->computeScoreFromParent(parentA, pk.m256i_u8, improvingNonce.m256i_u8, anchor.m256i_u8, f.pool.data());
     AntEngine::ANN parentB;
-    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parentA);
-    f.engine->deriveRootANN(makePubkey(7).m256i_u8, f.pool.data(), parentB);
+    f.engine->getBestANN(parentB);
+    ASSERT_NE(memcmp(&parentA, &parentB, sizeof(parentA)), 0) << "the mutated child equals the root";
 
     const unsigned int s1 = f.engine->computeScoreFromParent(
         parentA, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
@@ -966,18 +977,17 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
     AntFixture f;
     ASSERT_TRUE(makeAntFixture(f));
 
+    const m256i seed = makePubkey(4);
     const m256i pk = makePubkey(10);
     const m256i anchor = makePubkey(30);
-    AntEngine::ANN parentA;
-    AntEngine::ANN parentB;
-    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parentA);
-    f.engine->deriveRootANN(makePubkey(11).m256i_u8, f.pool.data(), parentB);
+    AntEngine::ANN parent;
+    f.engine->deriveRootANN(seed.m256i_u8, f.pool.data(), parent);
 
     constexpr unsigned char maxK = (unsigned char)AntCfg::numberOfMutations;
     const m256i good = makeAntNonce(3, 5, 62);
 
     // A rejected nonce and a timed-out walk
-    f.engine->computeScoreFromParent(parentA, pk.m256i_u8, good.m256i_u8, anchor.m256i_u8, f.pool.data());
+    f.engine->computeScoreFromParent(parent, pk.m256i_u8, good.m256i_u8, anchor.m256i_u8, f.pool.data());
     AntEngine::ANN afterA;
     f.engine->getBestANN(afterA);
 
@@ -993,7 +1003,7 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
     for (unsigned int i = 0; i < numberOfBadNonces; i++)
     {
         // The bad nonce is early rejected in computeScoreFromParent()
-        EXPECT_EQ(f.engine->computeScoreFromParent(parentB, pk.m256i_u8, bad[i].m256i_u8, anchor.m256i_u8, f.pool.data()),
+        EXPECT_EQ(f.engine->computeScoreFromParent(parent, pk.m256i_u8, bad[i].m256i_u8, anchor.m256i_u8, f.pool.data()),
                   score_engine::INVALID_SCORE_VALUE) << "non-canonical nonce " << i << " accepted";
 
         AntEngine::ANN now;
@@ -1001,8 +1011,11 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
         EXPECT_EQ(memcmp(&now, &afterA, sizeof(now)), 0) << "rejected nonce " << i << " still ran the walk";
     }
 
-    // Now after bad nonce, we feed good nonce, we expect this is ok
-    f.engine->computeScoreFromParent(parentB, pk.m256i_u8, good.m256i_u8, anchor.m256i_u8, f.pool.data());
+    // Now after bad nonces, an improving canonical nonce on the same parent must move bestANN again
+    m256i good2;
+    ASSERT_TRUE(findImprovingNonce(*f.engine, parent, pk, anchor, f.pool.data(), good2))
+        << "no nonce improved on the parent, so the post-rejection walk check would be vacuous";
+    f.engine->computeScoreFromParent(parent, pk.m256i_u8, good2.m256i_u8, anchor.m256i_u8, f.pool.data());
     AntEngine::ANN afterB;
     f.engine->getBestANN(afterB);
     EXPECT_NE(memcmp(&afterB, &afterA, sizeof(afterB)), 0) << "canonical nonce was not scored";

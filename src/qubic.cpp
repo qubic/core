@@ -2,7 +2,6 @@
 
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
-// #define OLD_QRAFFLE
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -609,12 +608,14 @@ static void antColonyBeginEpoch()
     // Every identity's root derives from this one value, so a node that seeded differently builds a
     // different forest and diverges. Logged as an identity so operators can compare it across nodes
     // by eye at epoch start, which is cheaper than finding out from a digest split later.
+#ifndef NDEBUG
     CHAR16 digestChars[60 + 1];
     getIdentity(gAntColony.rootSeed().m256i_u8, digestChars, true);
     CHAR16 msg[128];
     setText(msg, L"[ant-colony] Root seed = ");
     appendText(msg, digestChars);
-    logToConsole(msg);
+    addDebugMessage(msg);
+#endif
 }
 
 // DOGE merged-mining shares
@@ -3439,7 +3440,7 @@ static void processTickTransactionAntColonySolution(
     }
     else
     {
-        // A null parent record means root, the scorer derives the submitter's own root, since roots
+        // A null parent record means root, the scorer derives the shared epoch root, since roots
         // are never stored and so cannot be handed in.
         const AntColonyBpp9000T::Ann* parentAnn = nullptr;
         if (parentRec != nullptr)
