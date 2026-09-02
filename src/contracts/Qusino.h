@@ -41,6 +41,10 @@ constexpr sint32 QUSINO_ALREADY_CLAIMED_TODAY = 16;
 constexpr sint32 QUSINO_BONUS_CLAIM_TIME_NOT_COME = 17;
 constexpr sint32 QUSINO_INSUFFICIENT_BONUS_AMOUNT = 18;
 constexpr sint32 QUSINO_INVALID_GAME_PROPOSER = 19;
+constexpr sint32 QUSINO_INVALID_INPUT = 20;
+constexpr sint32 QUSINO_RNG_NOT_READY = 21;
+constexpr sint32 QUSINO_RNG_REFILL_TOO_SOON = 22;
+constexpr sint32 QUSINO_RNG_REFILL_FAILED = 23;
 
 constexpr uint8 QUSINO_ASSET_TYPE_QUBIC = 0;
 constexpr uint8 QUSINO_ASSET_TYPE_QSC = 1;
@@ -60,6 +64,53 @@ constexpr uint32 QUSINO_LOG_ALREADY_CLAIMED_TODAY = 9;
 constexpr uint32 QUSINO_LOG_BONUS_CLAIM_TIME_NOT_COME = 10;
 constexpr uint32 QUSINO_LOG_INSUFFICIENT_BONUS_AMOUNT = 11;
 constexpr uint32 QUSINO_LOG_INVALID_GAME_PROPOSER = 12;
+constexpr uint32 QUSINO_LOG_INVALID_INPUT = 13;
+constexpr uint32 QUSINO_LOG_RNG_NOT_READY = 14;
+constexpr uint32 QUSINO_LOG_RNG_REFILL_TOO_SOON = 15;
+constexpr uint32 QUSINO_LOG_RNG_REFILL_FAILED = 16;
+constexpr uint32 QUSINO_LOG_RNG_REFILL_SUCCESS = 17;
+constexpr uint32 QUSINO_LOG_COINFLIP_RESULT = 18;
+
+// ---------------------------------------------------------------------------
+// Coin Flip + shared RNG "Result Bank"
+//
+// Entropy is bought in bulk from RANDOM and cached in a per-game pool backed by a
+// shared overflow reserve, so each coinFlip() draw is instant instead of waiting on
+// a fresh BuyEntropy call. refillRandomBank() is the only procedure that talks to
+// RANDOM -- permissionless but rate-limited. Pool/reserve arrays are sized for
+// QUSINO_RNG_MAX_GAMES so future games (Blackjack, Baccarat, ...) can reuse this
+// plumbing; only Coin Flip is wired up so far. getRandom() itself is deliberately
+// not a public procedure -- only this contract's own game logic can draw from it.
+// ---------------------------------------------------------------------------
+constexpr uint16 QUSINO_RNG_ENTROPY_BITS = 256;                                  // bits bought from RANDOM per refill
+constexpr uint8  QUSINO_RNG_COLLATERAL_TIER = 0;                                 // cheapest / most populated RANDOM tier
+constexpr uint64 QUSINO_RNG_ENTROPY_FEE = RANDOM_BITFEE * QUSINO_RNG_ENTROPY_BITS; // paid from bonusAmount (see QUSINO_GAME_BANKROLL_CAP)
+
+constexpr uint32 QUSINO_RNG_MAX_GAMES = 32;                                      // array capacity for future games (~2KB state per slot)
+constexpr uint32 QUSINO_RNG_ACTIVE_GAMES = 1;                                    // games actually bootstrapped by refillRandomBank --
+                                                                                  // bump as new games launch, never QUSINO_RNG_MAX_GAMES
+constexpr uint32 QUSINO_RNG_POOL_SIZE = 256;                                     // pre-drawn values held per game
+constexpr uint32 QUSINO_RNG_RESERVE_SIZE = 1024;                                 // shared overflow reserve, refilled in one shot
+constexpr uint32 QUSINO_RNG_MIN_REFILL_TICK_GAP = 5;                             // rate-limit for the permissionless refill call
+
+constexpr uint8 QUSINO_GAME_ID_COINFLIP = 0;
+
+// Coin Flip is played with QSC or STAR only, never raw Qu. A QSC bet is redeemed
+// for Qu (QUSINO_QSC_PRICE); a win credits new QSC back to the user -- they redeem
+// it themselves via redemptionQSCToQubic() -- debiting bonusAmount (QUSINO's Qu
+// game bankroll, funded via depositBonus, also what refillRandomBank spends on
+// RANDOM fees). A loss tops bonusAmount back up. STAR bets never touch Qu or
+// bonusAmount: STAR isn't redeemable for Qubic, so a win mints STAR and a loss
+// burns it, like a vote fee.
+constexpr uint64 QUSINO_COINFLIP_MIN_BET = 1000000ULL;                          // min bet, in QSC or STAR units
+constexpr uint64 QUSINO_COINFLIP_PAYOUT_PERCENT = 196ULL;                       // 1.96x on win == ~2% house edge, placeholder
+
+// bonusAmount is shared by the daily-claim-bonus feature and Coin Flip's Qu
+// bankroll, pinned at QUSINO_GAME_BANKROLL_CAP -- anything that would push it past
+// the cap (an oversized depositBonus, or a Coin Flip loss) goes to epochRevenue
+// instead (see addWithCap()).
+constexpr uint64 QUSINO_GAME_BANKROLL_CAP = 1200000000ULL;                      // 1.2B Qu
+
 struct QUSINOLogger
 {
     uint32 _contractIndex;
@@ -135,6 +186,40 @@ public:
     struct redemptionQSCToQubic_output
     {
         sint32 returnCode;
+    };
+
+    struct refillRandomBank_input
+    {
+    };
+    struct refillRandomBank_output
+    {
+        sint32 returnCode;
+        uint32 valuesAdded;
+    };
+
+    struct coinFlip_input
+    {
+        uint8 guess;              // 0 = heads, 1 = tails
+        uint8 assetType;          // QUSINO_ASSET_TYPE_QSC or QUSINO_ASSET_TYPE_STAR -- no other type is valid
+        uint64 amount;            // bet size, in units of assetType; no invocationReward is taken
+    };
+    struct coinFlip_output
+    {
+        sint32 returnCode;
+        uint8 result;              // 0 = heads, 1 = tails
+        bit won;
+        uint64 payout;             // QSC bets: QSC credited (redeem via redemptionQSCToQubic).
+                                   // STAR bets: STAR minted. 0 on a loss.
+    };
+
+    struct getRandomBankStatus_input
+    {
+    };
+    struct getRandomBankStatus_output
+    {
+        bit poolInitialized;
+        uint32 reserveFilled;
+        uint32 lastRefillTick;
     };
 
     struct getUserAssetVolume_input
@@ -255,6 +340,17 @@ public:
         uint64 bonusAmount;
         sint64 transferRightsFee;
         uint32 lastClaimedTime;
+
+        // RNG "Result Bank" (see comment above QUSINO_RNG_ENTROPY_BITS)
+        Array<uint64, QUSINO_RNG_MAX_GAMES * QUSINO_RNG_POOL_SIZE> rngPools;    // flattened [gameId * QUSINO_RNG_POOL_SIZE + slot]
+        Array<uint32, QUSINO_RNG_MAX_GAMES> rngPoolNonce;                       // per-game nonce, folded into index-selection entropy each draw
+        Array<uint8, QUSINO_RNG_MAX_GAMES> rngPoolInitialized;                  // 1 once a game's pool has been seeded, else 0
+        Array<uint64, QUSINO_RNG_RESERVE_SIZE> rngReserve;
+        uint32 rngReserveHead;                                                  // next reserve slot to hand out (circular)
+        uint32 rngReserveFilled;                                                // number of valid, unconsumed entries left in the reserve
+        uint32 rngLastRefillTick;                                               // for rate-limiting refillRandomBank()
+        bit rngBankEverFilled;                                                  // set once the first refill succeeds; lets the tick-gap
+                                                                                 // check skip the very first refill
     };
 protected:
     /**************************************/
@@ -271,6 +367,23 @@ protected:
     inline static sint32 min(sint32 a, sint32 b)
     {
         return (a < b) ? a : b;
+    }
+    // Adds toAdd to current, clamped at cap; whatever doesn't fit is reported via
+    // overflow instead of wrapping. Used to keep bonusAmount pinned at
+    // QUSINO_GAME_BANKROLL_CAP.
+    inline static void addWithCap(uint64 current, uint64 toAdd, uint64 cap, uint64& newValue, uint64& overflow)
+    {
+        uint64 headroom = (cap > current) ? (cap - current) : 0;
+        if (toAdd <= headroom)
+        {
+            newValue = current + toAdd;
+            overflow = 0;
+        }
+        else
+        {
+            newValue = cap;
+            overflow = toAdd - headroom;
+        }
     }
 
     /**
@@ -618,12 +731,20 @@ public:
     struct depositBonus_locals
     {
         QUSINOLogger log;
+        uint64 newBonus;
+        uint64 overflow;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(depositBonus)
     {
         if (qpi.invocationReward() > 0)
         {
-            state.mut().bonusAmount = sadd(state.get().bonusAmount, (uint64)qpi.invocationReward());
+            // bonusAmount is capped at QUSINO_GAME_BANKROLL_CAP; excess goes to epochRevenue.
+            addWithCap(state.get().bonusAmount, (uint64)qpi.invocationReward(), QUSINO_GAME_BANKROLL_CAP, locals.newBonus, locals.overflow);
+            state.mut().bonusAmount = locals.newBonus;
+            if (locals.overflow > 0)
+            {
+                state.mut().epochRevenue = sadd(state.get().epochRevenue, locals.overflow);
+            }
         }
         output.returnCode = QUSINO_SUCCESS;
         locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
@@ -735,6 +856,342 @@ public:
         locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
         LOG_INFO(locals.log);
     }
+    // refillRandomBank
+    // ---------------------------------------------------------------------------
+    // Permissionless call that tops up the RNG reserve by buying entropy from
+    // RANDOM, paid from bonusAmount (refuses if it can't cover the fee). Refuses
+    // while the reserve still has unspent values (would waste the fee); once
+    // drained, rate-limited to one refill per QUSINO_RNG_MIN_REFILL_TICK_GAP ticks
+    // (first-ever refill exempt). Also bootstraps any active game's pool that
+    // hasn't been seeded yet.
+    // Return codes: QUSINO_SUCCESS, QUSINO_RNG_REFILL_TOO_SOON,
+    // QUSINO_INSUFFICIENT_BONUS_AMOUNT, QUSINO_RNG_REFILL_FAILED.
+    // ---------------------------------------------------------------------------
+    struct refillRandomBank_locals
+    {
+        RANDOM::BuyEntropy_input buyEntropyInput;
+        RANDOM::BuyEntropy_output buyEntropyOutput;
+        m256i baseSeed;
+        m256i expanded;
+        uint64 seedIdx;
+        uint32 g;
+        uint32 slot;
+        QUSINOLogger log;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(refillRandomBank)
+    {
+        // Takes no payment from the caller -- QUSINO funds the RANDOM purchase itself.
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
+        // Don't buy while the reserve still has unspent values (would waste the fee).
+        // Once empty, rate-limit successful refills too, except the very first ever.
+        if (state.get().rngReserveFilled > 0
+            || (state.get().rngBankEverFilled && qpi.tick() < state.get().rngLastRefillTick + QUSINO_RNG_MIN_REFILL_TICK_GAP))
+        {
+            output.returnCode = QUSINO_RNG_REFILL_TOO_SOON;
+            output.valuesAdded = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_RNG_REFILL_TOO_SOON, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        // Don't even attempt a purchase the game bankroll can't afford.
+        if (state.get().bonusAmount < QUSINO_RNG_ENTROPY_FEE)
+        {
+            output.returnCode = QUSINO_INSUFFICIENT_BONUS_AMOUNT;
+            output.valuesAdded = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_BONUS_AMOUNT, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        locals.buyEntropyInput.collateralTier = QUSINO_RNG_COLLATERAL_TIER;
+        locals.buyEntropyInput.numberOfBits = QUSINO_RNG_ENTROPY_BITS;
+        locals.buyEntropyInput.trustee = id::zero();
+        INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, QUSINO_RNG_ENTROPY_FEE);
+
+        if (interContractCallError != NoCallError || locals.buyEntropyOutput.entropy == BIT4096_ZERO)
+        {
+            // No entropy available this round -- try again on a later tick.
+            output.returnCode = QUSINO_RNG_REFILL_FAILED;
+            output.valuesAdded = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_RNG_REFILL_FAILED, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        // Collapse entropy into a seed, then derive many values from it by re-hashing
+        // with an incrementing counter (same technique QRaffle uses).
+        locals.baseSeed = qpi.K12(locals.buyEntropyOutput.entropy);
+        for (locals.seedIdx = 0; locals.seedIdx < QUSINO_RNG_RESERVE_SIZE; locals.seedIdx++)
+        {
+            locals.expanded = qpi.K12(m256i(locals.baseSeed.u64._0, locals.baseSeed.u64._1, locals.baseSeed.u64._2, locals.baseSeed.u64._3 ^ (locals.seedIdx + 1ULL)));
+            state.mut().rngReserve.set(locals.seedIdx, locals.expanded.u64._0);
+        }
+        state.mut().rngReserveHead = 0;
+        state.mut().rngReserveFilled = QUSINO_RNG_RESERVE_SIZE;
+        state.mut().rngLastRefillTick = qpi.tick();
+        state.mut().rngBankEverFilled = 1;
+        // Debit the fee actually spent (not done on the failure path -- RANDOM refunds
+        // QUSINO in full when it has no entropy to sell).
+        state.mut().bonusAmount -= QUSINO_RNG_ENTROPY_FEE;
+
+        // Bootstrap any active game's pool that hasn't been seeded yet, straight out of
+        // the reserve just filled. Bounded by ACTIVE_GAMES, not MAX_GAMES, so we don't
+        // burn the reserve priming pools nothing uses yet.
+        for (locals.g = 0; locals.g < QUSINO_RNG_ACTIVE_GAMES; locals.g++)
+        {
+            if (state.get().rngPoolInitialized.get(locals.g) == 0 && state.get().rngReserveFilled >= QUSINO_RNG_POOL_SIZE)
+            {
+                for (locals.slot = 0; locals.slot < QUSINO_RNG_POOL_SIZE; locals.slot++)
+                {
+                    state.mut().rngPools.set((uint64)locals.g * QUSINO_RNG_POOL_SIZE + locals.slot, state.get().rngReserve.get(state.get().rngReserveHead));
+                    state.mut().rngReserveHead = mod<uint32>(state.get().rngReserveHead + 1, QUSINO_RNG_RESERVE_SIZE);
+                    state.mut().rngReserveFilled--;
+                }
+                state.mut().rngPoolInitialized.set(locals.g, 1);
+            }
+        }
+
+        output.returnCode = QUSINO_SUCCESS;
+        output.valuesAdded = QUSINO_RNG_RESERVE_SIZE;
+        locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_RNG_REFILL_SUCCESS, 0 };
+        LOG_INFO(locals.log);
+    }
+
+    // coinFlip
+    // ---------------------------------------------------------------------------
+    // Bets QSC or STAR (input.assetType) on heads/tails (input.guess); never raw
+    // Qu, no invocationReward taken. The wager always leaves the caller's balance
+    // up front. QSC: redeemed for Qu (QUSINO_QSC_PRICE); a win credits new QSC
+    // back to the caller -- redeem via redemptionQSCToQubic() -- debiting
+    // bonusAmount by that QSC's Qu backing; a loss tops bonusAmount back up
+    // (capped, overflow to epochRevenue). Rejected up front unless bonusAmount can
+    // cover the win. STAR: never touches Qu/bonusAmount -- a win mints STAR, a
+    // loss burns it (like a vote fee). Outcome is drawn instantly from the Coin
+    // Flip RNG pool (see Result Bank comment above), then the slot is topped up.
+    // Return codes: QUSINO_SUCCESS, QUSINO_INVALID_INPUT, QUSINO_WRONG_ASSET_TYPE,
+    // QUSINO_INSUFFICIENT_FUNDS, QUSINO_RNG_NOT_READY, QUSINO_INSUFFICIENT_QSC /
+    // QUSINO_INSUFFICIENT_STAR, QUSINO_INSUFFICIENT_BONUS_AMOUNT.
+    // ---------------------------------------------------------------------------
+    struct CoinFlipSelectContext
+    {
+        m256i prevDigest;
+        id invocator;
+        uint32 tick;
+        uint32 nonce;
+    };
+    struct CoinFlipOutcomeContext
+    {
+        uint64 poolValue;
+        m256i selectHash;
+    };
+    struct coinFlip_locals
+    {
+        CoinFlipSelectContext selectCtx;
+        m256i selectHash;
+        CoinFlipOutcomeContext outcomeCtx;
+        m256i outcomeHash;
+        STARAndQSC userVolume;
+        uint64 index;
+        uint64 poolValue;
+        uint64 qscRedemptionValueQu;
+        uint64 winAmount;
+        uint64 qscPayout;
+        uint64 newBonus;
+        uint64 overflow;
+        uint8 outcome;
+        QUSINOLogger log;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(coinFlip)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
+        if (input.guess > 1)
+        {
+            output.returnCode = QUSINO_INVALID_INPUT;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        if (input.assetType != QUSINO_ASSET_TYPE_QSC && input.assetType != QUSINO_ASSET_TYPE_STAR)
+        {
+            output.returnCode = QUSINO_WRONG_ASSET_TYPE;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_WRONG_ASSET_TYPE, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        if (input.amount < QUSINO_COINFLIP_MIN_BET)
+        {
+            output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_FUNDS, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        if (state.get().rngPoolInitialized.get(QUSINO_GAME_ID_COINFLIP) == 0)
+        {
+            // Bank not primed yet -- caller should trigger refillRandomBank() and retry.
+            output.returnCode = QUSINO_RNG_NOT_READY;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_RNG_NOT_READY, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        state.get().userAssetVolume.get(qpi.invocator(), locals.userVolume);
+
+        if (input.assetType == QUSINO_ASSET_TYPE_QSC)
+        {
+            if (locals.userVolume.volumeOfQSC < input.amount)
+            {
+                output.returnCode = QUSINO_INSUFFICIENT_QSC;
+                output.result = 0;
+                output.won = 0;
+                output.payout = 0;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_QSC, 0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+
+            // Gate on the win payout (not just the bet) so a win can't underflow bonusAmount.
+            locals.qscRedemptionValueQu = smul(input.amount, QUSINO_QSC_PRICE);
+            locals.winAmount = div(smul(locals.qscRedemptionValueQu, QUSINO_COINFLIP_PAYOUT_PERCENT), 100ULL);
+            if (state.get().bonusAmount < locals.winAmount)
+            {
+                output.returnCode = QUSINO_INSUFFICIENT_BONUS_AMOUNT;
+                output.result = 0;
+                output.won = 0;
+                output.payout = 0;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_BONUS_AMOUNT, 0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+        }
+        else // QUSINO_ASSET_TYPE_STAR
+        {
+            if (locals.userVolume.volumeOfSTAR < input.amount)
+            {
+                output.returnCode = QUSINO_INSUFFICIENT_STAR;
+                output.result = 0;
+                output.won = 0;
+                output.payout = 0;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_STAR, 0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+            locals.winAmount = div(smul(input.amount, QUSINO_COINFLIP_PAYOUT_PERCENT), 100ULL);
+        }
+
+        // Pick a pool slot from context unique to this call, so it can't be predicted.
+        locals.selectCtx.prevDigest = qpi.getPrevSpectrumDigest();
+        locals.selectCtx.invocator = qpi.invocator();
+        locals.selectCtx.tick = qpi.tick();
+        locals.selectCtx.nonce = state.get().rngPoolNonce.get(QUSINO_GAME_ID_COINFLIP);
+        locals.selectHash = qpi.K12(locals.selectCtx);
+        locals.index = mod<uint64>(locals.selectHash.u64._0, (uint64)QUSINO_RNG_POOL_SIZE);
+
+        locals.poolValue = state.get().rngPools.get((uint64)QUSINO_GAME_ID_COINFLIP * QUSINO_RNG_POOL_SIZE + locals.index);
+
+        // Consume the slot and refill it from the reserve so it's never handed out twice.
+        if (state.get().rngReserveFilled > 0)
+        {
+            state.mut().rngPools.set((uint64)QUSINO_GAME_ID_COINFLIP * QUSINO_RNG_POOL_SIZE + locals.index, state.get().rngReserve.get(state.get().rngReserveHead));
+            state.mut().rngReserveHead = mod<uint32>(state.get().rngReserveHead + 1, QUSINO_RNG_RESERVE_SIZE);
+            state.mut().rngReserveFilled--;
+        }
+        state.mut().rngPoolNonce.set(QUSINO_GAME_ID_COINFLIP, state.get().rngPoolNonce.get(QUSINO_GAME_ID_COINFLIP) + 1);
+
+        // Re-hash the drawn value with the selection hash so the outcome stays unpredictable.
+        locals.outcomeCtx.poolValue = locals.poolValue;
+        locals.outcomeCtx.selectHash = locals.selectHash;
+        locals.outcomeHash = qpi.K12(locals.outcomeCtx);
+        locals.outcome = (uint8)(locals.outcomeHash.u64._0 & 1);
+
+        output.result = locals.outcome;
+        output.won = (locals.outcome == input.guess) ? 1 : 0;
+
+        if (input.assetType == QUSINO_ASSET_TYPE_QSC)
+        {
+            // The wager always leaves QSC circulation up front, redeemed either way.
+            locals.userVolume.volumeOfQSC -= input.amount;
+            state.mut().QSCCirclatingSupply -= input.amount;
+
+            if (output.won)
+            {
+                // Credit QSC instead of sending Qu -- caller redeems it themselves later.
+                // Debit the bankroll by exactly the Qu backing the credited QSC.
+                locals.qscPayout = div(locals.winAmount, QUSINO_QSC_PRICE);
+                output.payout = locals.qscPayout;
+                locals.userVolume.volumeOfQSC = sadd(locals.userVolume.volumeOfQSC, locals.qscPayout);
+                state.mut().QSCCirclatingSupply = sadd(state.get().QSCCirclatingSupply, locals.qscPayout);
+                state.mut().bonusAmount -= smul(locals.qscPayout, QUSINO_QSC_PRICE);
+            }
+            else
+            {
+                // The wager's Qu value tops up the bankroll; overflow goes to epochRevenue.
+                output.payout = 0;
+                addWithCap(state.get().bonusAmount, locals.qscRedemptionValueQu, QUSINO_GAME_BANKROLL_CAP, locals.newBonus, locals.overflow);
+                state.mut().bonusAmount = locals.newBonus;
+                if (locals.overflow > 0)
+                {
+                    state.mut().epochRevenue = sadd(state.get().epochRevenue, locals.overflow);
+                }
+            }
+            state.mut().userAssetVolume.set(qpi.invocator(), locals.userVolume);
+        }
+        else // QUSINO_ASSET_TYPE_STAR
+        {
+            // The wager always leaves the caller's STAR balance up front; a win mints
+            // the payout back on top, a loss is recorded as burnt (like a vote fee).
+            locals.userVolume.volumeOfSTAR -= input.amount;
+            state.mut().STARCirclatingSupply -= input.amount;
+
+            if (output.won)
+            {
+                output.payout = locals.winAmount;
+                locals.userVolume.volumeOfSTAR = sadd(locals.userVolume.volumeOfSTAR, locals.winAmount);
+                state.mut().STARCirclatingSupply = sadd(state.get().STARCirclatingSupply, locals.winAmount);
+            }
+            else
+            {
+                output.payout = 0;
+                state.mut().burntSTAR = sadd(state.get().burntSTAR, input.amount);
+            }
+            state.mut().userAssetVolume.set(qpi.invocator(), locals.userVolume);
+        }
+
+        output.returnCode = QUSINO_SUCCESS;
+        locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_COINFLIP_RESULT, 0 };
+        LOG_INFO(locals.log);
+    }
+
+    PUBLIC_FUNCTION(getRandomBankStatus)
+    {
+        output.poolInitialized = (state.get().rngPoolInitialized.get(QUSINO_GAME_ID_COINFLIP) != 0);
+        output.reserveFilled = state.get().rngReserveFilled;
+        output.lastRefillTick = state.get().rngLastRefillTick;
+    }
+
     struct getUserAssetVolume_locals
     {
         STARAndQSC userAsset;
@@ -876,6 +1333,7 @@ public:
         REGISTER_USER_FUNCTION(getSCInfo, 3);
         REGISTER_USER_FUNCTION(getActiveGameList, 4);
         REGISTER_USER_FUNCTION(getProposerEarnedQSCInfo, 5);
+        REGISTER_USER_FUNCTION(getRandomBankStatus, 6);
 
         REGISTER_USER_PROCEDURE(earnSTAR, 1);
         REGISTER_USER_PROCEDURE(transferSTAROrQSC, 2);
@@ -885,6 +1343,8 @@ public:
         REGISTER_USER_PROCEDURE(depositBonus, 6);
         REGISTER_USER_PROCEDURE(dailyClaimBonus, 7);
         REGISTER_USER_PROCEDURE(redemptionQSCToQubic, 8);
+        REGISTER_USER_PROCEDURE(refillRandomBank, 9);
+        REGISTER_USER_PROCEDURE(coinFlip, 10);
 	}
 
 	INITIALIZE()

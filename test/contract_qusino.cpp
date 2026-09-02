@@ -34,6 +34,12 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+        // RANDOM must be constructed before QUSINO so refillRandomBank's cross-contract
+        // BuyEntropy call has an active contract to invoke (mirrors contract_qraffle.cpp).
+        system.epoch = contractDescriptions[RANDOM_CONTRACT_INDEX].constructionEpoch;
+        INIT_CONTRACT(RANDOM);
+        callSystemProcedure(RANDOM_CONTRACT_INDEX, INITIALIZE);
+        system.epoch = contractDescriptions[QUSINO_CONTRACT_INDEX].constructionEpoch;
         INIT_CONTRACT(QUSINO);
         callSystemProcedure(QUSINO_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
@@ -44,6 +50,31 @@ public:
     {
         return (QUSINOChecker*)contractStates[QUSINO_CONTRACT_INDEX];
     }
+
+    RANDOM::StateData* randomState()
+    {
+        return reinterpret_cast<RANDOM::StateData*>(contractStates[RANDOM_CONTRACT_INDEX]);
+    }
+
+    // Directly seeds RANDOM's finalized entropy for the stream/tier that QUSINO's
+    // refillRandomBank() will read when called at the current tick (mirrors the +2
+    // offset BuyEntropy itself uses to read the last-finalized stream). Lets tests make
+    // the entropy purchase deterministically succeed without replaying the full
+    // RevealAndCommit/END_TICK provider cycle (see contract_qraffle.cpp for precedent).
+    QPI::bit_4096 seedRandomEntropy(uint64 seed)
+    {
+        QPI::bit_4096 entropy{};
+        for (uint64 i = 0; i < QUSINO_RNG_ENTROPY_BITS; ++i)
+        {
+            entropy.set(i, ((seed + i) & 1ULL) != 0);
+        }
+        const uint32 stream = (system.tick + 2u) % 3u;
+        randomState()->entropy.set(stream * 10u + QUSINO_RNG_COLLATERAL_TIER, entropy);
+        return entropy;
+    }
+
+    void setTick(uint32 tick) { system.tick = tick; }
+    uint32 getTick() const { return system.tick; }
 
     void endEpoch(bool expectSuccess = true)
     {
@@ -206,6 +237,55 @@ public:
         QUSINO::getProposerEarnedQSCInfo_output output;
         callFunction(QUSINO_CONTRACT_INDEX, 5, input, output);
         return output;
+    }
+
+    QUSINO::refillRandomBank_output refillRandomBank(const id& user, sint64 invocationReward = 0)
+    {
+        QUSINO::refillRandomBank_input input;
+        QUSINO::refillRandomBank_output output;
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 9, input, output, user, invocationReward);
+        return output;
+    }
+
+    QUSINO::coinFlip_output coinFlip(const id& user, uint8 guess, uint8 assetType, uint64 amount, sint64 invocationReward = 0)
+    {
+        QUSINO::coinFlip_input input;
+        input.guess = guess;
+        input.assetType = assetType;
+        input.amount = amount;
+        QUSINO::coinFlip_output output;
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 10, input, output, user, invocationReward);
+        return output;
+    }
+
+    QUSINO::getRandomBankStatus_output getRandomBankStatus()
+    {
+        QUSINO::getRandomBankStatus_input input;
+        QUSINO::getRandomBankStatus_output output;
+        callFunction(QUSINO_CONTRACT_INDEX, 6, input, output);
+        return output;
+    }
+
+    // Funds bonusAmount (the Qu game bankroll) by having `owner` deposit `amount` --
+    // mirrors how the game owner is expected to seed it in production. Also gives
+    // QUSINO's real spectrum balance the matching Qu, which refillRandomBank's actual
+    // cross-contract RANDOM fee transfer still separately depends on.
+    void fundBonusAmount(uint64 amount)
+    {
+        const id gameOwner = ID(_G, _O, _W, _N, _A, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
+        increaseEnergy(gameOwner, (sint64)amount);
+        QUSINO::depositBonus_output out = depositBonus(gameOwner, amount);
+        ASSERT_EQ(out.returnCode, QUSINO_SUCCESS);
+    }
+
+    // Credits `user` with `amount` QSC (and amount*100 STAR, incidentally) via earnSTAR
+    // -- the only path that mints QSC in this contract.
+    void giveUserQSC(const id& user, uint64 amount)
+    {
+        sint64 requiredReward = (sint64)(amount * QUSINO_STAR_PRICE * 100);
+        increaseEnergy(user, requiredReward);
+        QUSINO::earnSTAR_output out = earnSTAR(user, amount, requiredReward);
+        ASSERT_EQ(out.returnCode, QUSINO_SUCCESS);
     }
 };
 
@@ -794,4 +874,410 @@ TEST(ContractQUSINO, dailyClaimBonus_InsufficientBonusAmount)
     increaseEnergy(user, 1);
     QUSINO::dailyClaimBonus_output output = QUSINO.dailyClaimBonus(user, 0);
     EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_BONUS_AMOUNT);
+}
+
+// ---------------------------------------------------------------------------
+// RNG Result Bank (refillRandomBank) + Coin Flip
+//
+// Coin Flip is funded entirely out of bonusAmount, QUSINO's Qu game bankroll (see
+// the comment above QUSINO_GAME_BANKROLL_CAP in Qusino.h): the game owner funds it
+// via depositBonus (QUSINO.fundBonusAmount() below), refillRandomBank's RANDOM fee
+// is paid from it, and QSC bet payouts/losses flow through it. STAR bets never
+// touch it at all.
+// ---------------------------------------------------------------------------
+
+TEST(ContractQUSINO, refillRandomBank_FailsWhenNoEntropyAvailable)
+{
+    ContractTestingQUSINO QUSINO;
+
+    // Fund the bankroll so it *could* pay RANDOM's fee, but never seed any entropy.
+    QUSINO.fundBonusAmount(1000000000ULL);
+    // The caller identity must have a spectrum entry for invokeUserProcedure to route
+    // the call at all, even though refillRandomBank itself takes no payment from it.
+    increaseEnergy(QUSINO_testUser1, 1);
+
+    QUSINO::refillRandomBank_output output = QUSINO.refillRandomBank(QUSINO_testUser1);
+    EXPECT_EQ(output.returnCode, QUSINO_RNG_REFILL_FAILED);
+    EXPECT_EQ(output.valuesAdded, 0u);
+
+    QUSINO::getRandomBankStatus_output status = QUSINO.getRandomBankStatus();
+    EXPECT_FALSE(status.poolInitialized);
+    EXPECT_EQ(status.reserveFilled, 0u);
+}
+
+TEST(ContractQUSINO, refillRandomBank_FailsWhenBonusAmountInsufficient)
+{
+    ContractTestingQUSINO QUSINO;
+
+    // Entropy is available, but the game bankroll was never funded -- RANDOM must
+    // never even be called.
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+
+    QUSINO::refillRandomBank_output output = QUSINO.refillRandomBank(QUSINO_testUser1);
+    EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_BONUS_AMOUNT);
+    EXPECT_EQ(output.valuesAdded, 0u);
+
+    QUSINO::getRandomBankStatus_output status = QUSINO.getRandomBankStatus();
+    EXPECT_FALSE(status.poolInitialized);
+    EXPECT_EQ(status.reserveFilled, 0u);
+    EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, 0u);
+}
+
+TEST(ContractQUSINO, refillRandomBank_SucceedsAndPrimesCoinFlipPool)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    uint64 bonusBefore = QUSINO.getSCInfo().bonusAmount;
+
+    QUSINO::refillRandomBank_output output = QUSINO.refillRandomBank(QUSINO_testUser1);
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(output.valuesAdded, QUSINO_RNG_RESERVE_SIZE);
+
+    // The very first refill also bootstraps game 0's (Coin Flip's) pool straight out of
+    // the reserve it just filled, so reserveFilled should be RESERVE_SIZE - POOL_SIZE.
+    QUSINO::getRandomBankStatus_output status = QUSINO.getRandomBankStatus();
+    EXPECT_TRUE(status.poolInitialized);
+    EXPECT_EQ(status.reserveFilled, QUSINO_RNG_RESERVE_SIZE - QUSINO_RNG_POOL_SIZE);
+    EXPECT_EQ(status.lastRefillTick, system.tick);
+
+    // The entropy fee actually spent is debited from the game bankroll.
+    EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, bonusBefore - QUSINO_RNG_ENTROPY_FEE);
+}
+
+TEST(ContractQUSINO, refillRandomBank_TooSoonRejectedOnSameTick)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+
+    QUSINO::refillRandomBank_output first = QUSINO.refillRandomBank(QUSINO_testUser1);
+    EXPECT_EQ(first.returnCode, QUSINO_SUCCESS);
+
+    // Rate limit applies regardless of whether entropy is available for the retry --
+    // the check happens before RANDOM is ever called again.
+    QUSINO::refillRandomBank_output second = QUSINO.refillRandomBank(QUSINO_testUser1);
+    EXPECT_EQ(second.returnCode, QUSINO_RNG_REFILL_TOO_SOON);
+}
+
+TEST(ContractQUSINO, refillRandomBank_BlockedWhileReserveNotEmptyEvenPastTickGap)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+
+    QUSINO::refillRandomBank_output first = QUSINO.refillRandomBank(QUSINO_testUser1);
+    ASSERT_EQ(first.returnCode, QUSINO_SUCCESS);
+    uint32 reserveAfterFirst = QUSINO.getRandomBankStatus().reserveFilled;
+    uint32 tickAfterFirst = QUSINO.getRandomBankStatus().lastRefillTick;
+    ASSERT_GT(reserveAfterFirst, 0u);
+
+    // Advance well past QUSINO_RNG_MIN_REFILL_TICK_GAP and make fresh entropy available
+    // again -- under the old (buggy) rate-limit-only guard this would succeed and
+    // silently overwrite hundreds of still-unspent reserve entries, wasting the RANDOM
+    // fee already paid for them. It must now be rejected purely because the reserve
+    // isn't empty yet, tick gap notwithstanding.
+    QUSINO.setTick(QUSINO.getTick() + QUSINO_RNG_MIN_REFILL_TICK_GAP + 10);
+    QUSINO.seedRandomEntropy(0xF00D);
+
+    QUSINO::refillRandomBank_output second = QUSINO.refillRandomBank(QUSINO_testUser1);
+    EXPECT_EQ(second.returnCode, QUSINO_RNG_REFILL_TOO_SOON);
+    EXPECT_EQ(second.valuesAdded, 0u);
+
+    // No wasted purchase: reserve and last-refill-tick bookkeeping must be untouched.
+    QUSINO::getRandomBankStatus_output status = QUSINO.getRandomBankStatus();
+    EXPECT_EQ(status.reserveFilled, reserveAfterFirst);
+    EXPECT_EQ(status.lastRefillTick, tickAfterFirst);
+}
+
+TEST(ContractQUSINO, refillRandomBank_RefundsAnyAttachedInvocationReward)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    QUSINO.seedRandomEntropy(0xA11CE);
+
+    id caller = QUSINO_testUser1;
+    sint64 attachedReward = 12345;
+    increaseEnergy(caller, attachedReward);
+    long long balanceBefore = getBalance(caller);
+
+    QUSINO::refillRandomBank_output output = QUSINO.refillRandomBank(caller, attachedReward);
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+    // refillRandomBank takes no payment from the caller -- QUSINO funds RANDOM's fee
+    // out of the game bankroll, so any attached reward must come straight back.
+    EXPECT_EQ(getBalance(caller), balanceBefore);
+}
+
+TEST(ContractQUSINO, coinFlip_NotReadyBeforeBankPrimed)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id user = QUSINO_testUser1;
+    increaseEnergy(user, 1);
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, QUSINO_COINFLIP_MIN_BET);
+    EXPECT_EQ(output.returnCode, QUSINO_RNG_NOT_READY);
+    EXPECT_EQ(output.payout, 0u);
+}
+
+TEST(ContractQUSINO, coinFlip_InvalidGuessRejected)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    increaseEnergy(user, 1);
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 2, QUSINO_ASSET_TYPE_QSC, QUSINO_COINFLIP_MIN_BET); // only 0/1 valid
+    EXPECT_EQ(output.returnCode, QUSINO_INVALID_INPUT);
+}
+
+TEST(ContractQUSINO, coinFlip_InvalidAssetTypeRejected)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    increaseEnergy(user, 1);
+
+    // Only QSC and STAR are valid Coin Flip bet assets -- raw Qu and QST are not.
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QUBIC, QUSINO_COINFLIP_MIN_BET);
+    EXPECT_EQ(output.returnCode, QUSINO_WRONG_ASSET_TYPE);
+}
+
+TEST(ContractQUSINO, coinFlip_BelowMinBetRejected)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    increaseEnergy(user, 1);
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, QUSINO_COINFLIP_MIN_BET - 1);
+    EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_FUNDS);
+}
+
+TEST(ContractQUSINO, coinFlip_InsufficientQscRejected)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    increaseEnergy(user, 1); // spectrum entry only, no QSC minted
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, QUSINO_COINFLIP_MIN_BET);
+    EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_QSC);
+}
+
+TEST(ContractQUSINO, coinFlip_InsufficientStarRejected)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    increaseEnergy(user, 1); // spectrum entry only, no STAR minted
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_STAR, QUSINO_COINFLIP_MIN_BET);
+    EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_STAR);
+}
+
+TEST(ContractQUSINO, coinFlip_InsufficientBonusAmountRejectsQscBet)
+{
+    ContractTestingQUSINO QUSINO;
+
+    // Fund the bankroll just enough for the entropy fee -- nowhere near enough to cover
+    // a win payout on this bet (bet * 196 Qu).
+    QUSINO.fundBonusAmount(QUSINO_RNG_ENTROPY_FEE);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+    ASSERT_EQ(QUSINO.getSCInfo().bonusAmount, 0u);
+
+    id user = QUSINO_testUser2;
+    QUSINO.giveUserQSC(user, QUSINO_COINFLIP_MIN_BET);
+    uint64 qscBefore = QUSINO.getUserAssetVolume(user).QSCAmount;
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, QUSINO_COINFLIP_MIN_BET);
+    EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_BONUS_AMOUNT);
+    // Rejected bet must not touch the user's QSC at all.
+    EXPECT_EQ(QUSINO.getUserAssetVolume(user).QSCAmount, qscBefore);
+}
+
+TEST(ContractQUSINO, coinFlip_QscSettlesConsistentlyAndUpdatesBank)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    uint32 reserveBefore = QUSINO.getRandomBankStatus().reserveFilled;
+    uint64 epochRevenueBefore = QUSINO.getSCInfo().epochRevenue;
+    uint64 bonusBefore = QUSINO.getSCInfo().bonusAmount;
+
+    id user = QUSINO_testUser2;
+    uint64 bet = QUSINO_COINFLIP_MIN_BET;
+    QUSINO.giveUserQSC(user, bet);
+    // Captured *after* minting the bet's QSC via giveUserQSC, so this reflects supply
+    // right before the wager itself -- not before the mint that funded it.
+    uint64 qscSupplyBefore = QUSINO.getSCInfo().QSCCirclatingSupply;
+    uint64 qscBefore = QUSINO.getUserAssetVolume(user).QSCAmount;
+    long long qubicBalanceBefore = getBalance(user);
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, bet);
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+    EXPECT_LE(output.result, 1);
+
+    // The consumed pool slot is immediately replenished from the reserve, so exactly
+    // one reserve entry is spent per flip regardless of win/lose.
+    EXPECT_EQ(QUSINO.getRandomBankStatus().reserveFilled, reserveBefore - 1);
+
+    // coinFlip takes no invocationReward and never sends Qu directly (win or lose), so
+    // the caller's real Qu balance is never touched by playing.
+    EXPECT_EQ(getBalance(user), qubicBalanceBefore);
+
+    uint64 qscRedemptionValueQu = bet * QUSINO_QSC_PRICE;
+    uint64 winAmountQu = qscRedemptionValueQu * QUSINO_COINFLIP_PAYOUT_PERCENT / 100;
+    if (output.won)
+    {
+        // A win credits new QSC back to the caller (redeemable for Qu later via
+        // redemptionQSCToQubic) instead of paying Qu directly -- the wager itself
+        // still left circulation up front, so the net QSC change is payout - bet.
+        uint64 expectedQscPayout = winAmountQu / QUSINO_QSC_PRICE;
+        EXPECT_EQ(output.payout, expectedQscPayout);
+        EXPECT_EQ(QUSINO.getUserAssetVolume(user).QSCAmount, qscBefore - bet + expectedQscPayout);
+        EXPECT_EQ(QUSINO.getSCInfo().QSCCirclatingSupply, qscSupplyBefore - bet + expectedQscPayout);
+        // The bankroll is debited by exactly the Qu backing the credited QSC.
+        EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, bonusBefore - expectedQscPayout * QUSINO_QSC_PRICE);
+        EXPECT_EQ(QUSINO.getSCInfo().epochRevenue, epochRevenueBefore);
+    }
+    else
+    {
+        EXPECT_EQ(output.payout, 0u);
+        EXPECT_EQ(QUSINO.getUserAssetVolume(user).QSCAmount, qscBefore - bet);
+        EXPECT_EQ(QUSINO.getSCInfo().QSCCirclatingSupply, qscSupplyBefore - bet);
+        // The redeemed QSC's Qu value tops up the game bankroll instead of paying out.
+        EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, bonusBefore + qscRedemptionValueQu);
+        EXPECT_EQ(QUSINO.getSCInfo().epochRevenue, epochRevenueBefore);
+    }
+}
+
+TEST(ContractQUSINO, coinFlip_QscConsecutiveFlipsAdvancePoolNonce)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    uint64 bet = QUSINO_COINFLIP_MIN_BET;
+    QUSINO.giveUserQSC(user, bet * 5);
+
+    // Enough reserve and QSC for several flips; just confirm every one of them settles
+    // cleanly and the bank keeps accounting correctly call over call (no crash/
+    // duplicate-spend of the same reserve slot).
+    for (int i = 0; i < 5; i++)
+    {
+        QUSINO::coinFlip_output output = QUSINO.coinFlip(user, (uint8)(i % 2), QUSINO_ASSET_TYPE_QSC, bet);
+        EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+    }
+
+    QUSINO::getRandomBankStatus_output status = QUSINO.getRandomBankStatus();
+    EXPECT_EQ(status.reserveFilled, (QUSINO_RNG_RESERVE_SIZE - QUSINO_RNG_POOL_SIZE) - 5);
+}
+
+TEST(ContractQUSINO, coinFlip_StarBetMintsOrBurnsDirectlyNoBonusAmount)
+{
+    ContractTestingQUSINO QUSINO;
+
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    // refillRandomBank still needs the bankroll to buy entropy in the first place, so
+    // fund it for only that one-time bootstrap, then confirm it's fully drained back to
+    // 0 -- proving the STAR bet below doesn't need or touch it at all.
+    QUSINO.fundBonusAmount(QUSINO_RNG_ENTROPY_FEE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+    ASSERT_EQ(QUSINO.getSCInfo().bonusAmount, 0u);
+
+    id user = QUSINO_testUser2;
+    uint64 bet = QUSINO_COINFLIP_MIN_BET;
+    QUSINO.giveUserQSC(user, bet); // earnSTAR mints STAR too (bet*100 units)
+    uint64 starBefore = QUSINO.getUserAssetVolume(user).STARAmount;
+    uint64 starSupplyBefore = QUSINO.getSCInfo().STARCirclatingSupply;
+    uint64 burntBefore = QUSINO.getSCInfo().burntSTAR;
+    long long qubicBefore = getBalance(user);
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_STAR, bet);
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+
+    // STAR bets never touch Qu or the game bankroll.
+    EXPECT_EQ(getBalance(user), qubicBefore);
+    EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, 0u);
+
+    if (output.won)
+    {
+        uint64 expectedPayout = bet * QUSINO_COINFLIP_PAYOUT_PERCENT / 100;
+        EXPECT_EQ(output.payout, expectedPayout);
+        // Net STAR change is the payout minted back on top of the wagered amount.
+        EXPECT_EQ(QUSINO.getUserAssetVolume(user).STARAmount, starBefore - bet + expectedPayout);
+        EXPECT_EQ(QUSINO.getSCInfo().STARCirclatingSupply, starSupplyBefore - bet + expectedPayout);
+        EXPECT_EQ(QUSINO.getSCInfo().burntSTAR, burntBefore);
+    }
+    else
+    {
+        EXPECT_EQ(output.payout, 0u);
+        EXPECT_EQ(QUSINO.getUserAssetVolume(user).STARAmount, starBefore - bet);
+        EXPECT_EQ(QUSINO.getSCInfo().STARCirclatingSupply, starSupplyBefore - bet);
+        EXPECT_EQ(QUSINO.getSCInfo().burntSTAR, burntBefore + bet);
+    }
+}
+
+TEST(ContractQUSINO, depositBonus_CapsAtGameBankrollAndRoutesOverflowToEpochRevenue)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id owner = QUSINO_testUser1;
+    uint64 firstDeposit = QUSINO_GAME_BANKROLL_CAP - 100;
+    increaseEnergy(owner, (sint64)firstDeposit);
+    ASSERT_EQ(QUSINO.depositBonus(owner, firstDeposit).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, firstDeposit);
+
+    uint64 epochRevenueBefore = QUSINO.getSCInfo().epochRevenue;
+    uint64 secondDeposit = 1000; // pushes bonusAmount 900 past the cap
+    increaseEnergy(owner, (sint64)secondDeposit);
+    ASSERT_EQ(QUSINO.depositBonus(owner, secondDeposit).returnCode, QUSINO_SUCCESS);
+
+    EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, QUSINO_GAME_BANKROLL_CAP);
+    EXPECT_EQ(QUSINO.getSCInfo().epochRevenue, epochRevenueBefore + 900);
 }
