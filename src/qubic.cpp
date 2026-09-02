@@ -6954,20 +6954,30 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 8] = (contractIndex % 1000) / 100 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
+
+        setText(message, L" -> ");
+        appendText(message, CONTRACT_FILE_NAME);
+
         if (contractDescriptions[contractIndex].constructionEpoch == system.epoch && !forceLoadFromFile)
         {
-            setText(message, L" -> ");
-            appendText(message, CONTRACT_FILE_NAME);
             setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
             appendText(message, L" not loaded but initialized with zeros for construction");
             logToConsole(message);
         }
         else
         {
-            long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
-            setText(message, L" -> "); // set the message after loading otherwise `message` will contain potential messages from load()
-            appendText(message, CONTRACT_FILE_NAME);
-            if (loadedSize != contractDescriptions[contractIndex].stateSize)
+            long long fileSizeOnDisk = getFileSize(CONTRACT_FILE_NAME, directory); 
+            if (fileSizeOnDisk == contractDescriptions[contractIndex].stateSize)
+            {
+                long long loadedSize = load(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
+                if (loadedSize != contractDescriptions[contractIndex].stateSize)
+                {
+                    appendText(message, L" cannot be read successfully");
+                    logToConsole(message);
+                    return false;
+                }
+            }
+            else
             {
                 if (system.epoch < contractDescriptions[contractIndex].constructionEpoch && contractDescriptions[contractIndex].stateSize >= sizeof(IPO))
                 {
@@ -7002,16 +7012,15 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                         }
                         else if (changeType == PADDING)
                         {
-                            long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
-                            if (actualSize > 0 && (unsigned long long)actualSize < contractDescriptions[contractIndex].stateSize)
+                            if (fileSizeOnDisk > 0 && (unsigned long long)fileSizeOnDisk < contractDescriptions[contractIndex].stateSize)
                             {
                                 // Zero the entire buffer, then load the smaller file into the front
                                 setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
-                                long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, contractStates[contractIndex], directory);
-                                if (reloadedSize == actualSize)
+                                long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)fileSizeOnDisk, contractStates[contractIndex], directory);
+                                if (reloadedSize == fileSizeOnDisk)
                                 {
                                     appendText(message, L" WARNING: undersized file (");
-                                    appendNumber(message, (unsigned long long)actualSize, FALSE);
+                                    appendNumber(message, (unsigned long long)fileSizeOnDisk, FALSE);
                                     appendText(message, L" < ");
                                     appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
                                     appendText(message, L" bytes), zero-padded");
@@ -7023,14 +7032,13 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                         }
                         else if (changeType == MIGRATE)
                         {
-                            long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
-                            if (actualSize == contractMigrateOldStateSizes[contractIndex])
+                            if (fileSizeOnDisk == contractMigrateOldStateSizes[contractIndex])
                             {
-                                __ScopedScratchpad scratchpad(actualSize, /*initZero=*/false);
+                                __ScopedScratchpad scratchpad(fileSizeOnDisk, /*initZero=*/false);
                                 if (scratchpad.ptr)
                                 {
-                                    long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, reinterpret_cast<unsigned char*>(scratchpad.ptr), directory);
-                                    if (reloadedSize == actualSize && contractMigrateProcedures[contractIndex])
+                                    long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)fileSizeOnDisk, reinterpret_cast<unsigned char*>(scratchpad.ptr), directory);
+                                    if (reloadedSize == fileSizeOnDisk && contractMigrateProcedures[contractIndex])
                                     {
                                         // Zero the entire state before calling MIGRATE
                                         setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
@@ -7057,7 +7065,6 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
 
                     appendText(message, L" cannot be read successfully");
                     logToConsole(message);
-                    logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
                     return false;
                 }
             }
