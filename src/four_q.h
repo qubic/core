@@ -1916,7 +1916,7 @@ static void initIncrementalSignG()
     R1_to_R2(Gext, gIncrSignG);
 }
 
-static void signWithRandomK_incremental(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature, unsigned int target)
+static void signWithRandomK_incremental(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature, unsigned int target, volatile int* done = nullptr)
 {
     unsigned char kConst[32];
     KangarooTwelve((unsigned char*)subseed, 32, kConst, 32);
@@ -1928,7 +1928,7 @@ static void signWithRandomK_incremental(const unsigned char* subseed, const unsi
     point_t R0aff; ecc_mul_fixed(base, R0aff);                               // R0 = base * G (one full mul)
     point_extproj_t Rext; point_setup(R0aff, Rext);
     unsigned long long offset = 0;
-    while (true)                                                             // R_i = R0 + offset * G
+    while (!done || !*done)                                                  // R_i = R0 + offset * G
     {
         point_extproj_t cpy; copyMem(cpy, Rext, sizeof(point_extproj_t));    // eccnorm mutates z -> work on a copy
         point_t Raff; eccnorm(cpy, Raff); encode(Raff, signature);           // signature[0..32] = encode(R_i)
