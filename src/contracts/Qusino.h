@@ -373,8 +373,14 @@ protected:
     // QUSINO_GAME_BANKROLL_CAP.
     inline static void addWithCap(uint64 current, uint64 toAdd, uint64 cap, uint64& newValue, uint64& overflow)
     {
-        uint64 headroom = (cap > current) ? (cap - current) : 0;
-        if (toAdd <= headroom)
+        // No stack locals allowed in contract code (see doc/contracts.md) -- every
+        // intermediate value below is recomputed inline rather than named.
+        if (current >= cap)
+        {
+            newValue = cap;
+            overflow = toAdd;
+        }
+        else if (toAdd <= (cap - current))
         {
             newValue = current + toAdd;
             overflow = 0;
@@ -382,7 +388,7 @@ protected:
         else
         {
             newValue = cap;
-            overflow = toAdd - headroom;
+            overflow = toAdd - (cap - current);
         }
     }
 
