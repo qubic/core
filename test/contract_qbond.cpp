@@ -1,6 +1,20 @@
 #define NO_UEFI
 
+#include <cstddef>
+
 #include "contract_testing.h"
+
+static_assert(sizeof(QEARN::lock_input) == 1);
+static_assert(sizeof(QEARN::lock_output) == 4);
+static_assert(offsetof(QEARN::lock_output, returnCode) == 0);
+static_assert(sizeof(QEARN::getLockInfoPerEpoch_input) == 4);
+static_assert(offsetof(QEARN::getLockInfoPerEpoch_input, Epoch) == 0);
+static_assert(sizeof(QEARN::getLockInfoPerEpoch_output) == 40);
+static_assert(offsetof(QEARN::getLockInfoPerEpoch_output, lockedAmount) == 0);
+static_assert(offsetof(QEARN::getLockInfoPerEpoch_output, bonusAmount) == 8);
+static_assert(offsetof(QEARN::getLockInfoPerEpoch_output, currentLockedAmount) == 16);
+static_assert(offsetof(QEARN::getLockInfoPerEpoch_output, currentBonusAmount) == 24);
+static_assert(offsetof(QEARN::getLockInfoPerEpoch_output, yield) == 32);
 
 std::string assetNameFromInt64(uint64 assetName);
 std::string getCurrentMbondIndex(uint16_t epoch)
@@ -54,6 +68,40 @@ public:
     void endEpoch(bool expectSuccess = true)
     {
         callSystemProcedure(QBOND_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
+
+    void qearnBeginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QEARN_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
+    void qearnEndEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QEARN_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
+
+    QEARN::getLockInfoPerEpoch_output getQearnLockInfoPerEpoch(uint32 epoch) const
+    {
+        QEARN::getLockInfoPerEpoch_input input{ epoch };
+        QEARN::getLockInfoPerEpoch_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 1, input, output);
+        return output;
+    }
+
+    QEARN::getV2LockInfoPerEpoch_output getQearnV2LockInfoPerEpoch(uint32 epoch, uint32 lockPeriod) const
+    {
+        QEARN::getV2LockInfoPerEpoch_input input{ epoch, lockPeriod };
+        QEARN::getV2LockInfoPerEpoch_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 9, input, output);
+        return output;
+    }
+
+    QEARN::getV2UserLockedInfo_output getQearnV2UserLockedInfo(const id& user, uint32 epoch, uint32 lockPeriod) const
+    {
+        QEARN::getV2UserLockedInfo_input input{ user, epoch, lockPeriod };
+        QEARN::getV2UserLockedInfo_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 10, input, output);
+        return output;
     }
 
     void stake(const id& staker, const int64_t& quMillions, const int64_t& quAmount)
@@ -175,6 +223,113 @@ public:
         return output;
     }
 };
+
+TEST(ContractQBond, LegacyQEarnInterfaceUsesV2LongTermAfterActivation)
+{
+    constexpr uint16 lockEpoch = static_cast<uint16>(QEARN_V2_ACTIVATION_EPOCH);
+    constexpr sint64 mbondAmount = 100;
+    constexpr sint64 principal =
+        mbondAmount * static_cast<sint64>(QBOND_MBOND_PRICE);
+    constexpr sint64 reward =
+        principal * static_cast<sint64>(QEARN_V2_RETURN_PERCENT_52) / 100;
+    constexpr sint64 stakeFee =
+        principal * static_cast<sint64>(QBOND_STAKE_FEE_PERCENT) / 10000;
+    constexpr uint64 termReturn = QEARN_V2_RETURN_PERCENT_52 * 100000ULL;
+    const id qbondContractId(QBOND_CONTRACT_INDEX, 0, 0, 0);
+    const id qearnContractId(QEARN_CONTRACT_INDEX, 0, 0, 0);
+
+    // Initialize the cyclic MBond assets at their normal starting epoch and
+    // advance QBond to the QEarn V2 activation epoch.
+    system.epoch = QBOND_CYCLIC_START_EPOCH;
+    ContractTestingQBond qbond;
+    while (system.epoch < lockEpoch)
+    {
+        qbond.beginEpoch();
+        system.epoch++;
+    }
+
+    increaseEnergy(qearnContractId, reward);
+    qbond.qearnBeginEpoch();
+    qbond.beginEpoch();
+
+    increaseEnergy(testAddress1, principal + stakeFee);
+    qbond.stake(testAddress1, mbondAmount, principal + stakeFee);
+    qbond.qearnEndEpoch();
+
+    const uint64 mbondName = assetNameFromString(
+        std::string("MBND").append(getCurrentMbondIndex(lockEpoch)).c_str());
+    EXPECT_EQ(numberOfPossessedShares(
+        mbondName,
+        qbondContractId,
+        testAddress1,
+        testAddress1,
+        QBOND_CONTRACT_INDEX,
+        QBOND_CONTRACT_INDEX), mbondAmount);
+
+    // QBond still calls legacy procedure 1 and function 1. After activation,
+    // both must represent the V2 52-epoch position without changing their ABI.
+    const auto legacyInfo = qbond.getQearnLockInfoPerEpoch(lockEpoch);
+    EXPECT_EQ(legacyInfo.lockedAmount, principal);
+    EXPECT_EQ(legacyInfo.currentLockedAmount, principal);
+    EXPECT_EQ(legacyInfo.bonusAmount, reward);
+    EXPECT_EQ(legacyInfo.currentBonusAmount, reward);
+    EXPECT_EQ(legacyInfo.yield, termReturn);
+
+    const auto qbondInfo = qbond.getInfoPerEpoch(lockEpoch);
+    EXPECT_EQ(qbondInfo.stakersAmount, 1);
+    EXPECT_EQ(qbondInfo.totalStaked, mbondAmount);
+    EXPECT_EQ(qbondInfo.apy, termReturn);
+
+    const auto v2Info = qbond.getQearnV2LockInfoPerEpoch(
+        lockEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(v2Info.returnCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(v2Info.initialLockedAmount, principal);
+    EXPECT_EQ(v2Info.currentLockedAmount, principal);
+    EXPECT_EQ(v2Info.initialRewardPool, reward);
+    EXPECT_EQ(v2Info.currentRewardPool, reward);
+    EXPECT_EQ(v2Info.currentTermReturn, termReturn);
+    EXPECT_EQ(v2Info.maturityEpoch, lockEpoch + QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(v2Info.finalized, 1);
+
+    const auto v2UserInfo = qbond.getQearnV2UserLockedInfo(
+        qbondContractId, lockEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(v2UserInfo.returnCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(v2UserInfo.lockedAmount, principal);
+    EXPECT_EQ(v2UserInfo.maturityEpoch, lockEpoch + QEARN_V2_LOCK_PERIOD_52);
+
+    for (system.epoch = lockEpoch + 1;
+        system.epoch < lockEpoch + QEARN_V2_LOCK_PERIOD_52;
+        system.epoch++)
+    {
+        qbond.qearnBeginEpoch();
+        qbond.qearnEndEpoch();
+    }
+
+    EXPECT_EQ(getBalance(testAddress1), 0);
+    EXPECT_EQ(getBalance(qbondContractId), stakeFee);
+    EXPECT_EQ(getBalance(qearnContractId), principal + reward);
+
+    // QEarn pays at END_EPOCH of lockEpoch + 52. QBond intentionally waits
+    // until its next BEGIN_EPOCH before distributing to MBond holders.
+    qbond.qearnBeginEpoch();
+    EXPECT_EQ(getBalance(testAddress1), 0);
+    qbond.qearnEndEpoch();
+    EXPECT_EQ(getBalance(testAddress1), 0);
+    EXPECT_EQ(getBalance(qbondContractId), principal + reward + stakeFee);
+    EXPECT_EQ(getBalance(qearnContractId), 0);
+
+    system.epoch++;
+    qbond.beginEpoch();
+    EXPECT_EQ(getBalance(testAddress1), principal + reward);
+    EXPECT_EQ(getBalance(qbondContractId), stakeFee);
+    EXPECT_EQ(numberOfPossessedShares(
+        mbondName,
+        qbondContractId,
+        testAddress1,
+        testAddress1,
+        QBOND_CONTRACT_INDEX,
+        QBOND_CONTRACT_INDEX), 0);
+}
 
 TEST(ContractQBond, Stake)
 {

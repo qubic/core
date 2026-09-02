@@ -98,6 +98,19 @@ public:
         EXPECT_EQ(QEarnP.get(index).numberOfEpoch, numberOfEpoch);
     }
 
+    void seedPassedQEarnProposal(uint32 proposedEpoch, uint64 amountPerEpoch)
+    {
+        QEarnPInfo proposal;
+        setMemory(proposal, 0);
+        proposal.amountOfInvestPerEpoch = amountPerEpoch;
+        proposal.assignedFundPerEpoch = amountPerEpoch;
+        proposal.proposedEpoch = proposedEpoch;
+        proposal.numberOfEpoch = 1;
+        proposal.result = QVAULT_PROPOSAL_PASSED;
+        QEarnP.set(0, proposal);
+        numberOfQEarnP = 1;
+    }
+
     void submitFundPChecker(uint32 index, id proposer, uint32 amountOfQcap, uint64 pricePerOneQcap)
     {
         EXPECT_EQ(FundP.get(index).currentQuorumPercent, 670);
@@ -213,7 +226,7 @@ public:
 class ContractTestingQvault : protected ContractTesting
 {
 public:
-    ContractTestingQvault()
+    explicit ContractTestingQvault(bool initializeQearn = false)
     {
         initEmptySpectrum();
         initEmptyUniverse();
@@ -221,6 +234,11 @@ public:
         callSystemProcedure(QVAULT_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
+        if (initializeQearn)
+        {
+            INIT_CONTRACT(QEARN);
+            callSystemProcedure(QEARN_CONTRACT_INDEX, INITIALIZE);
+        }
     }
 
     QVAULTChecker* getState()
@@ -241,6 +259,40 @@ public:
     void beginEpoch(bool expectSuccess = true)
     {
         callSystemProcedure(QVAULT_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
+    void qearnBeginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QEARN_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
+    void qearnEndEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QEARN_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
+
+    QEARN::getLockInfoPerEpoch_output getQearnLockInfoPerEpoch(uint32 epoch) const
+    {
+        QEARN::getLockInfoPerEpoch_input input{ epoch };
+        QEARN::getLockInfoPerEpoch_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 1, input, output);
+        return output;
+    }
+
+    QEARN::getV2LockInfoPerEpoch_output getQearnV2LockInfoPerEpoch(uint32 epoch, uint32 lockPeriod) const
+    {
+        QEARN::getV2LockInfoPerEpoch_input input{ epoch, lockPeriod };
+        QEARN::getV2LockInfoPerEpoch_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 9, input, output);
+        return output;
+    }
+
+    QEARN::getV2UserLockedInfo_output getQearnV2UserLockedInfo(const id& user, uint32 epoch, uint32 lockPeriod) const
+    {
+        QEARN::getV2UserLockedInfo_input input{ user, epoch, lockPeriod };
+        QEARN::getV2UserLockedInfo_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 10, input, output);
+        return output;
     }
 
     void qxEndTick(bool expectSuccess = true)
@@ -935,4 +987,78 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     uint64 tmpAmount = numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, stakers[3], stakers[3], QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX);
     QvaultV2.buyQcap(stakers[3], 100, 10000000);
     EXPECT_EQ(numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, stakers[3], stakers[3], QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX), tmpAmount + 100);
+}
+
+TEST(TestContractQvault, LegacyQEarnInterfaceUsesV2LongTermAfterActivation)
+{
+    constexpr uint16 lockEpoch = static_cast<uint16>(QEARN_V2_ACTIVATION_EPOCH);
+    constexpr uint32 proposalEpoch = lockEpoch - 2;
+    constexpr sint64 principal = 100000000LL;
+    constexpr sint64 reward =
+        principal * static_cast<sint64>(QEARN_V2_RETURN_PERCENT_52) / 100;
+    constexpr uint64 termReturn = QEARN_V2_RETURN_PERCENT_52 * 100000ULL;
+    const id qearnContractId(QEARN_CONTRACT_INDEX, 0, 0, 0);
+
+    system.epoch = lockEpoch;
+    ContractTestingQvault qvault(true);
+    qvault.getState()->seedPassedQEarnProposal(
+        proposalEpoch, static_cast<uint64>(principal));
+
+    increaseEnergy(qearnContractId, reward);
+    increaseEnergy(QVAULT_CONTRACT_ID, principal);
+    qvault.qearnBeginEpoch();
+    qvault.beginEpoch();
+    qvault.qearnEndEpoch();
+
+    // QVault still invokes QEarn procedure 1. At epoch 227 it must create the
+    // V2 52-epoch position reported by the unchanged legacy function 1.
+    const auto legacyInfo = qvault.getQearnLockInfoPerEpoch(lockEpoch);
+    EXPECT_EQ(legacyInfo.lockedAmount, principal);
+    EXPECT_EQ(legacyInfo.currentLockedAmount, principal);
+    EXPECT_EQ(legacyInfo.bonusAmount, reward);
+    EXPECT_EQ(legacyInfo.currentBonusAmount, reward);
+    EXPECT_EQ(legacyInfo.yield, termReturn);
+
+    const auto v2Info = qvault.getQearnV2LockInfoPerEpoch(
+        lockEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(v2Info.returnCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(v2Info.initialLockedAmount, principal);
+    EXPECT_EQ(v2Info.currentLockedAmount, principal);
+    EXPECT_EQ(v2Info.initialRewardPool, reward);
+    EXPECT_EQ(v2Info.currentRewardPool, reward);
+    EXPECT_EQ(v2Info.currentTermReturn, termReturn);
+    EXPECT_EQ(v2Info.maturityEpoch, lockEpoch + QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(v2Info.finalized, 1);
+
+    const auto v2UserInfo = qvault.getQearnV2UserLockedInfo(
+        QVAULT_CONTRACT_ID, lockEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(v2UserInfo.returnCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(v2UserInfo.lockedAmount, principal);
+    EXPECT_EQ(v2UserInfo.maturityEpoch, lockEpoch + QEARN_V2_LOCK_PERIOD_52);
+
+    for (system.epoch = lockEpoch + 1;
+        system.epoch < lockEpoch + QEARN_V2_LOCK_PERIOD_52;
+        system.epoch++)
+    {
+        qvault.qearnBeginEpoch();
+        qvault.qearnEndEpoch();
+    }
+
+    auto qvaultData = qvault.getData();
+    EXPECT_EQ(qvaultData.reinvestingFund, 0);
+    EXPECT_EQ(qvaultData.totalEpochRevenue, 0);
+    EXPECT_EQ(qvaultData.revenueByQearn, 0);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), 0);
+    EXPECT_EQ(getBalance(qearnContractId), principal + reward);
+
+    // The QEarn transfer and QVault callback both occur at END_EPOCH 279.
+    qvault.qearnBeginEpoch();
+    qvault.qearnEndEpoch();
+
+    qvaultData = qvault.getData();
+    EXPECT_EQ(qvaultData.reinvestingFund, principal);
+    EXPECT_EQ(qvaultData.totalEpochRevenue, reward);
+    EXPECT_EQ(qvaultData.revenueByQearn, reward);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), principal + reward);
+    EXPECT_EQ(getBalance(qearnContractId), 0);
 }

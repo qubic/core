@@ -7,6 +7,28 @@ constexpr uint64 QEARN_MAX_USERS = 131072;
 constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 1000000000000ULL;
 constexpr uint64 QEARN_MAX_BONUS_AMOUNT = 1000000000000ULL;
 constexpr uint64 QEARN_INITIAL_EPOCH = 138;
+// V2 release epoch. This must match the PADDING epoch in contract_def.h,
+// and the upgraded binary must be active before BEGIN_EPOCH of this epoch.
+constexpr uint64 QEARN_V2_ACTIVATION_EPOCH = 227;
+
+constexpr uint32 QEARN_V2_LOCK_PERIOD_13 = 13;
+constexpr uint32 QEARN_V2_LOCK_PERIOD_26 = 26;
+constexpr uint32 QEARN_V2_LOCK_PERIOD_52 = 52;
+constexpr uint64 QEARN_V2_LAST_LOCK_EPOCH =
+    QEARN_MAX_EPOCHS - QEARN_V2_LOCK_PERIOD_52 - 1;
+constexpr uint32 QEARN_V2_TERM_INDEX_13 = 0;
+constexpr uint32 QEARN_V2_TERM_INDEX_26 = 1;
+constexpr uint32 QEARN_V2_TERM_INDEX_52 = 2;
+constexpr uint32 QEARN_V2_NUMBER_OF_TERMS = 3;
+constexpr uint32 QEARN_V2_TERM_ARRAY_CAPACITY = 4;
+constexpr uint64 QEARN_V2_MAX_FULLY_UNLOCK_RECORDS = QEARN_MAX_USERS * 4;
+
+constexpr uint64 QEARN_V2_ALLOCATION_PERCENT_13 = 10;
+constexpr uint64 QEARN_V2_ALLOCATION_PERCENT_26 = 20;
+constexpr uint64 QEARN_V2_RETURN_PERCENT_13 = 3;
+constexpr uint64 QEARN_V2_RETURN_PERCENT_26 = 6;
+constexpr uint64 QEARN_V2_RETURN_PERCENT_52 = 18;
+constexpr uint64 QEARN_V2_RETURN_SCALE = 10000000ULL;
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_4_7 = 5;
@@ -44,6 +66,10 @@ constexpr sint32 QEARN_EMPTY_LOCKED = 4;
 constexpr sint32 QEARN_UNLOCK_SUCCESS = 5;
 constexpr sint32 QEARN_OVERFLOW_USER = 6;
 constexpr sint32 QEARN_LIMIT_LOCK = 7;
+constexpr sint32 QEARN_INVALID_LOCK_PERIOD = 8;
+constexpr sint32 QEARN_V2_NOT_ACTIVE = 9;
+constexpr sint32 QEARN_V2_POSITION_MATURED = 10;
+constexpr sint32 QEARN_TRANSFER_FAILED = 11;
 
 enum QEARNLogInfo {
     QearnSuccessLocking = 0,
@@ -109,6 +135,29 @@ struct QEARN : public ContractBase
 
     };
 
+    struct V2TermInfo
+    {
+        uint64 initialLockedAmount;
+        uint64 currentLockedAmount;
+        uint64 earlyUnlockedAmount;
+        uint64 initialRewardPool;
+        uint64 currentRewardPool;
+        uint64 rewardedAmount;
+        uint64 forfeitedClaimAmount;
+    };
+
+    struct V2EpochInfo
+    {
+        Array<V2TermInfo, QEARN_V2_TERM_ARRAY_CAPACITY> terms;
+        uint64 bonusAmount;
+        uint64 rewardedAmount;
+        uint64 forfeitedClaimAmount;
+        uint64 transferredTo52Amount;
+        // Unique V2 reward funds transferred out of QEarn to CCF.
+        uint64 transferredToCCFAmount;
+        uint32 finalized;
+    };
+
     // State data
     struct StateData
     {
@@ -121,6 +170,15 @@ struct QEARN : public ContractBase
         uint32 _earlyUnlockedCnt;
         uint32 _fullyUnlockedCnt;
         Array<StatsInfo, QEARN_MAX_EPOCHS> statsInfo;
+
+        // Appended V2 state. Keeping every V1 field above byte-for-byte unchanged
+        // allows the activation upgrade to use PADDING and preserve all V1 positions.
+        Array<uint8, QEARN_MAX_LOCKS> lockerLockPeriods;
+        Array<V2EpochInfo, QEARN_MAX_EPOCHS> v2EpochInfo;
+        // A user may have one maturity in each V2 term during the same epoch.
+        // Keep these records separate from the fixed-size V1 history array.
+        Array<HistoryInfo, QEARN_V2_MAX_FULLY_UNLOCK_RECORDS> v2FullyUnlocker;
+        uint32 v2FullyUnlockedCnt;
     };
 
 public:
@@ -129,11 +187,12 @@ public:
     };
 
     struct getLockInfoPerEpoch_output {
-        uint64 lockedAmount;                      /* initial total locked amount in epoch */
-        uint64 bonusAmount;                       /* initial bonus amount in epoch*/
-        uint64 currentLockedAmount;               /* total locked amount in epoch. exactly the amount excluding the amount unlocked early*/
-        uint64 currentBonusAmount;                /* bonus amount in epoch excluding the early unlocking */
-        uint64 yield;                             /* Yield calculated by 10000000 multiple*/
+        // For V2 epochs this legacy endpoint reports the 52-epoch term only.
+        uint64 lockedAmount;                      /* initial locked amount */
+        uint64 bonusAmount;                       /* initial bonus amount */
+        uint64 currentLockedAmount;               /* amount excluding early unlocks */
+        uint64 currentBonusAmount;                /* bonus excluding early unlock effects */
+        uint64 yield;                             /* V1 yield / V2 52-term return, scaled by 10000000 (not APY) */
     };
 
     struct getUserLockedInfo_input {
@@ -230,6 +289,76 @@ public:
         sint32 returnCode;
     };
 
+    struct lockV2_input
+    {
+        // One of 13, 26, or 52. Each user/epoch/term is one position.
+        uint32 lockPeriod;
+    };
+
+    struct lockV2_output
+    {
+        sint32 returnCode;
+    };
+
+    struct unlockV2_input
+    {
+        uint32 lockedEpoch;
+        uint32 lockPeriod;
+    };
+
+    struct unlockV2_output
+    {
+        sint32 returnCode;
+    };
+
+    struct getV2LockInfoPerEpoch_input
+    {
+        uint32 epoch;
+        uint32 lockPeriod;
+    };
+
+    struct getV2LockInfoPerEpoch_output
+    {
+        uint64 initialLockedAmount;
+        uint64 currentLockedAmount;
+        uint64 termEarlyUnlockedAmount;
+        uint64 initialRewardPool;
+        uint64 currentRewardPool;
+        uint64 termRewardedAmount;
+        // Cumulative abandoned reward claims. For the 52-epoch term, retained
+        // rewards can be abandoned again and this is not a unique-funds counter.
+        uint64 termForfeitedClaimAmount;
+        // Total term return scaled by 10,000,000. This is not APY.
+        uint64 currentTermReturn;
+        uint64 maturityEpoch;
+        uint64 epochBonusAmount;
+        uint64 epochRewardedAmount;
+        // Cumulative abandoned reward claims across the three terms.
+        uint64 epochForfeitedClaimAmount;
+        uint64 epochTransferredTo52Amount;
+        // Initial/dynamic cap surplus and final 52-term settlement remainder.
+        uint64 epochTransferredToCCFAmount;
+        // 0 while the lock epoch is open; 1 after its pools are allocated.
+        uint32 finalized;
+        // 0 = future, 1 = open/running, 2 = matured.
+        uint32 state;
+        sint32 returnCode;
+    };
+
+    struct getV2UserLockedInfo_input
+    {
+        id user;
+        uint32 epoch;
+        uint32 lockPeriod;
+    };
+
+    struct getV2UserLockedInfo_output
+    {
+        uint64 lockedAmount;
+        uint64 maturityEpoch;
+        sint32 returnCode;
+    };
+
     struct getStatsPerEpoch_input {
         uint32 epoch;
     };
@@ -239,7 +368,7 @@ public:
         uint64 earlyUnlockedAmount;
         uint64 earlyUnlockedPercent;
         uint64 totalLockedAmount;
-        uint64 averageAPY;
+        uint64 averageAPY; // Legacy name: V2 reports average active 52-term return, not APY.
 
     };
 
@@ -287,9 +416,11 @@ protected:
     {
         EpochIndexInfo tmpEpochIndex;
         LockInfo INITIALIZE_USER;
-        uint32 _t;
-        sint32 st;
-        sint32 en;
+        uint32 epoch;
+        uint32 readIndex;
+        uint32 writeIndex;
+        uint32 oldStartIndex;
+        uint32 oldEndIndex;
         uint32 startEpoch;
     };
 
@@ -301,62 +432,54 @@ protected:
         {
             locals.startEpoch = QEARN_INITIAL_EPOCH;
         }
+        locals.INITIALIZE_USER.ID = NULL_ID;
+        locals.INITIALIZE_USER._lockedAmount = 0;
+        locals.INITIALIZE_USER._lockedEpoch = 0;
 
         // Remove all gaps in Locker array and update epochIndex
         locals.tmpEpochIndex.startIndex = 0;
-        for(locals._t = locals.startEpoch; locals._t <= qpi.epoch(); locals._t++)
+        for (locals.epoch = locals.startEpoch; locals.epoch <= qpi.epoch(); locals.epoch++)
         {
-            // This loop iteration moves all elements of one epoch to the start of its range in the Locker array.
-            // The startIndex is given by the end of the range of the previous epoch, the new endIndex is found in the
-            // gap removal process.
-            locals.st = locals.tmpEpochIndex.startIndex;
-            locals.en = state.get()._epochIndex.get(locals._t).endIndex;
-            ASSERT(locals.st <= locals.en);
+            locals.oldStartIndex = state.get()._epochIndex.get(locals.epoch).startIndex;
+            locals.oldEndIndex = state.get()._epochIndex.get(locals.epoch).endIndex;
+            locals.writeIndex = locals.tmpEpochIndex.startIndex;
+            ASSERT(locals.oldStartIndex <= locals.oldEndIndex);
+            ASSERT(locals.writeIndex <= locals.oldStartIndex);
 
-            while(locals.st < locals.en)
+            for (locals.readIndex = locals.oldStartIndex;
+                locals.readIndex < locals.oldEndIndex;
+                locals.readIndex++)
             {
-                // try to set locals.st to first empty slot
-                while (state.get().locker.get(locals.st)._lockedAmount && locals.st < locals.en)
+                if (!state.get().locker.get(locals.readIndex)._lockedAmount)
                 {
-                    locals.st++;
+                    state.mut().lockerLockPeriods.set(locals.readIndex, 0);
+                    continue;
                 }
 
-                // try set locals.en to last non-empty slot in epoch
-                --locals.en;
-                while (!state.get().locker.get(locals.en)._lockedAmount && locals.st < locals.en)
+                if (locals.writeIndex != locals.readIndex)
                 {
-                    locals.en--;
+                    state.mut().locker.set(locals.writeIndex, state.get().locker.get(locals.readIndex));
+                    state.mut().lockerLockPeriods.set(
+                        locals.writeIndex,
+                        state.get().lockerLockPeriods.get(locals.readIndex));
+
+                    state.mut().locker.set(locals.readIndex, locals.INITIALIZE_USER);
+                    state.mut().lockerLockPeriods.set(locals.readIndex, 0);
                 }
-
-                // if st and en meet, there are no gaps to be closed by moving in this epoch range
-                if (locals.st >= locals.en)
-                {
-                    // make locals.en point behind last element again
-                    ++locals.en;
-                    break;
-                }
-
-                // move entry from locals.en to locals.st
-                state.mut().locker.set(locals.st, state.get().locker.get(locals.en));
-
-                // make locals.en slot empty -> locals.en points behind last element again
-                locals.INITIALIZE_USER.ID = NULL_ID;
-                locals.INITIALIZE_USER._lockedAmount = 0;
-                locals.INITIALIZE_USER._lockedEpoch = 0;
-                state.mut().locker.set(locals.en, locals.INITIALIZE_USER);
+                locals.writeIndex++;
             }
 
-            // update epoch index
-            locals.tmpEpochIndex.endIndex = locals.en;
-            state.mut()._epochIndex.set(locals._t, locals.tmpEpochIndex);
+            locals.tmpEpochIndex.endIndex = locals.writeIndex;
+            state.mut()._epochIndex.set(locals.epoch, locals.tmpEpochIndex);
 
-            // set start index of next epoch to end index of current epoch
             locals.tmpEpochIndex.startIndex = locals.tmpEpochIndex.endIndex;
         }
 
-        // Set end index for next epoch
-        locals.tmpEpochIndex.endIndex = locals.tmpEpochIndex.startIndex;
-        state.mut()._epochIndex.set(qpi.epoch() + 1, locals.tmpEpochIndex);
+        if (qpi.epoch() + 1 < QEARN_MAX_EPOCHS)
+        {
+            locals.tmpEpochIndex.endIndex = locals.tmpEpochIndex.startIndex;
+            state.mut()._epochIndex.set(qpi.epoch() + 1, locals.tmpEpochIndex);
+        }
     }
 
     struct getStateOfRound_locals {
@@ -385,8 +508,49 @@ protected:
         }
     }
 
-    PUBLIC_FUNCTION(getLockInfoPerEpoch)
+    struct getLockInfoPerEpoch_locals
     {
+        V2TermInfo termInfo;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getLockInfoPerEpoch)
+    {
+        if (input.Epoch >= QEARN_MAX_EPOCHS)
+        {
+            return;
+        }
+        if (input.Epoch >= QEARN_V2_ACTIVATION_EPOCH)
+        {
+            // Procedure 1 becomes a 52-epoch V2 lock after activation. Keep its
+            // legacy query paired with that term for QVAULT/QBOND compatibility.
+            locals.termInfo = state.get().v2EpochInfo.get(input.Epoch).terms.get(QEARN_V2_TERM_INDEX_52);
+            output.bonusAmount = locals.termInfo.initialRewardPool;
+            output.lockedAmount = locals.termInfo.initialLockedAmount;
+            output.currentBonusAmount = locals.termInfo.currentRewardPool;
+            output.currentLockedAmount = locals.termInfo.currentLockedAmount;
+            if (!output.currentLockedAmount
+                && input.Epoch + QEARN_V2_LOCK_PERIOD_52 <= qpi.epoch())
+            {
+                ASSERT(locals.termInfo.initialLockedAmount >= locals.termInfo.earlyUnlockedAmount);
+                output.currentLockedAmount =
+                    locals.termInfo.initialLockedAmount - locals.termInfo.earlyUnlockedAmount;
+                output.currentBonusAmount = locals.termInfo.rewardedAmount;
+            }
+            if (output.currentLockedAmount)
+            {
+                output.yield = div(output.currentBonusAmount * QEARN_V2_RETURN_SCALE, output.currentLockedAmount);
+                if (output.yield > QEARN_V2_RETURN_PERCENT_52 * 100000ULL)
+                {
+                    output.yield = QEARN_V2_RETURN_PERCENT_52 * 100000ULL;
+                }
+            }
+            else
+            {
+                output.yield = 0;
+            }
+            return;
+        }
+
         output.bonusAmount = state.get()._initialRoundInfo.get(input.Epoch)._epochBonusAmount;
         output.lockedAmount = state.get()._initialRoundInfo.get(input.Epoch)._totalLockedAmount;
         output.currentBonusAmount = state.get()._currentRoundInfo.get(input.Epoch)._epochBonusAmount;
@@ -404,17 +568,50 @@ protected:
     struct getStatsPerEpoch_locals
     {
         Entity entity;
-        uint32 cnt, _t;
+        V2EpochInfo epochInfo;
+        V2TermInfo termInfo;
+        uint64 initialLockedAmount;
+        uint32 cnt;
+        uint32 termIndex;
+        uint32 _t;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getStatsPerEpoch)
     {
-        output.earlyUnlockedAmount = state.get()._initialRoundInfo.get(input.epoch)._totalLockedAmount - state.get()._currentRoundInfo.get(input.epoch)._totalLockedAmount;
-        output.earlyUnlockedPercent = div(output.earlyUnlockedAmount * 10000ULL, state.get()._initialRoundInfo.get(input.epoch)._totalLockedAmount);
+        if (input.epoch >= QEARN_MAX_EPOCHS)
+        {
+            return;
+        }
+        if (input.epoch >= QEARN_V2_ACTIVATION_EPOCH)
+        {
+            locals.epochInfo = state.get().v2EpochInfo.get(input.epoch);
+            for (locals.termIndex = 0;
+                locals.termIndex < QEARN_V2_NUMBER_OF_TERMS;
+                locals.termIndex++)
+            {
+                locals.termInfo = locals.epochInfo.terms.get(locals.termIndex);
+                locals.initialLockedAmount += locals.termInfo.initialLockedAmount;
+                output.earlyUnlockedAmount += locals.termInfo.earlyUnlockedAmount;
+            }
+        }
+        else
+        {
+            locals.initialLockedAmount =
+                state.get()._initialRoundInfo.get(input.epoch)._totalLockedAmount;
+            output.earlyUnlockedAmount = locals.initialLockedAmount
+                - state.get()._currentRoundInfo.get(input.epoch)._totalLockedAmount;
+        }
+        if (locals.initialLockedAmount)
+        {
+            output.earlyUnlockedPercent =
+                div(output.earlyUnlockedAmount * 10000ULL, locals.initialLockedAmount);
+        }
 
         qpi.getEntity(SELF, locals.entity);
         output.totalLockedAmount = locals.entity.incomingAmount - locals.entity.outgoingAmount;
 
+        // This field is retained for ABI compatibility. For V2 rounds it is the
+        // average active 52-epoch term return, scaled by 10,000,000, not APY.
         output.averageAPY = 0;
         locals.cnt = 0;
 
@@ -424,17 +621,34 @@ protected:
             {
                 break;
             }
-            if(state.get()._currentRoundInfo.get(locals._t)._totalLockedAmount == 0)
+            if (locals._t >= QEARN_V2_ACTIVATION_EPOCH)
             {
-                continue;
+                locals.termInfo = state.get().v2EpochInfo.get(locals._t).terms.get(QEARN_V2_TERM_INDEX_52);
+                if (!locals.termInfo.currentLockedAmount)
+                {
+                    continue;
+                }
+                output.averageAPY += div(
+                    locals.termInfo.currentRewardPool * QEARN_V2_RETURN_SCALE,
+                    locals.termInfo.currentLockedAmount);
             }
-
+            else
+            {
+                if (!state.get()._currentRoundInfo.get(locals._t)._totalLockedAmount)
+                {
+                    continue;
+                }
+                output.averageAPY += div(
+                    state.get()._currentRoundInfo.get(locals._t)._epochBonusAmount * QEARN_V2_RETURN_SCALE,
+                    state.get()._currentRoundInfo.get(locals._t)._totalLockedAmount);
+            }
             locals.cnt++;
-            output.averageAPY += div(state.get()._currentRoundInfo.get(locals._t)._epochBonusAmount * 10000000ULL, state.get()._currentRoundInfo.get(locals._t)._totalLockedAmount);
         }
 
-        output.averageAPY = div(output.averageAPY, locals.cnt * 1ULL);
-
+        if (locals.cnt)
+        {
+            output.averageAPY = div(output.averageAPY, locals.cnt * 1ULL);
+        }
     }
 
     struct getBurnedAndBoostedStats_locals
@@ -488,17 +702,160 @@ protected:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getUserLockedInfo)
     {
+        if (input.epoch >= QEARN_MAX_EPOCHS)
+        {
+            return;
+        }
         locals.startIndex = state.get()._epochIndex.get(input.epoch).startIndex;
         locals.endIndex = state.get()._epochIndex.get(input.epoch).endIndex;
 
         for(locals._t = locals.startIndex; locals._t < locals.endIndex; locals._t++)
         {
-            if(state.get().locker.get(locals._t).ID == input.user)
+            if(state.get().locker.get(locals._t).ID == input.user
+                && (input.epoch < QEARN_V2_ACTIVATION_EPOCH
+                    || state.get().lockerLockPeriods.get(locals._t) == QEARN_V2_LOCK_PERIOD_52))
             {
                 output.lockedAmount = state.get().locker.get(locals._t)._lockedAmount;
                 return;
             }
         }
+    }
+
+    struct getV2LockInfoPerEpoch_locals
+    {
+        V2EpochInfo epochInfo;
+        V2TermInfo termInfo;
+        uint32 termIndex;
+        uint64 returnCap;
+        uint64 maturedLockedAmount;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getV2LockInfoPerEpoch)
+    {
+        output.returnCode = QEARN_INVALID_LOCK_PERIOD;
+        if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_13)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_13;
+            locals.returnCap = QEARN_V2_RETURN_PERCENT_13 * 100000ULL;
+        }
+        else if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_26)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_26;
+            locals.returnCap = QEARN_V2_RETURN_PERCENT_26 * 100000ULL;
+        }
+        else if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_52)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_52;
+            locals.returnCap = QEARN_V2_RETURN_PERCENT_52 * 100000ULL;
+        }
+        else
+        {
+            return;
+        }
+
+        if (input.epoch < QEARN_V2_ACTIVATION_EPOCH || input.epoch >= QEARN_MAX_EPOCHS)
+        {
+            output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;
+            return;
+        }
+
+        locals.epochInfo = state.get().v2EpochInfo.get(input.epoch);
+        locals.termInfo = locals.epochInfo.terms.get(locals.termIndex);
+        output.initialLockedAmount = locals.termInfo.initialLockedAmount;
+        output.currentLockedAmount = locals.termInfo.currentLockedAmount;
+        output.termEarlyUnlockedAmount = locals.termInfo.earlyUnlockedAmount;
+        output.initialRewardPool = locals.termInfo.initialRewardPool;
+        output.currentRewardPool = locals.termInfo.currentRewardPool;
+        output.termRewardedAmount = locals.termInfo.rewardedAmount;
+        output.termForfeitedClaimAmount = locals.termInfo.forfeitedClaimAmount;
+        output.maturityEpoch = input.epoch + input.lockPeriod;
+        output.epochBonusAmount = locals.epochInfo.bonusAmount;
+        output.epochRewardedAmount = locals.epochInfo.rewardedAmount;
+        output.epochForfeitedClaimAmount = locals.epochInfo.forfeitedClaimAmount;
+        output.epochTransferredTo52Amount = locals.epochInfo.transferredTo52Amount;
+        output.epochTransferredToCCFAmount = locals.epochInfo.transferredToCCFAmount;
+        output.finalized = locals.epochInfo.finalized;
+
+        if (output.currentLockedAmount)
+        {
+            if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_52)
+            {
+                output.currentTermReturn = div(output.currentRewardPool * QEARN_V2_RETURN_SCALE, output.currentLockedAmount);
+            }
+            else if (output.initialLockedAmount)
+            {
+                output.currentTermReturn = div(output.initialRewardPool * QEARN_V2_RETURN_SCALE, output.initialLockedAmount);
+            }
+        }
+        else if (qpi.epoch() >= output.maturityEpoch)
+        {
+            ASSERT(output.initialLockedAmount >= output.termEarlyUnlockedAmount);
+            locals.maturedLockedAmount =
+                output.initialLockedAmount - output.termEarlyUnlockedAmount;
+            if (locals.maturedLockedAmount)
+            {
+                output.currentTermReturn = div(
+                    output.termRewardedAmount * QEARN_V2_RETURN_SCALE,
+                    locals.maturedLockedAmount);
+            }
+        }
+
+        if (output.currentTermReturn > locals.returnCap)
+        {
+            output.currentTermReturn = locals.returnCap;
+        }
+
+        if (input.epoch > qpi.epoch())
+        {
+            output.state = 0;
+        }
+        else if (qpi.epoch() < output.maturityEpoch
+            || (qpi.epoch() == output.maturityEpoch && output.currentLockedAmount))
+        {
+            output.state = 1;
+        }
+        else
+        {
+            output.state = 2;
+        }
+        output.returnCode = QEARN_LOCK_SUCCESS;
+    }
+
+    struct getV2UserLockedInfo_locals
+    {
+        uint32 t;
+        uint32 startIndex;
+        uint32 endIndex;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getV2UserLockedInfo)
+    {
+        output.returnCode = QEARN_INVALID_LOCK_PERIOD;
+        if (input.lockPeriod != QEARN_V2_LOCK_PERIOD_13
+            && input.lockPeriod != QEARN_V2_LOCK_PERIOD_26
+            && input.lockPeriod != QEARN_V2_LOCK_PERIOD_52)
+        {
+            return;
+        }
+        if (input.epoch < QEARN_V2_ACTIVATION_EPOCH || input.epoch >= QEARN_MAX_EPOCHS)
+        {
+            output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;
+            return;
+        }
+
+        output.maturityEpoch = input.epoch + input.lockPeriod;
+        locals.startIndex = state.get()._epochIndex.get(input.epoch).startIndex;
+        locals.endIndex = state.get()._epochIndex.get(input.epoch).endIndex;
+        for (locals.t = locals.startIndex; locals.t < locals.endIndex; locals.t++)
+        {
+            if (state.get().locker.get(locals.t).ID == input.user
+                && state.get().lockerLockPeriods.get(locals.t) == input.lockPeriod)
+            {
+                output.lockedAmount = state.get().locker.get(locals.t)._lockedAmount;
+                break;
+            }
+        }
+        output.returnCode = QEARN_LOCK_SUCCESS;
     }
 
     struct getUserLockStatus_locals {
@@ -522,7 +879,7 @@ protected:
                 locals.lockedWeeks = qpi.epoch() - state.get().locker.get(locals._t)._lockedEpoch;
                 locals.bn = 1ULL<<locals.lockedWeeks;
 
-                output.status += locals.bn;
+                output.status |= locals.bn;
             }
         }
 
@@ -530,6 +887,7 @@ protected:
 
     struct getEndedStatus_locals {
         uint32 _t;
+        uint32 _v2t;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getEndedStatus)
@@ -543,10 +901,9 @@ protected:
         {
             if(state.get().earlyUnlocker.get(locals._t)._unlockedID == input.user)
             {
-                output.earlyRewardedAmount = state.get().earlyUnlocker.get(locals._t)._rewardedAmount;
-                output.earlyUnlockedAmount = state.get().earlyUnlocker.get(locals._t)._unlockedAmount;
-
-                break ;
+                output.earlyRewardedAmount += state.get().earlyUnlocker.get(locals._t)._rewardedAmount;
+                output.earlyUnlockedAmount += state.get().earlyUnlocker.get(locals._t)._unlockedAmount;
+                break;
             }
         }
 
@@ -554,12 +911,202 @@ protected:
         {
             if(state.get().fullyUnlocker.get(locals._t)._unlockedID == input.user)
             {
-                output.fullyRewardedAmount = state.get().fullyUnlocker.get(locals._t)._rewardedAmount;
-                output.fullyUnlockedAmount = state.get().fullyUnlocker.get(locals._t)._unlockedAmount;
-
-                return ;
+                output.fullyRewardedAmount += state.get().fullyUnlocker.get(locals._t)._rewardedAmount;
+                output.fullyUnlockedAmount += state.get().fullyUnlocker.get(locals._t)._unlockedAmount;
             }
         }
+        for (locals._v2t = 0;
+            locals._v2t < state.get().v2FullyUnlockedCnt;
+            locals._v2t++)
+        {
+            if (state.get().v2FullyUnlocker.get(locals._v2t)._unlockedID == input.user)
+            {
+                output.fullyRewardedAmount +=
+                    state.get().v2FullyUnlocker.get(locals._v2t)._rewardedAmount;
+                output.fullyUnlockedAmount +=
+                    state.get().v2FullyUnlocker.get(locals._v2t)._unlockedAmount;
+            }
+        }
+    }
+
+    struct _LockV2_input
+    {
+        uint32 lockPeriod;
+    };
+
+    struct _LockV2_output
+    {
+        sint32 returnCode;
+    };
+
+    struct _LockV2_locals
+    {
+        LockInfo newLocker;
+        RoundInfo updatedRoundInfo;
+        EpochIndexInfo tmpIndex;
+        V2EpochInfo epochInfo;
+        V2TermInfo termInfo;
+        QEARNLogger log;
+        uint32 termIndex;
+        uint32 t;
+        uint32 endIndex;
+        uint64 amount;
+        _RemoveGapsInLockerArray_input gapRemovalInput;
+        _RemoveGapsInLockerArray_output gapRemovalOutput;
+    };
+
+    PRIVATE_PROCEDURE_WITH_LOCALS(_LockV2)
+    {
+        output.returnCode = QEARN_INVALID_LOCK_PERIOD;
+        if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_13)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_13;
+        }
+        else if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_26)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_26;
+        }
+        else if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_52)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_52;
+        }
+        else
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        if (qpi.epoch() < QEARN_V2_ACTIVATION_EPOCH
+            || qpi.epoch() > QEARN_V2_LAST_LOCK_EPOCH)
+        {
+            output.returnCode = QEARN_V2_NOT_ACTIVE;
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        if (qpi.invocationReward() < sint64(QEARN_MINIMUM_LOCKING_AMOUNT))
+        {
+            output.returnCode = QEARN_INVALID_INPUT_AMOUNT;
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+        locals.amount = uint64(qpi.invocationReward());
+
+        locals.endIndex = state.get()._epochIndex.get(qpi.epoch()).endIndex;
+        for (locals.t = state.get()._epochIndex.get(qpi.epoch()).startIndex; locals.t < locals.endIndex; locals.t++)
+        {
+            if (state.get().locker.get(locals.t).ID == qpi.invocator()
+                && state.get().lockerLockPeriods.get(locals.t) == input.lockPeriod)
+            {
+                if (state.get().locker.get(locals.t)._lockedAmount + locals.amount > QEARN_MAX_LOCK_AMOUNT)
+                {
+                    output.returnCode = QEARN_LIMIT_LOCK;
+                    if (qpi.invocationReward() > 0)
+                    {
+                        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                    }
+                    return;
+                }
+
+                locals.newLocker = state.get().locker.get(locals.t);
+                locals.newLocker._lockedAmount += locals.amount;
+                state.mut().locker.set(locals.t, locals.newLocker);
+
+                locals.epochInfo = state.get().v2EpochInfo.get(qpi.epoch());
+                locals.termInfo = locals.epochInfo.terms.get(locals.termIndex);
+                locals.termInfo.initialLockedAmount += locals.amount;
+                locals.termInfo.currentLockedAmount += locals.amount;
+                locals.epochInfo.terms.set(locals.termIndex, locals.termInfo);
+                state.mut().v2EpochInfo.set(qpi.epoch(), locals.epochInfo);
+
+                locals.updatedRoundInfo = state.get()._initialRoundInfo.get(qpi.epoch());
+                locals.updatedRoundInfo._totalLockedAmount += locals.amount;
+                state.mut()._initialRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+                locals.updatedRoundInfo = state.get()._currentRoundInfo.get(qpi.epoch());
+                locals.updatedRoundInfo._totalLockedAmount += locals.amount;
+                state.mut()._currentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+
+                output.returnCode = QEARN_LOCK_SUCCESS;
+                locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), QearnSuccessLocking, 0};
+                LOG_INFO(locals.log);
+                return;
+            }
+        }
+
+        if (locals.endIndex >= QEARN_MAX_LOCKS - 1)
+        {
+            CALL(_RemoveGapsInLockerArray, locals.gapRemovalInput, locals.gapRemovalOutput);
+            locals.endIndex = state.get()._epochIndex.get(qpi.epoch()).endIndex;
+            if (locals.endIndex >= QEARN_MAX_LOCKS - 1)
+            {
+                output.returnCode = QEARN_OVERFLOW_USER;
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                return;
+            }
+        }
+
+        if (locals.amount > QEARN_MAX_LOCK_AMOUNT)
+        {
+            output.returnCode = QEARN_LIMIT_LOCK;
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        locals.newLocker.ID = qpi.invocator();
+        locals.newLocker._lockedAmount = locals.amount;
+        locals.newLocker._lockedEpoch = qpi.epoch();
+        state.mut().locker.set(locals.endIndex, locals.newLocker);
+        state.mut().lockerLockPeriods.set(locals.endIndex, uint8(input.lockPeriod));
+
+        locals.tmpIndex = state.get()._epochIndex.get(qpi.epoch());
+        locals.tmpIndex.endIndex = locals.endIndex + 1;
+        state.mut()._epochIndex.set(qpi.epoch(), locals.tmpIndex);
+
+        locals.epochInfo = state.get().v2EpochInfo.get(qpi.epoch());
+        locals.termInfo = locals.epochInfo.terms.get(locals.termIndex);
+        locals.termInfo.initialLockedAmount += locals.amount;
+        locals.termInfo.currentLockedAmount += locals.amount;
+        locals.epochInfo.terms.set(locals.termIndex, locals.termInfo);
+        state.mut().v2EpochInfo.set(qpi.epoch(), locals.epochInfo);
+
+        locals.updatedRoundInfo = state.get()._initialRoundInfo.get(qpi.epoch());
+        locals.updatedRoundInfo._totalLockedAmount += locals.amount;
+        state.mut()._initialRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+        locals.updatedRoundInfo = state.get()._currentRoundInfo.get(qpi.epoch());
+        locals.updatedRoundInfo._totalLockedAmount += locals.amount;
+        state.mut()._currentRoundInfo.set(qpi.epoch(), locals.updatedRoundInfo);
+
+        output.returnCode = QEARN_LOCK_SUCCESS;
+        locals.log = {QEARN_CONTRACT_INDEX, qpi.invocator(), SELF, qpi.invocationReward(), QearnSuccessLocking, 0};
+        LOG_INFO(locals.log);
+    }
+
+    struct lockV2_locals
+    {
+        _LockV2_input lockInput;
+        _LockV2_output lockOutput;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(lockV2)
+    {
+        locals.lockInput.lockPeriod = input.lockPeriod;
+        CALL(_LockV2, locals.lockInput, locals.lockOutput);
+        output.returnCode = locals.lockOutput.returnCode;
     }
 
     struct lock_locals {
@@ -572,10 +1119,20 @@ protected:
         uint32 endIndex;
         _RemoveGapsInLockerArray_input gapRemovalInput;
         _RemoveGapsInLockerArray_output gapRemovalOutput;
+        _LockV2_input lockV2Input;
+        _LockV2_output lockV2Output;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(lock)
     {
+        if (qpi.epoch() >= QEARN_V2_ACTIVATION_EPOCH)
+        {
+            locals.lockV2Input.lockPeriod = QEARN_V2_LOCK_PERIOD_52;
+            CALL(_LockV2, locals.lockV2Input, locals.lockV2Output);
+            output.returnCode = locals.lockV2Output.returnCode;
+            return;
+        }
+
         if (qpi.invocationReward() < QEARN_MINIMUM_LOCKING_AMOUNT || qpi.epoch() < QEARN_INITIAL_EPOCH)
         {
             output.returnCode = QEARN_INVALID_INPUT_AMOUNT;         // if the amount of locking is less than 10M, it should be failed to lock.
@@ -615,6 +1172,7 @@ protected:
                 locals.newLocker.ID = qpi.invocator();
 
                 state.mut().locker.set(locals.t, locals.newLocker);
+                state.mut().lockerLockPeriods.set(locals.t, 0);
 
                 locals.updatedRoundInfo._totalLockedAmount = state.get()._initialRoundInfo.get(qpi.epoch())._totalLockedAmount + qpi.invocationReward();
                 locals.updatedRoundInfo._epochBonusAmount = state.get()._initialRoundInfo.get(qpi.epoch())._epochBonusAmount;
@@ -675,6 +1233,7 @@ protected:
         locals.newLocker._lockedEpoch = qpi.epoch();
 
         state.mut().locker.set(locals.endIndex, locals.newLocker);
+        state.mut().lockerLockPeriods.set(locals.endIndex, 0);
 
         locals.tmpIndex.startIndex = state.get()._epochIndex.get(qpi.epoch()).startIndex;
         locals.tmpIndex.endIndex = locals.endIndex + 1;
@@ -694,6 +1253,332 @@ protected:
         LOG_INFO(locals.log);
     }
 
+    struct _TransferV2SurplusToCCF_input
+    {
+        uint32 lockedEpoch;
+        uint64 amount;
+    };
+
+    struct _TransferV2SurplusToCCF_output
+    {
+    };
+
+    struct _TransferV2SurplusToCCF_locals
+    {
+        V2EpochInfo epochInfo;
+        sint64 transferResult;
+    };
+
+    PRIVATE_PROCEDURE_WITH_LOCALS(_TransferV2SurplusToCCF)
+    {
+        if (!input.amount)
+        {
+            return;
+        }
+
+        locals.transferResult = qpi.transfer(
+            id(CCF_CONTRACT_INDEX, 0, 0, 0),
+            sint64(input.amount));
+        if (locals.transferResult < 0)
+        {
+            // Callers only pass surplus already backed by QEarn's balance.
+            // Do not report a CCF transfer if that invariant is ever violated.
+            ASSERT(locals.transferResult >= 0);
+            return;
+        }
+
+        locals.epochInfo = state.get().v2EpochInfo.get(input.lockedEpoch);
+        locals.epochInfo.transferredToCCFAmount += input.amount;
+        state.mut().v2EpochInfo.set(input.lockedEpoch, locals.epochInfo);
+    }
+
+    struct _FundV2LongPool_input
+    {
+        uint32 lockedEpoch;
+        uint64 amount;
+    };
+
+    struct _FundV2LongPool_output
+    {
+        uint64 fundedAmount;
+        uint64 surplusAmount;
+    };
+
+    struct _FundV2LongPool_locals
+    {
+        V2EpochInfo epochInfo;
+        V2TermInfo longTermInfo;
+        RoundInfo roundInfo;
+        StatsInfo stats;
+        _TransferV2SurplusToCCF_input ccfInput;
+        _TransferV2SurplusToCCF_output ccfOutput;
+        uint128 calculation;
+        uint64 cap;
+        uint64 availableAmount;
+        uint64 previousPool;
+    };
+
+    PRIVATE_PROCEDURE_WITH_LOCALS(_FundV2LongPool)
+    {
+        locals.epochInfo = state.get().v2EpochInfo.get(input.lockedEpoch);
+        locals.longTermInfo = locals.epochInfo.terms.get(QEARN_V2_TERM_INDEX_52);
+        locals.previousPool = locals.longTermInfo.currentRewardPool;
+        locals.calculation = div(
+            uint128(locals.longTermInfo.currentLockedAmount) * uint128(QEARN_V2_RETURN_PERCENT_52),
+            uint128(100));
+        ASSERT(locals.calculation.high == 0);
+        locals.cap = locals.calculation.low;
+        locals.availableAmount = locals.previousPool + input.amount;
+
+        if (locals.availableAmount > locals.cap)
+        {
+            locals.longTermInfo.currentRewardPool = locals.cap;
+            output.surplusAmount = locals.availableAmount - locals.cap;
+        }
+        else
+        {
+            locals.longTermInfo.currentRewardPool = locals.availableAmount;
+        }
+
+        if (locals.longTermInfo.currentRewardPool > locals.previousPool)
+        {
+            output.fundedAmount = locals.longTermInfo.currentRewardPool - locals.previousPool;
+        }
+        locals.epochInfo.transferredTo52Amount += output.fundedAmount;
+        locals.epochInfo.terms.set(QEARN_V2_TERM_INDEX_52, locals.longTermInfo);
+        state.mut().v2EpochInfo.set(input.lockedEpoch, locals.epochInfo);
+
+        if (output.surplusAmount)
+        {
+            locals.roundInfo = state.get()._currentRoundInfo.get(input.lockedEpoch);
+            ASSERT(locals.roundInfo._epochBonusAmount >= output.surplusAmount);
+            locals.roundInfo._epochBonusAmount -= output.surplusAmount;
+            state.mut()._currentRoundInfo.set(input.lockedEpoch, locals.roundInfo);
+        }
+
+        if (output.fundedAmount)
+        {
+            locals.stats = state.get().statsInfo.get(input.lockedEpoch);
+            locals.stats.boostedAmount += output.fundedAmount;
+            state.mut().statsInfo.set(input.lockedEpoch, locals.stats);
+        }
+
+        if (output.surplusAmount)
+        {
+            locals.ccfInput.lockedEpoch = input.lockedEpoch;
+            locals.ccfInput.amount = output.surplusAmount;
+            CALL(_TransferV2SurplusToCCF, locals.ccfInput, locals.ccfOutput);
+        }
+    }
+
+    struct _UnlockV2_input
+    {
+        uint32 lockedEpoch;
+        uint32 lockPeriod;
+        uint64 requestedAmount;
+        uint32 validateRequestedAmount;
+    };
+
+    struct _UnlockV2_output
+    {
+        sint32 returnCode;
+    };
+
+    struct _UnlockV2_locals
+    {
+        V2EpochInfo epochInfo;
+        V2TermInfo termInfo;
+        RoundInfo roundInfo;
+        LockInfo emptyLocker;
+        HistoryInfo historyInfo;
+        QEARNLogger log;
+        _FundV2LongPool_input fundInput;
+        _FundV2LongPool_output fundOutput;
+        uint128 calculation;
+        uint32 termIndex;
+        uint32 t;
+        uint32 index;
+        uint32 startIndex;
+        uint32 endIndex;
+        uint64 amount;
+        uint64 forfeitedAmount;
+        uint64 amountToLongPool;
+        sint64 transferAmount;
+        sint64 transferResult;
+    };
+
+    PRIVATE_PROCEDURE_WITH_LOCALS(_UnlockV2)
+    {
+        output.returnCode = QEARN_INVALID_LOCK_PERIOD;
+        if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_13)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_13;
+        }
+        else if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_26)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_26;
+        }
+        else if (input.lockPeriod == QEARN_V2_LOCK_PERIOD_52)
+        {
+            locals.termIndex = QEARN_V2_TERM_INDEX_52;
+        }
+        else
+        {
+            return;
+        }
+
+        if (input.lockedEpoch < QEARN_V2_ACTIVATION_EPOCH
+            || input.lockedEpoch >= QEARN_MAX_EPOCHS
+            || input.lockedEpoch > qpi.epoch())
+        {
+            output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;
+            return;
+        }
+        if (input.lockedEpoch == qpi.epoch())
+        {
+            output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;
+            return;
+        }
+        if (qpi.epoch() >= input.lockedEpoch + input.lockPeriod)
+        {
+            output.returnCode = QEARN_V2_POSITION_MATURED;
+            return;
+        }
+
+        locals.index = QEARN_MAX_LOCKS;
+        locals.startIndex = state.get()._epochIndex.get(input.lockedEpoch).startIndex;
+        locals.endIndex = state.get()._epochIndex.get(input.lockedEpoch).endIndex;
+        for (locals.t = locals.startIndex; locals.t < locals.endIndex; locals.t++)
+        {
+            if (state.get().locker.get(locals.t).ID == qpi.invocator()
+                && state.get().lockerLockPeriods.get(locals.t) == input.lockPeriod)
+            {
+                locals.index = locals.t;
+                break;
+            }
+        }
+        if (locals.index == QEARN_MAX_LOCKS)
+        {
+            output.returnCode = QEARN_EMPTY_LOCKED;
+            return;
+        }
+
+        locals.amount = state.get().locker.get(locals.index)._lockedAmount;
+        if (input.validateRequestedAmount && input.requestedAmount != locals.amount)
+        {
+            output.returnCode = QEARN_INVALID_INPUT_UNLOCK_AMOUNT;
+            return;
+        }
+
+        locals.epochInfo = state.get().v2EpochInfo.get(input.lockedEpoch);
+        locals.termInfo = locals.epochInfo.terms.get(locals.termIndex);
+        ASSERT(locals.termInfo.currentLockedAmount >= locals.amount);
+        if (locals.termIndex == QEARN_V2_TERM_INDEX_52)
+        {
+            if (locals.termInfo.currentLockedAmount)
+            {
+                locals.calculation = div(
+                    uint128(locals.termInfo.currentRewardPool) * uint128(locals.amount),
+                    uint128(locals.termInfo.currentLockedAmount));
+                ASSERT(locals.calculation.high == 0);
+                locals.forfeitedAmount = locals.calculation.low;
+            }
+        }
+        else if (locals.termInfo.initialLockedAmount)
+        {
+            locals.calculation = div(
+                uint128(locals.termInfo.initialRewardPool) * uint128(locals.amount),
+                uint128(locals.termInfo.initialLockedAmount));
+            ASSERT(locals.calculation.high == 0);
+            locals.forfeitedAmount = locals.calculation.low;
+            if (locals.forfeitedAmount > locals.termInfo.currentRewardPool)
+            {
+                locals.forfeitedAmount = locals.termInfo.currentRewardPool;
+            }
+            locals.termInfo.currentRewardPool -= locals.forfeitedAmount;
+            locals.amountToLongPool = locals.forfeitedAmount;
+        }
+
+        // A transfer to a contract is rejected while an incoming-transfer
+        // callback is running. Do not close the position unless its principal
+        // has actually been returned.
+        locals.transferAmount = sint64(locals.amount);
+        locals.transferResult = qpi.transfer(qpi.invocator(), locals.transferAmount);
+        if (locals.transferResult < 0)
+        {
+            output.returnCode = QEARN_TRANSFER_FAILED;
+            locals.log = {
+                QEARN_CONTRACT_INDEX,
+                SELF,
+                qpi.invocator(),
+                locals.transferAmount,
+                QearnFailedTransfer,
+                0
+            };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        locals.termInfo.currentLockedAmount -= locals.amount;
+        locals.termInfo.earlyUnlockedAmount += locals.amount;
+        locals.termInfo.forfeitedClaimAmount += locals.forfeitedAmount;
+        locals.epochInfo.forfeitedClaimAmount += locals.forfeitedAmount;
+        if (locals.termIndex != QEARN_V2_TERM_INDEX_52 && !locals.termInfo.currentLockedAmount)
+        {
+            locals.amountToLongPool += locals.termInfo.currentRewardPool;
+            locals.termInfo.currentRewardPool = 0;
+        }
+        locals.epochInfo.terms.set(locals.termIndex, locals.termInfo);
+        state.mut().v2EpochInfo.set(input.lockedEpoch, locals.epochInfo);
+
+        locals.roundInfo = state.get()._currentRoundInfo.get(input.lockedEpoch);
+        ASSERT(locals.roundInfo._totalLockedAmount >= locals.amount);
+        locals.roundInfo._totalLockedAmount -= locals.amount;
+        state.mut()._currentRoundInfo.set(input.lockedEpoch, locals.roundInfo);
+
+        state.mut().locker.set(locals.index, locals.emptyLocker);
+        state.mut().lockerLockPeriods.set(locals.index, 0);
+        locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, QearnSuccessEarlyUnlocking, 0};
+        LOG_INFO(locals.log);
+
+        locals.historyInfo._unlockedID = qpi.invocator();
+        locals.historyInfo._unlockedAmount = locals.amount;
+        for (locals.t = 0; locals.t < state.get()._earlyUnlockedCnt; locals.t++)
+        {
+            if (state.get().earlyUnlocker.get(locals.t)._unlockedID == qpi.invocator())
+            {
+                locals.historyInfo._unlockedAmount += state.get().earlyUnlocker.get(locals.t)._unlockedAmount;
+                locals.historyInfo._rewardedAmount += state.get().earlyUnlocker.get(locals.t)._rewardedAmount;
+                state.mut().earlyUnlocker.set(locals.t, locals.historyInfo);
+                break;
+            }
+        }
+        if (locals.t == state.get()._earlyUnlockedCnt && state.get()._earlyUnlockedCnt < QEARN_MAX_USERS)
+        {
+            state.mut().earlyUnlocker.set(locals.t, locals.historyInfo);
+            state.mut()._earlyUnlockedCnt++;
+        }
+
+        locals.fundInput.lockedEpoch = input.lockedEpoch;
+        locals.fundInput.amount = locals.amountToLongPool;
+        CALL(_FundV2LongPool, locals.fundInput, locals.fundOutput);
+        output.returnCode = QEARN_UNLOCK_SUCCESS;
+    }
+
+    struct unlockV2_locals
+    {
+        _UnlockV2_input unlockInput;
+        _UnlockV2_output unlockOutput;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(unlockV2)
+    {
+        locals.unlockInput.lockedEpoch = input.lockedEpoch;
+        locals.unlockInput.lockPeriod = input.lockPeriod;
+        CALL(_UnlockV2, locals.unlockInput, locals.unlockOutput);
+        output.returnCode = locals.unlockOutput.returnCode;
+    }
+
     struct unlock_locals {
 
         RoundInfo updatedRoundInfo;
@@ -707,7 +1592,8 @@ protected:
         uint64 amountOfburn;
         uint64 rewardPercent;
         sint64 transferAmount;
-        sint64 divCalcu;
+        sint64 transferResult;
+        uint64 divCalcu;
         uint32 earlyUnlockingPercent;
         uint32 burnPercent;
         uint32 indexOfinvocator;
@@ -716,12 +1602,14 @@ protected:
         uint32 countOfLockedEpochs;
         uint32 startIndex;
         uint32 endIndex;
+        _UnlockV2_input unlockV2Input;
+        _UnlockV2_output unlockV2Output;
 
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(unlock)
     {
-        if (input.lockedEpoch > QEARN_MAX_EPOCHS || input.lockedEpoch < QEARN_INITIAL_EPOCH)
+        if (input.lockedEpoch >= QEARN_MAX_EPOCHS || input.lockedEpoch < QEARN_INITIAL_EPOCH)
         {
 
             output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;               //   if user try to unlock with wrong locked epoch, it should be failed to unlock.
@@ -743,6 +1631,17 @@ protected:
 
             return ;
 
+        }
+
+        if (input.lockedEpoch >= QEARN_V2_ACTIVATION_EPOCH)
+        {
+            locals.unlockV2Input.lockedEpoch = input.lockedEpoch;
+            locals.unlockV2Input.lockPeriod = QEARN_V2_LOCK_PERIOD_52;
+            locals.unlockV2Input.requestedAmount = input.amount;
+            locals.unlockV2Input.validateRequestedAmount = 1;
+            CALL(_UnlockV2, locals.unlockV2Input, locals.unlockV2Output);
+            output.returnCode = locals.unlockV2Output.returnCode;
+            return;
         }
 
         locals.indexOfinvocator = QEARN_MAX_LOCKS;
@@ -877,8 +1776,22 @@ protected:
         locals.amountOfReward = div(locals.divCalcu * locals.earlyUnlockingPercent * 1ULL , 10000000ULL);
         locals.amountOfburn = div(locals.divCalcu * locals.burnPercent * 1ULL, 10000000ULL);
 
-        qpi.transfer(qpi.invocator(), locals.amountOfUnlocking + locals.amountOfReward);
         locals.transferAmount = locals.amountOfUnlocking + locals.amountOfReward;
+        locals.transferResult = qpi.transfer(qpi.invocator(), locals.transferAmount);
+        if (locals.transferResult < 0)
+        {
+            output.returnCode = QEARN_TRANSFER_FAILED;
+            locals.log = {
+                QEARN_CONTRACT_INDEX,
+                SELF,
+                qpi.invocator(),
+                locals.transferAmount,
+                QearnFailedTransfer,
+                0
+            };
+            LOG_INFO(locals.log);
+            return;
+        }
 
         locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, QearnSuccessEarlyUnlocking, 0};
         LOG_INFO(locals.log);
@@ -968,6 +1881,278 @@ protected:
         output.returnCode = QEARN_UNLOCK_SUCCESS; //  unlock is succeed
     }
 
+    struct _FinalizeV2Round_input
+    {
+        uint32 lockedEpoch;
+    };
+
+    struct _FinalizeV2Round_output
+    {
+    };
+
+    struct _FinalizeV2Round_locals
+    {
+        V2EpochInfo epochInfo;
+        V2TermInfo term13;
+        V2TermInfo term26;
+        V2TermInfo term52;
+        RoundInfo roundInfo;
+        _TransferV2SurplusToCCF_input ccfInput;
+        _TransferV2SurplusToCCF_output ccfOutput;
+        uint128 calculation;
+        uint64 bonusAmount;
+        uint64 allocation13;
+        uint64 allocation26;
+        uint64 cap13;
+        uint64 cap26;
+        uint64 cap52;
+        uint64 available52;
+        uint64 surplusAmount;
+    };
+
+    PRIVATE_PROCEDURE_WITH_LOCALS(_FinalizeV2Round)
+    {
+        if (input.lockedEpoch < QEARN_V2_ACTIVATION_EPOCH || input.lockedEpoch >= QEARN_MAX_EPOCHS)
+        {
+            return;
+        }
+
+        locals.epochInfo = state.get().v2EpochInfo.get(input.lockedEpoch);
+        if (locals.epochInfo.finalized)
+        {
+            return;
+        }
+
+        locals.term13 = locals.epochInfo.terms.get(QEARN_V2_TERM_INDEX_13);
+        locals.term26 = locals.epochInfo.terms.get(QEARN_V2_TERM_INDEX_26);
+        locals.term52 = locals.epochInfo.terms.get(QEARN_V2_TERM_INDEX_52);
+        locals.bonusAmount = state.get()._initialRoundInfo.get(input.lockedEpoch)._epochBonusAmount;
+
+        locals.calculation = div(
+            uint128(locals.bonusAmount) * uint128(QEARN_V2_ALLOCATION_PERCENT_13),
+            uint128(100));
+        ASSERT(locals.calculation.high == 0);
+        locals.allocation13 = locals.calculation.low;
+        locals.calculation = div(
+            uint128(locals.term13.initialLockedAmount) * uint128(QEARN_V2_RETURN_PERCENT_13),
+            uint128(100));
+        ASSERT(locals.calculation.high == 0);
+        locals.cap13 = locals.calculation.low;
+        if (locals.allocation13 > locals.cap13)
+        {
+            locals.allocation13 = locals.cap13;
+        }
+
+        locals.calculation = div(
+            uint128(locals.bonusAmount) * uint128(QEARN_V2_ALLOCATION_PERCENT_26),
+            uint128(100));
+        ASSERT(locals.calculation.high == 0);
+        locals.allocation26 = locals.calculation.low;
+        locals.calculation = div(
+            uint128(locals.term26.initialLockedAmount) * uint128(QEARN_V2_RETURN_PERCENT_26),
+            uint128(100));
+        ASSERT(locals.calculation.high == 0);
+        locals.cap26 = locals.calculation.low;
+        if (locals.allocation26 > locals.cap26)
+        {
+            locals.allocation26 = locals.cap26;
+        }
+
+        ASSERT(locals.bonusAmount >= locals.allocation13 + locals.allocation26);
+        locals.available52 = locals.bonusAmount - locals.allocation13 - locals.allocation26;
+        locals.calculation = div(
+            uint128(locals.term52.initialLockedAmount) * uint128(QEARN_V2_RETURN_PERCENT_52),
+            uint128(100));
+        ASSERT(locals.calculation.high == 0);
+        locals.cap52 = locals.calculation.low;
+
+        locals.term13.initialRewardPool = locals.allocation13;
+        locals.term13.currentRewardPool = locals.allocation13;
+        locals.term26.initialRewardPool = locals.allocation26;
+        locals.term26.currentRewardPool = locals.allocation26;
+        if (locals.available52 > locals.cap52)
+        {
+            locals.term52.initialRewardPool = locals.cap52;
+            locals.term52.currentRewardPool = locals.cap52;
+            locals.surplusAmount = locals.available52 - locals.cap52;
+        }
+        else
+        {
+            locals.term52.initialRewardPool = locals.available52;
+            locals.term52.currentRewardPool = locals.available52;
+        }
+
+        locals.epochInfo.terms.set(QEARN_V2_TERM_INDEX_13, locals.term13);
+        locals.epochInfo.terms.set(QEARN_V2_TERM_INDEX_26, locals.term26);
+        locals.epochInfo.terms.set(QEARN_V2_TERM_INDEX_52, locals.term52);
+        locals.epochInfo.bonusAmount = locals.bonusAmount;
+        locals.epochInfo.finalized = 1;
+        state.mut().v2EpochInfo.set(input.lockedEpoch, locals.epochInfo);
+
+        locals.roundInfo = state.get()._currentRoundInfo.get(input.lockedEpoch);
+        locals.roundInfo._epochBonusAmount = locals.allocation13 + locals.allocation26 + locals.term52.currentRewardPool;
+        state.mut()._currentRoundInfo.set(input.lockedEpoch, locals.roundInfo);
+
+        if (locals.surplusAmount)
+        {
+            locals.ccfInput.lockedEpoch = input.lockedEpoch;
+            locals.ccfInput.amount = locals.surplusAmount;
+            CALL(_TransferV2SurplusToCCF, locals.ccfInput, locals.ccfOutput);
+        }
+    }
+
+    struct _PayoutV2Term_input
+    {
+        uint32 lockedEpoch;
+        uint32 lockPeriod;
+        uint32 termIndex;
+    };
+
+    struct _PayoutV2Term_output
+    {
+    };
+
+    struct _PayoutV2Term_locals
+    {
+        V2EpochInfo epochInfo;
+        V2TermInfo termInfo;
+        RoundInfo roundInfo;
+        StatsInfo stats;
+        LockInfo emptyLocker;
+        HistoryInfo historyInfo;
+        QEARNLogger log;
+        _FundV2LongPool_input fundInput;
+        _FundV2LongPool_output fundOutput;
+        _TransferV2SurplusToCCF_input ccfInput;
+        _TransferV2SurplusToCCF_output ccfOutput;
+        uint128 calculation;
+        uint32 t;
+        uint32 startIndex;
+        uint32 endIndex;
+        uint64 denominator;
+        uint64 numerator;
+        uint64 rewardAmount;
+        uint64 totalRewardedAmount;
+        uint64 totalUnlockedAmount;
+        uint64 remainingRewardPool;
+        sint64 transferAmount;
+    };
+
+    PRIVATE_PROCEDURE_WITH_LOCALS(_PayoutV2Term)
+    {
+        if (input.lockedEpoch < QEARN_V2_ACTIVATION_EPOCH || input.lockedEpoch >= QEARN_MAX_EPOCHS)
+        {
+            return;
+        }
+        locals.epochInfo = state.get().v2EpochInfo.get(input.lockedEpoch);
+        if (!locals.epochInfo.finalized)
+        {
+            return;
+        }
+        locals.termInfo = locals.epochInfo.terms.get(input.termIndex);
+        locals.remainingRewardPool = locals.termInfo.currentRewardPool;
+        if (input.termIndex == QEARN_V2_TERM_INDEX_52)
+        {
+            locals.numerator = locals.termInfo.currentRewardPool;
+            locals.denominator = locals.termInfo.currentLockedAmount;
+        }
+        else
+        {
+            locals.numerator = locals.termInfo.initialRewardPool;
+            locals.denominator = locals.termInfo.initialLockedAmount;
+        }
+
+        locals.startIndex = state.get()._epochIndex.get(input.lockedEpoch).startIndex;
+        locals.endIndex = state.get()._epochIndex.get(input.lockedEpoch).endIndex;
+        for (locals.t = locals.startIndex; locals.t < locals.endIndex; locals.t++)
+        {
+            if (!state.get().locker.get(locals.t)._lockedAmount
+                || state.get().lockerLockPeriods.get(locals.t) != input.lockPeriod)
+            {
+                continue;
+            }
+
+            if (locals.denominator)
+            {
+                locals.calculation = div(
+                    uint128(locals.numerator) * uint128(state.get().locker.get(locals.t)._lockedAmount),
+                    uint128(locals.denominator));
+                ASSERT(locals.calculation.high == 0);
+                locals.rewardAmount = locals.calculation.low;
+                if (locals.rewardAmount > locals.remainingRewardPool)
+                {
+                    locals.rewardAmount = locals.remainingRewardPool;
+                }
+            }
+            else
+            {
+                locals.rewardAmount = 0;
+            }
+
+            locals.transferAmount = sint64(state.get().locker.get(locals.t)._lockedAmount + locals.rewardAmount);
+            qpi.transfer(state.get().locker.get(locals.t).ID, locals.transferAmount);
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, state.get().locker.get(locals.t).ID, locals.transferAmount, QearnSuccessFullyUnlocking, 0};
+            LOG_INFO(locals.log);
+
+            locals.historyInfo._unlockedID = state.get().locker.get(locals.t).ID;
+            locals.historyInfo._unlockedAmount = state.get().locker.get(locals.t)._lockedAmount;
+            locals.historyInfo._rewardedAmount = locals.rewardAmount;
+            if (state.get().v2FullyUnlockedCnt < QEARN_V2_MAX_FULLY_UNLOCK_RECORDS)
+            {
+                state.mut().v2FullyUnlocker.set(
+                    state.get().v2FullyUnlockedCnt,
+                    locals.historyInfo);
+                state.mut().v2FullyUnlockedCnt++;
+            }
+
+            locals.totalUnlockedAmount += state.get().locker.get(locals.t)._lockedAmount;
+            locals.totalRewardedAmount += locals.rewardAmount;
+            locals.remainingRewardPool -= locals.rewardAmount;
+            state.mut().locker.set(locals.t, locals.emptyLocker);
+            state.mut().lockerLockPeriods.set(locals.t, 0);
+        }
+
+        ASSERT(locals.termInfo.currentLockedAmount >= locals.totalUnlockedAmount);
+        locals.termInfo.currentLockedAmount -= locals.totalUnlockedAmount;
+        ASSERT(locals.termInfo.currentRewardPool >= locals.totalRewardedAmount);
+        locals.termInfo.currentRewardPool = 0;
+        locals.termInfo.rewardedAmount += locals.totalRewardedAmount;
+        locals.epochInfo.terms.set(input.termIndex, locals.termInfo);
+        locals.epochInfo.rewardedAmount += locals.totalRewardedAmount;
+        state.mut().v2EpochInfo.set(input.lockedEpoch, locals.epochInfo);
+
+        locals.roundInfo = state.get()._currentRoundInfo.get(input.lockedEpoch);
+        ASSERT(locals.roundInfo._totalLockedAmount >= locals.totalUnlockedAmount);
+        ASSERT(locals.roundInfo._epochBonusAmount >= locals.totalRewardedAmount);
+        locals.roundInfo._totalLockedAmount -= locals.totalUnlockedAmount;
+        locals.roundInfo._epochBonusAmount -= locals.totalRewardedAmount;
+        state.mut()._currentRoundInfo.set(input.lockedEpoch, locals.roundInfo);
+
+        locals.stats = state.get().statsInfo.get(input.lockedEpoch);
+        locals.stats.rewardedAmount += locals.totalRewardedAmount;
+        state.mut().statsInfo.set(input.lockedEpoch, locals.stats);
+
+        if (input.termIndex == QEARN_V2_TERM_INDEX_52)
+        {
+            if (locals.remainingRewardPool)
+            {
+                locals.roundInfo = state.get()._currentRoundInfo.get(input.lockedEpoch);
+                ASSERT(locals.roundInfo._epochBonusAmount >= locals.remainingRewardPool);
+                locals.roundInfo._epochBonusAmount -= locals.remainingRewardPool;
+                state.mut()._currentRoundInfo.set(input.lockedEpoch, locals.roundInfo);
+                locals.ccfInput.lockedEpoch = input.lockedEpoch;
+                locals.ccfInput.amount = locals.remainingRewardPool;
+                CALL(_TransferV2SurplusToCCF, locals.ccfInput, locals.ccfOutput);
+            }
+        }
+        else
+        {
+            locals.fundInput.lockedEpoch = input.lockedEpoch;
+            locals.fundInput.amount = locals.remainingRewardPool;
+            CALL(_FundV2LongPool, locals.fundInput, locals.fundOutput);
+        }
+    }
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getLockInfoPerEpoch, 1);
@@ -978,11 +2163,43 @@ protected:
         REGISTER_USER_FUNCTION(getStatsPerEpoch, 6);
         REGISTER_USER_FUNCTION(getBurnedAndBoostedStats, 7);
         REGISTER_USER_FUNCTION(getBurnedAndBoostedStatsPerEpoch, 8);
+        REGISTER_USER_FUNCTION(getV2LockInfoPerEpoch, 9);
+        REGISTER_USER_FUNCTION(getV2UserLockedInfo, 10);
 
         REGISTER_USER_PROCEDURE(lock, 1);
 		REGISTER_USER_PROCEDURE(unlock, 2);
+        REGISTER_USER_PROCEDURE(lockV2, 3);
+        REGISTER_USER_PROCEDURE(unlockV2, 4);
 
 	}
+
+    struct POST_INCOMING_TRANSFER_locals
+    {
+        sint64 transferResult;
+        QEARNLogger log;
+    };
+
+    POST_INCOMING_TRANSFER_WITH_LOCALS()
+    {
+        if (input.type != TransferType::standardTransaction || input.amount <= 0)
+        {
+            return;
+        }
+
+        locals.transferResult = qpi.transfer(input.sourceId, input.amount);
+        if (locals.transferResult < 0)
+        {
+            locals.log = {
+                QEARN_CONTRACT_INDEX,
+                SELF,
+                input.sourceId,
+                input.amount,
+                QearnFailedTransfer,
+                0
+            };
+            LOG_INFO(locals.log);
+        }
+    }
 
     struct BEGIN_EPOCH_locals
     {
@@ -1059,6 +2276,14 @@ protected:
         QEARNLogger log;
         _RemoveGapsInLockerArray_input gapRemovalInput;
         _RemoveGapsInLockerArray_output gapRemovalOutput;
+        _PayoutV2Term_input payout13Input;
+        _PayoutV2Term_output payout13Output;
+        _PayoutV2Term_input payout26Input;
+        _PayoutV2Term_output payout26Output;
+        _PayoutV2Term_input payout52Input;
+        _PayoutV2Term_output payout52Output;
+        _FinalizeV2Round_input finalizeInput;
+        _FinalizeV2Round_output finalizeOutput;
 
         uint64 _rewardPercent;
         uint64 _rewardAmount;
@@ -1074,64 +2299,93 @@ protected:
     {
         state.mut()._earlyUnlockedCnt = 0;
         state.mut()._fullyUnlockedCnt = 0;
+        state.mut().v2FullyUnlockedCnt = 0;
+
+        if (qpi.epoch() >= QEARN_V2_ACTIVATION_EPOCH + QEARN_V2_LOCK_PERIOD_13)
+        {
+            locals.payout13Input.lockedEpoch = qpi.epoch() - QEARN_V2_LOCK_PERIOD_13;
+            locals.payout13Input.lockPeriod = QEARN_V2_LOCK_PERIOD_13;
+            locals.payout13Input.termIndex = QEARN_V2_TERM_INDEX_13;
+            CALL(_PayoutV2Term, locals.payout13Input, locals.payout13Output);
+        }
+        if (qpi.epoch() >= QEARN_V2_ACTIVATION_EPOCH + QEARN_V2_LOCK_PERIOD_26)
+        {
+            locals.payout26Input.lockedEpoch = qpi.epoch() - QEARN_V2_LOCK_PERIOD_26;
+            locals.payout26Input.lockPeriod = QEARN_V2_LOCK_PERIOD_26;
+            locals.payout26Input.termIndex = QEARN_V2_TERM_INDEX_26;
+            CALL(_PayoutV2Term, locals.payout26Input, locals.payout26Output);
+        }
+
         locals.lockedEpoch = qpi.epoch() - 52;
         locals.endIndex = state.get()._epochIndex.get(locals.lockedEpoch).endIndex;
 
-        locals._burnAmount = state.get()._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount;
-
-        locals._rewardPercent = div(state.get()._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount * 10000000ULL, state.get()._currentRoundInfo.get(locals.lockedEpoch)._totalLockedAmount);
-        locals.tmpStats.rewardedAmount = state.get().statsInfo.get(locals.lockedEpoch).rewardedAmount;
-
-        for(locals._t = state.get()._epochIndex.get(locals.lockedEpoch).startIndex; locals._t < locals.endIndex; locals._t++)
+        if (locals.lockedEpoch < QEARN_V2_ACTIVATION_EPOCH)
         {
-            if(state.get().locker.get(locals._t)._lockedAmount == 0)
+            locals._burnAmount = state.get()._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount;
+
+            locals._rewardPercent = div(state.get()._currentRoundInfo.get(locals.lockedEpoch)._epochBonusAmount * 10000000ULL, state.get()._currentRoundInfo.get(locals.lockedEpoch)._totalLockedAmount);
+            locals.tmpStats.rewardedAmount = state.get().statsInfo.get(locals.lockedEpoch).rewardedAmount;
+
+            for(locals._t = state.get()._epochIndex.get(locals.lockedEpoch).startIndex; locals._t < locals.endIndex; locals._t++)
             {
-                continue;
-            }
+                if(state.get().locker.get(locals._t)._lockedAmount == 0)
+                {
+                    continue;
+                }
 
-            ASSERT(state.get().locker.get(locals._t)._lockedEpoch == locals.lockedEpoch);
+                ASSERT(state.get().locker.get(locals._t)._lockedEpoch == locals.lockedEpoch);
 
-            locals._rewardAmount = div(state.get().locker.get(locals._t)._lockedAmount * locals._rewardPercent, 10000000ULL);
-            qpi.transfer(state.get().locker.get(locals._t).ID, locals._rewardAmount + state.get().locker.get(locals._t)._lockedAmount);
+                locals._rewardAmount = div(state.get().locker.get(locals._t)._lockedAmount * locals._rewardPercent, 10000000ULL);
+                qpi.transfer(state.get().locker.get(locals._t).ID, locals._rewardAmount + state.get().locker.get(locals._t)._lockedAmount);
 
-            locals.transferAmount = locals._rewardAmount + state.get().locker.get(locals._t)._lockedAmount;
-            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, QearnSuccessFullyUnlocking, 0};
-            LOG_INFO(locals.log);
-
-            if(state.get()._fullyUnlockedCnt < QEARN_MAX_USERS)
-            {
+                locals.transferAmount = locals._rewardAmount + state.get().locker.get(locals._t)._lockedAmount;
+                locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), locals.transferAmount, QearnSuccessFullyUnlocking, 0};
+                LOG_INFO(locals.log);
 
                 locals.INITIALIZE_HISTORY._unlockedID = state.get().locker.get(locals._t).ID;
                 locals.INITIALIZE_HISTORY._unlockedAmount = state.get().locker.get(locals._t)._lockedAmount;
                 locals.INITIALIZE_HISTORY._rewardedAmount = locals._rewardAmount;
+                if (state.get()._fullyUnlockedCnt < QEARN_MAX_USERS)
+                {
+                    state.mut().fullyUnlocker.set(state.get()._fullyUnlockedCnt, locals.INITIALIZE_HISTORY);
+                    state.mut()._fullyUnlockedCnt++;
+                }
 
-                state.mut().fullyUnlocker.set(state.get()._fullyUnlockedCnt, locals.INITIALIZE_HISTORY);
+                locals.INITIALIZE_USER.ID = NULL_ID;
+                locals.INITIALIZE_USER._lockedAmount = 0;
+                locals.INITIALIZE_USER._lockedEpoch = 0;
 
-                state.mut()._fullyUnlockedCnt++;
+                state.mut().locker.set(locals._t, locals.INITIALIZE_USER);
+                state.mut().lockerLockPeriods.set(locals._t, 0);
+
+                locals._burnAmount -= locals._rewardAmount;
+                locals.tmpStats.rewardedAmount += locals._rewardAmount;
             }
 
-            locals.INITIALIZE_USER.ID = NULL_ID;
-            locals.INITIALIZE_USER._lockedAmount = 0;
-            locals.INITIALIZE_USER._lockedEpoch = 0;
+            qpi.burn(locals._burnAmount);
 
-            state.mut().locker.set(locals._t, locals.INITIALIZE_USER);
+            locals.tmpStats.boostedAmount = state.get().statsInfo.get(locals.lockedEpoch).boostedAmount;
+            locals.tmpStats.burnedAmount = state.get().statsInfo.get(locals.lockedEpoch).burnedAmount + locals._burnAmount;
 
-            locals._burnAmount -= locals._rewardAmount;
-            locals.tmpStats.rewardedAmount += locals._rewardAmount;
+            state.mut().statsInfo.set(locals.lockedEpoch, locals.tmpStats);
+        }
+        else
+        {
+            locals.payout52Input.lockedEpoch = locals.lockedEpoch;
+            locals.payout52Input.lockPeriod = QEARN_V2_LOCK_PERIOD_52;
+            locals.payout52Input.termIndex = QEARN_V2_TERM_INDEX_52;
+            CALL(_PayoutV2Term, locals.payout52Input, locals.payout52Output);
+        }
+
+        if (qpi.epoch() >= QEARN_V2_ACTIVATION_EPOCH)
+        {
+            locals.finalizeInput.lockedEpoch = qpi.epoch();
+            CALL(_FinalizeV2Round, locals.finalizeInput, locals.finalizeOutput);
         }
 
         locals.tmpEpochIndex.startIndex = 0;
         locals.tmpEpochIndex.endIndex = 0;
         state.mut()._epochIndex.set(locals.lockedEpoch, locals.tmpEpochIndex);
-
-        // remove all gaps in Locker array (from beginning) and update epochIndex
         CALL(_RemoveGapsInLockerArray, locals.gapRemovalInput, locals.gapRemovalOutput);
-
-        qpi.burn(locals._burnAmount);
-
-        locals.tmpStats.boostedAmount = state.get().statsInfo.get(locals.lockedEpoch).boostedAmount;
-        locals.tmpStats.burnedAmount = state.get().statsInfo.get(locals.lockedEpoch).burnedAmount + locals._burnAmount;
-
-        state.mut().statsInfo.set(locals.lockedEpoch, locals.tmpStats);
-	}
+		}
 };
