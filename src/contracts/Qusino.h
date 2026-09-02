@@ -109,7 +109,7 @@ constexpr uint64 QUSINO_COINFLIP_PAYOUT_PERCENT = 196ULL;                       
 // bankroll, pinned at QUSINO_GAME_BANKROLL_CAP -- anything that would push it past
 // the cap (an oversized depositBonus, or a Coin Flip loss) goes to epochRevenue
 // instead (see addWithCap()).
-constexpr uint64 QUSINO_GAME_BANKROLL_CAP = 1200000000ULL;                      // 1.2B Qu
+constexpr uint64 QUSINO_GAME_BANKROLL_CAP = 2400000000ULL;                      // 2.4B Qu
 
 struct QUSINOLogger
 {
