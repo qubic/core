@@ -9484,7 +9484,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     const unsigned long long tickProcStalledSeconds = (tickProcStallStartTick && frequency)
                         ? ((curTimeTick - tickProcStallStartTick) / frequency) : 0;
 
-                    CHAR16 stageMsg[384];
+                    CHAR16 stageMsg[512];
                     setText(stageMsg, L"[stage] main=");
                     appendNumber(stageMsg, gMainStage, FALSE);
                     appendText(stageMsg, L" detail=");
@@ -9526,6 +9526,18 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         {
                             appendText(stageMsg, L"none");
                         }
+                        unsigned int contractLockMask = 0;
+                        for (int lockIndex = 0; lockIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS; lockIndex++)
+                        {
+                            if (contractLocalsStackLock[lockIndex])
+                            {
+                                contractLockMask |= (1u << lockIndex);
+                            }
+                        }
+                        appendText(stageMsg, L" cpLocks=");
+                        appendNumber(stageMsg, contractLockMask, FALSE);
+                        appendText(stageMsg, L" vm=");
+                        appendNumber(stageMsg, isVirtualMachine, FALSE);
                     }
                     appendText(stageMsg, L"\r\n");
                     outputStringToConsole(stageMsg);
