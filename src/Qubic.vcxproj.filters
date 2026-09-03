@@ -242,9 +242,6 @@
     <ClInclude Include="contracts\Qswap.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="contracts\Qswap_old.h">
-      <Filter>contracts</Filter>
-    </ClInclude>
     <ClInclude Include="platform\uint128.h">
       <Filter>platform</Filter>
     </ClInclude>
@@ -445,6 +442,9 @@
     <ClInclude Include="oc_interfaces\Mock.h">
       <Filter>oc_interfaces</Filter>
     </ClInclude>
+    <ClInclude Include="optimizations\opt_parallel_sign_votes.h">
+      <Filter>optimizations</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -503,6 +503,9 @@
     </Filter>
     <Filter Include="oc_interfaces">
       <UniqueIdentifier>{804c1cd3-c9f7-4f71-bc5e-a66907c4d63f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="optimizations">
+      <UniqueIdentifier>{0eb1ebbd-eb65-4fa4-a7e0-954f4d753a51}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

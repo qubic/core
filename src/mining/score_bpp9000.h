@@ -11,16 +11,6 @@ namespace score_engine
 // Largest L (mutations per step) the scorer clamps nonce[1] to
 static constexpr unsigned int MAX_LUT_ENTRIES_PER_STEP = 10;
 
-// A bpp9000 nonce is canonical iff its score-irrelevant knob bytes are canonical:
-// nonce[0] = algo (enforced by routing), nonce[1] = L in [1, MAX_LUT_ENTRIES_PER_STEP], nonce[2] = K = 0
-static bool isCanonicalBpp9000Nonce(const unsigned char* nonce)
-{
-    return (getAlgoType(nonce) == AlgoType::Bpp9000)
-        && (nonce[1] >= 1)
-        && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
-        && (nonce[2] == 0);
-}
-
 template<typename Params>
 struct ScoreBpp9000
 {
@@ -44,6 +34,17 @@ struct ScoreBpp9000
     static constexpr unsigned long long lutStride = 32;
 
     static_assert(lutSize <= lutStride, "LUT rows must fit the padded stride");
+
+    // A nonce is canonical if its score-irrelevant knob bytes are canonical:
+    // nonce[0] = algo (enforced by routing), nonce[1] = L in [1, MAX_LUT_ENTRIES_PER_STEP],
+    // nonce[2] = K. The standalone walk pins K to 0, so only 0 is canonical there.
+    static bool isCanonicalStandaloneNonce(const unsigned char* nonce)
+    {
+        return (getAlgoType(nonce) == AlgoType::Bpp9000)
+            && (nonce[1] >= 1)
+            && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
+            && (nonce[2] == 0);
+    }
 
     // K is a real degree of freedom here: the walk restores K = nonce[2] as its explore-step count
     static bool isCanonicalAntNonce(const unsigned char* nonce)
@@ -1073,8 +1074,9 @@ struct ScoreBpp9000
         compact(bestANN, out);
     }
 
-    // Seed the ANN: root LUT from the pubkey alone (each computor's fixed root); mutation seeds from
-    // pubkey+nonce (nonce[0..2] are the algo/L/K knobs, excluded from the RNG). Returns the start score.
+    // Standalone path only: root LUT from the pubkey alone; the ant path derives its shared epoch
+    // root via deriveRootANN(rootSeed) instead. Mutation seeds from pubkey+nonce (nonce[0..2] are
+    // the algo/L/K knobs, excluded from the RNG). Returns the start score.
     unsigned int initializeANN(
         const unsigned char* publicKey,
         const unsigned char* nonce,
@@ -1168,14 +1170,16 @@ struct ScoreBpp9000
         return computeScoreFromCurrent(L, K, cur);
     }
 
-    // Ant colony: the network every one of an identity's lineages starts from. Written to a buffer the
-    // caller owns, so two roots can be derived on one engine without the first silently becoming the
-    // second - a child scored against the wrong root would differ only in resourceTestingDigest.
+    // Ant colony: the shared per-epoch network every identity's tree starts from. rootSeed is the
+    // epoch-start spectrum digest, so all identities derive the identical root; only the mutation
+    // walks stay per-identity. Written to a buffer the caller owns, so two roots can be derived on
+    // one engine without the first silently becoming the second - a child scored against the wrong
+    // root would differ only in resourceTestingDigest.
     // Uses currentANN as its working buffer, so it destroys whatever the engine was holding. Callers
     // derive a root and then score from it, which overwrites currentANN anyway.
-    void deriveRootANN(const unsigned char* publicKey, const unsigned char* pRandom2Pool, ANN& out)
+    void deriveRootANN(const unsigned char* rootSeed, const unsigned char* pRandom2Pool, ANN& out)
     {
-        deriveRootLut(publicKey, pRandom2Pool);
+        deriveRootLut(rootSeed, pRandom2Pool);
         applyRootLut(currentANN);
         compact(currentANN, out);
     }
