@@ -97,6 +97,7 @@
     <ClInclude Include="network_messages\system_info.h" />
     <ClInclude Include="network_messages\tick.h" />
     <ClInclude Include="network_messages\transactions.h" />
+    <ClInclude Include="optimizations\opt_parallel_sign_votes.h" />
     <ClInclude Include="oracle_core\core_om_network_messages.h" />
     <ClInclude Include="oracle_core\net_msg_impl.h" />
     <ClInclude Include="oracle_core\oracle_engine.h" />

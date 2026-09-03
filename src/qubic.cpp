@@ -92,6 +92,10 @@
 #include "qpi/impl/qpi_mining_impl.h"
 #include "revenue.h"
 
+#if USE_PARALLEL_SIGN_VOTES
+#include "optimizations/opt_parallel_sign_votes.h"
+#endif
+
 ////////// Qubic \\\\\\\\\\
 
 #define CONTRACT_STATES_DEPTH 10 // Is derived from MAX_NUMBER_OF_CONTRACTS (=N)
@@ -2490,6 +2494,14 @@ static void requestProcessor(void* ProcedureArgument)
             END_WAIT_WHILE();
             _InterlockedDecrement(&epochTransitionWaitingRequestProcessors);
         }
+
+#if USE_PARALLEL_SIGN_VOTES
+        // Pull pending signTickVote tasks dispatched by broadcastTickVotes().
+        // Cheap fast-path when nothing pending, otherwise loop until pool empty.
+        while (parallelSignVotes.tryProcessOne())
+        {
+        }
+#endif
 
         // try to compute a solution if any is queued and this thread is assigned to compute solution
         if (solutionProcessorFlags[processorNumber])
@@ -6191,18 +6203,94 @@ static void signTickVote(const unsigned char* subseed, const unsigned char* publ
 {
     PROFILE_SCOPE();
 
-    signWithRandomK(subseed, publicKey, messageDigest, signature);
-    bool isOk = verifyTickVoteSignature(publicKey, messageDigest, signature, false);
-    while (!isOk)
-    {
-        signWithRandomK(subseed, publicKey, messageDigest, signature);
-        isOk = verifyTickVoteSignature(publicKey, messageDigest, signature, false);
-    }
+    signWithRandomK_incremental(subseed, publicKey, messageDigest, signature, TARGET_TICK_VOTE_SIGNATURE);
+    return;
 }
+
+#if USE_PARALLEL_SIGN_VOTES
+// Racing variant for parallelSignVotes straggler-racing. Same mandatory PoW (signWithRandomK + verify until
+// score < TARGET_TICK_VOTE_SIGNATURE), but writes into the caller's scratch buffer and BAILS the moment
+// `done` is observed set — i.e. another core already produced a valid signature for this same index.
+// Returns true with a valid signature in outSig, or false if it bailed. The pool's processTask() commits
+// outSig into the real slot only if it wins the done-CAS, so concurrent racers on one index never tear the
+// signature and exactly one valid signature is kept. Any valid signature is consensus-acceptable,
+// so racing different random K across cores is safe.
+static bool signTickVoteRacing(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* outSig, volatile int* done)
+{
+    PROFILE_SCOPE();
+
+    if (*done) return false; // skip starting if another core already won
+    signWithRandomK_incremental(subseed, publicKey, messageDigest, outSig, TARGET_TICK_VOTE_SIGNATURE, done);
+    return true;
+}
+#endif
 
 // broadcast all tickVotes from all IDs in this node
 static void broadcastTickVotes()
 {
+#if USE_PARALLEL_SIGN_VOTES
+    // Parallelize the per-own-index signing across the request-processor pool.
+    // Phase 1 (prepare BroadcastTick + per-index K12 hashing) and
+    // Phase 3 (enqueueResponse) stay sequential on the ticker;
+    // Phase 2 (signTickVote) is dispatched as independent tasks.
+    // Each task writes to its own perIndexBroadcastTick[i].signature so workers don't race.
+    static BroadcastTick perIndexBroadcastTick[NUMBER_OF_COMPUTORS];
+    static unsigned char perIndexDigest[NUMBER_OF_COMPUTORS][32];
+
+    const unsigned int n = numberOfOwnComputorIndices;
+
+    // Phase 1: prepare data for each index (sequential, cheap K12 hashes).
+    for (unsigned int i = 0; i < n; i++)
+    {
+        BroadcastTick& bt = perIndexBroadcastTick[i];
+        copyMem(&bt.tick, &etalonTick, sizeof(Tick));
+        bt.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type();
+        bt.tick.epoch = system.epoch;
+        m256i saltedData[2];
+        saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
+        saltedData[1].m256i_u32[0] = resourceTestingDigest;
+        KangarooTwelve(saltedData, 32 + sizeof(resourceTestingDigest), &bt.tick.saltedResourceTestingDigest, sizeof(bt.tick.saltedResourceTestingDigest));
+
+        saltedData[1] = etalonTick.saltedSpectrumDigest;
+        KangarooTwelve64To32(saltedData, &bt.tick.saltedSpectrumDigest);
+
+        saltedData[1] = etalonTick.saltedUniverseDigest;
+        KangarooTwelve64To32(saltedData, &bt.tick.saltedUniverseDigest);
+
+        saltedData[1] = etalonTick.saltedComputerDigest;
+        KangarooTwelve64To32(saltedData, &bt.tick.saltedComputerDigest);
+
+        saltedData[1] = m256i::zero();
+        saltedData[1].m256i_u32[0] = etalonTick.saltedTransactionBodyDigest;
+        KangarooTwelve(saltedData, 32 + sizeof(etalonTick.saltedTransactionBodyDigest), &bt.tick.saltedTransactionBodyDigest, sizeof(bt.tick.saltedTransactionBodyDigest));
+
+        KangarooTwelve(&bt.tick, sizeof(Tick) - SIGNATURE_SIZE, perIndexDigest[i], 32);
+        bt.tick.computorIndex ^= BroadcastTick::type();
+
+        // Wire up this task: sign(subseed, publicKey, digest) -> signature
+        parallelSignVotes.tasks[i].subseed = computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8;
+        parallelSignVotes.tasks[i].publicKey = computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8;
+        parallelSignVotes.tasks[i].messageDigest = perIndexDigest[i];
+        parallelSignVotes.tasks[i].signature = bt.tick.signature;
+    }
+
+    // Phase 2: dispatch all signing work to the request-processor pool.
+    if (n > 0)
+    {
+        parallelSignVotes.dispatchAll((int)n);
+        parallelSignVotes.waitAll();
+    }
+
+    // Phase 3: enqueue broadcast for each prepared+signed BroadcastTick.
+    for (unsigned int i = 0; i < n; i++)
+    {
+        enqueueResponse(NULL, sizeof(BroadcastTick), BroadcastTick::type(), 0, &perIndexBroadcastTick[i]);
+        // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
+        // - if own votes don't get echoed back, that indicates this node has internet/topo issue, and need to reissue vote (F9)
+        // - all votes need to be processed in a single place of code (for further handling)
+        // - all votes are treated equally (own votes and their votes)
+    }
+#else
     BroadcastTick broadcastTick;
     copyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
     for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
@@ -6239,6 +6327,7 @@ static void broadcastTickVotes()
         // - all votes need to be processed in a single place of code (for further handling)
         // - all votes are treated equally (own votes and their votes)
     }
+#endif
 }
 
 // count the votes of current tick (system.tick) and compare it with etalonTick
@@ -7263,6 +7352,9 @@ static bool initialize()
     initAVX512FourQConstants();
 #endif
 
+    // Precalc for vote signing: build G's eccadd-precomp once (needs FourQ constants above)
+    initIncrementalSignG();
+
     if (!initSpecialEntities())
         return false;
 
@@ -7274,6 +7366,12 @@ static bool initialize()
         logToConsole(L"gProfilingDataCollector.init() failed!");
         return false;
     }
+#endif
+
+#if USE_PARALLEL_SIGN_VOTES
+    // Register the per-index worker for the sign-vote task pool.
+    // Request processors pick up tasks during broadcastTickVotes().
+    parallelSignVotes.init(&signTickVoteRacing);
 #endif
 
     setMem(&tickTicks, sizeof(tickTicks), 0);
