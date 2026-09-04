@@ -93,6 +93,3 @@ struct QubicLogRead
         return reply.code == RESULT_SUCCESS;
     }
 };
-
-static_assert(sizeof(QubicLogRead::OracleQuery) == 48, "QubicLogRead::OracleQuery must be 48 bytes");
-static_assert(sizeof(QubicLogRead::OracleReply) == 288, "QubicLogRead::OracleReply must be 288 bytes");

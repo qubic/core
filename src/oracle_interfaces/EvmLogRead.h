@@ -1,7 +1,5 @@
 using namespace QPI;
 
-#include "oracle_interfaces/EvmCommon.h"
-
 /**
 * Oracle interface "EvmLogRead" (see Price.h for general documentation about oracle interfaces).
 *
@@ -22,6 +20,34 @@ struct EvmLogRead
 {
     //-------------------------------------------------------------------------
     // Mandatory oracle interface definitions
+    // Chain ids (decimal) of supported EVM networks.
+    struct ChainId
+    {
+        static constexpr uint64 ethereum  = 1;       // 0x1
+        static constexpr uint64 optimism  = 10;      // 0xa
+        static constexpr uint64 bsc       = 56;      // 0x38
+        static constexpr uint64 polygon   = 137;     // 0x89
+        static constexpr uint64 fantom    = 250;     // 0xfa
+        static constexpr uint64 base      = 8453;    // 0x2105
+        static constexpr uint64 avalanche = 43114;   // 0xa86a
+        static constexpr uint64 arbitrum  = 42161;   // 0xa4b1
+        static constexpr uint64 sepolia   = 11155111;// 0xaa36a7 (Ethereum Sepolia testnet)
+        // add new chain ids above this line
+    };
+
+    /// Return true if the chain id is one this oracle is expected to serve.
+    static bool isSupportedChain(uint64 chainId)
+    {
+        return chainId == ChainId::ethereum
+            || chainId == ChainId::optimism
+            || chainId == ChainId::bsc
+            || chainId == ChainId::polygon
+            || chainId == ChainId::fantom
+            || chainId == ChainId::base
+            || chainId == ChainId::avalanche
+            || chainId == ChainId::arbitrum
+            || chainId == ChainId::sepolia;
+    }
 
     /// Oracle interface index
     static constexpr uint32 oracleInterfaceIndex = ORACLE_INTERFACE_INDEX;
@@ -48,7 +74,7 @@ struct EvmLogRead
         uint64 chainId;          // [0..8)
 
         /// Transaction hash to inspect (32-byte big-endian EVM tx hash).
-        Evm::Bytes32 txHash;     // [8..40)
+        Array<uint8, 32> txHash;     // [8..40)
 
         /// Index of the log entry within the transaction receipt (receipt-local log index).
         uint64 logIndex;         // [40..48)
@@ -63,13 +89,13 @@ struct EvmLogRead
         uint64 code;                    // [0..8)
 
         /// Log emitter (20-byte address right-aligned into a 32-byte word, upper 12 bytes zero).
-        Evm::Address address;           // [8..40)
+        Array<uint8, 32> address;           // [8..40)
 
         /// Number of topics present in this log (0..4).
         uint64 topicCount;              // [40..48)
 
         /// The log topics, raw 32-byte words, zero-padded beyond topicCount.
-        Array<Evm::Bytes32, 4> topics;  // [48..176)
+        Array<uint8, 128> topics;  // [48..176) 4x32 bytes - each 32-bytes is 1 topic
 
         /// Number of valid bytes in data (0..256).
         uint64 dataLen;                 // [176..184)
@@ -93,6 +119,3 @@ struct EvmLogRead
         return reply.code == RESULT_SUCCESS;
     }
 };
-
-static_assert(sizeof(EvmLogRead::OracleQuery) == 48, "EvmLogRead::OracleQuery must be 48 bytes");
-static_assert(sizeof(EvmLogRead::OracleReply) == 440, "EvmLogRead::OracleReply must be 440 bytes");

@@ -1960,7 +1960,7 @@ TEST(EvmLogReadOracle, QueryFee)
 	EXPECT_TRUE(OI::initOracleInterfaces());
 
 	EvmLogRead::OracleQuery query{};
-	query.chainId = OI::Evm::ChainId::ethereum;
+	query.chainId = OI::EvmLogRead::ChainId::ethereum;
 
 	EXPECT_EQ(EvmLogRead::getQueryFee(query), 1000);
 	EXPECT_GE(EvmLogRead::getQueryFee(query), MIN_ORACLE_QUERY_FEE);
@@ -1973,34 +1973,34 @@ TEST(EvmLogReadOracle, QueryFee)
 
 TEST(EvmLogReadOracle, ChainIds)
 {
-	namespace Evm = OI::Evm;
+	using OI::EvmLogRead;
 
 	// values from the chain-id table
-	EXPECT_EQ(Evm::ChainId::ethereum, 1u);
-	EXPECT_EQ(Evm::ChainId::optimism, 10u);
-	EXPECT_EQ(Evm::ChainId::bsc, 56u);
-	EXPECT_EQ(Evm::ChainId::polygon, 137u);
-	EXPECT_EQ(Evm::ChainId::fantom, 250u);
-	EXPECT_EQ(Evm::ChainId::base, 8453u);
-	EXPECT_EQ(Evm::ChainId::avalanche, 43114u);
-	EXPECT_EQ(Evm::ChainId::arbitrum, 42161u);
-	EXPECT_EQ(Evm::ChainId::sepolia, 11155111u);
+	EXPECT_EQ(EvmLogRead::ChainId::ethereum, 1u);
+	EXPECT_EQ(EvmLogRead::ChainId::optimism, 10u);
+	EXPECT_EQ(EvmLogRead::ChainId::bsc, 56u);
+	EXPECT_EQ(EvmLogRead::ChainId::polygon, 137u);
+	EXPECT_EQ(EvmLogRead::ChainId::fantom, 250u);
+	EXPECT_EQ(EvmLogRead::ChainId::base, 8453u);
+	EXPECT_EQ(EvmLogRead::ChainId::avalanche, 43114u);
+	EXPECT_EQ(EvmLogRead::ChainId::arbitrum, 42161u);
+	EXPECT_EQ(EvmLogRead::ChainId::sepolia, 11155111u);
 
 	// every listed chain is recognized
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::ethereum));
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::optimism));
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::bsc));
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::polygon));
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::fantom));
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::base));
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::avalanche));
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::arbitrum));
-	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::sepolia));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::ethereum));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::optimism));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::bsc));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::polygon));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::fantom));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::base));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::avalanche));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::arbitrum));
+	EXPECT_TRUE(EvmLogRead::isSupportedChain(EvmLogRead::ChainId::sepolia));
 
 	// unknown chain ids are rejected
-	EXPECT_FALSE(Evm::isSupportedChain(0));
-	EXPECT_FALSE(Evm::isSupportedChain(2));        // a real but unsupported chain id
-	EXPECT_FALSE(Evm::isSupportedChain(999999));
+	EXPECT_FALSE(EvmLogRead::isSupportedChain(0));
+	EXPECT_FALSE(EvmLogRead::isSupportedChain(2));        // a real but unsupported chain id
+	EXPECT_FALSE(EvmLogRead::isSupportedChain(999999));
 }
 
 // Result codes must have success == 0 and all failure reasons distinct and non-zero.
@@ -2039,7 +2039,7 @@ TEST(EvmLogReadOracle, DeterministicQueryBytes)
 	auto build = [](E::OracleQuery& q)
 	{
 		setMem(&q, sizeof(q), 0);
-		q.chainId = OI::Evm::ChainId::bsc;
+		q.chainId = OI::EvmLogRead::ChainId::bsc;
 		for (QPI::uint64 i = 0; i < 32; ++i)
 			q.txHash.set(i, (QPI::uint8)(i + 1));
 		q.logIndex = 1;
