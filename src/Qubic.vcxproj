@@ -26,7 +26,6 @@
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\qRWA.h" />
     <ClInclude Include="contracts\Qswap.h" />
-    <ClInclude Include="contracts\Qswap_old.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\QDuel.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
@@ -66,15 +65,20 @@
     <ClInclude Include="files\files.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="logging\net_msg_impl.h" />
+    <ClInclude Include="mining\ant_colony\ant_colony.h" />
+    <ClInclude Include="mining\ant_colony\ant_colony_bpp9000.h" />
+    <ClInclude Include="mining\ant_colony\ant_pending_solutions.h" />
     <ClInclude Include="mining\custom_qubic_mining_storage.h" />
     <ClInclude Include="mining\mining.h" />
     <ClInclude Include="mining\score_bpp9000.h" />
     <ClInclude Include="mining\score_common.h" />
     <ClInclude Include="mining\score_engine.h" />
     <ClInclude Include="mining\task_file.h" />
+    <ClInclude Include="mining\trit_pack.h" />
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />
+    <ClInclude Include="network_messages\ant_colony_message.h" />
     <ClInclude Include="network_messages\network_message_type.h" />
     <ClInclude Include="network_messages\assets.h" />
     <ClInclude Include="network_messages\broadcast_message.h" />
@@ -93,6 +97,7 @@
     <ClInclude Include="network_messages\system_info.h" />
     <ClInclude Include="network_messages\tick.h" />
     <ClInclude Include="network_messages\transactions.h" />
+    <ClInclude Include="optimizations\opt_parallel_sign_votes.h" />
     <ClInclude Include="oracle_core\core_om_network_messages.h" />
     <ClInclude Include="oracle_core\net_msg_impl.h" />
     <ClInclude Include="oracle_core\oracle_engine.h" />

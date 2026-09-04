@@ -18,20 +18,9 @@ enum ScoreStatus
     ScoreStatusTaskNotLoaded,
 };
 
-template <unsigned long long solutionBufferCount>
-struct ScoreFunction
+namespace score_engine
 {
-    score_engine::ScoreEngine<
-        score_engine::NeuraxonParams<
-        NEURAXON_NUMBER_OF_INPUT_NEURONS,
-        NEURAXON_NUMBER_OF_OUTPUT_NEURONS,
-        NEURAXON_NUMBER_OF_TICKS,
-        NEURAXON_NUMBER_OF_NEIGHBORS,
-        NEURAXON_POPULATION_THRESHOLD,
-        NEURAXON_NUMBER_OF_MUTATIONS,
-        NEURAXON_SOLUTION_THRESHOLD_DEFAULT>,
-
-        score_engine::Bpp9000Params<
+    using Bpp9000ParamsT = Bpp9000Params<
         BPP9000_NUMBER_OF_INPUT_NEURONS,
         BPP9000_NUMBER_OF_OUTPUT_NEURONS,
         BPP9000_SEQUENCE_LENGTH,
@@ -40,9 +29,37 @@ struct ScoreFunction
         BPP9000_NUMBER_OF_NEIGHBORS,
         BPP9000_POPULATION_THRESHOLD,
         BPP9000_NUMBER_OF_MUTATIONS,
-        BPP9000_SOLUTION_THRESHOLD_DEFAULT>
-    > _computeBuffer[solutionBufferCount];
+        BPP9000_SOLUTION_THRESHOLD_DEFAULT>;
 
+    using NeuraxonParamsT = NeuraxonParams<
+        NEURAXON_NUMBER_OF_INPUT_NEURONS,
+        NEURAXON_NUMBER_OF_OUTPUT_NEURONS,
+        NEURAXON_NUMBER_OF_TICKS,
+        NEURAXON_NUMBER_OF_NEIGHBORS,
+        NEURAXON_POPULATION_THRESHOLD,
+        NEURAXON_NUMBER_OF_MUTATIONS,
+        NEURAXON_SOLUTION_THRESHOLD_DEFAULT>;
+
+    // The bpp9000 scorer the ant colony branches on; exposes ANN (the inheritable per-neuron LUT).
+    using ScoreBpp9000T = ScoreBpp9000<Bpp9000ParamsT>;
+
+    using ScoreEngineT = ScoreEngine<NeuraxonParamsT, Bpp9000ParamsT>;
+}
+
+template <unsigned long long solutionBufferCount>
+struct ScoreFunction
+{
+private:
+    // The engine scratch buffers and the locks guarding them. Private on purpose: a work function run
+    // by the task queue cannot reach them, so it cannot take a slot lock and then call a method that
+    // takes the same one. Every route into the engine locks exactly once, inside this class.
+    score_engine::ScoreEngineT _computeBuffer[solutionBufferCount];
+    volatile char solutionEngineLock[solutionBufferCount];
+
+    // Scratch for the ant root derivation, one per engine slot and covered by that slot's own lock
+    score_engine::ScoreBpp9000T::ANN _antRootScratch[solutionBufferCount];
+
+public:
     volatile char random2PoolLock;
     unsigned char state[score_engine::STATE_SIZE];
     unsigned char externalPoolVec[score_engine::POOL_VEC_PADDING_SIZE];
@@ -64,8 +81,6 @@ struct ScoreFunction
 
     m256i currentRandomSeed;
 
-    volatile char solutionEngineLock[solutionBufferCount];
-
 #if USE_SCORE_CACHE
     volatile char scoreCacheLock;
     ScoreCache<SCORE_CACHE_SIZE, SCORE_CACHE_COLLISION_RETRIES> scoreCache;
@@ -81,9 +96,8 @@ struct ScoreFunction
         }
         currentRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
 
-        ACQUIRE(random2PoolLock);
+        LockGuard guard(random2PoolLock);
         copyMem(poolVec, externalPoolVec, score_engine::POOL_VEC_PADDING_SIZE);
-        RELEASE(random2PoolLock);
     }
 
     // Load the task blocks into every compute buffer; returns false if any leaf rejects them.
@@ -136,12 +150,11 @@ struct ScoreFunction
     void saveScoreCache(int epoch, CHAR16* directory = NULL)
     {
 #if USE_SCORE_CACHE
-        ACQUIRE(scoreCacheLock);
+        LockGuard guard(scoreCacheLock);
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
         scoreCache.save(SCORE_CACHE_FILE_NAME, directory);
-        RELEASE(scoreCacheLock);
 #endif
     }
 
@@ -150,12 +163,13 @@ struct ScoreFunction
     {
         bool success = true;
 #if USE_SCORE_CACHE
-        ACQUIRE(scoreCacheLock);
-        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
-        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
-        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
-        success = scoreCache.load(SCORE_CACHE_FILE_NAME);
-        RELEASE(scoreCacheLock);
+        {
+            LockGuard guard(scoreCacheLock);
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
+            success = scoreCache.load(SCORE_CACHE_FILE_NAME);
+        }
 #endif
         return success;
     }
@@ -183,20 +197,54 @@ struct ScoreFunction
 
     m256i getLastOutput(const unsigned long long processor_Number)
     {
-        ACQUIRE(solutionEngineLock[processor_Number]);
+        LockGuard guard(solutionEngineLock[processor_Number]);
+        return _computeBuffer[processor_Number].getLastOutput();
+    }
 
-        m256i result = _computeBuffer[processor_Number].getLastOutput();
+    // Ant colony main score function
+    // score a child by inheriting its parent's network and walking it with the child's own seeds.
+    // parentAnn == nullptr means the parent is the epoch root, which is derived here from the
+    // epoch-start spectrum digest (currentRandomSeed) and is identical for every identity
+    // Returns INVALID_SCORE_VALUE for a non-canonical nonce, in which case outChildAnn is not written
+    // bestANN would still hold the previous call's network, and committing that would put one node's
+    // stale bytes into childAnnHash.
+    unsigned int computeAntChildScore(
+        const unsigned long long processor_Number,
+        const score_engine::ScoreBpp9000T::ANN* parentAnn,
+        const m256i& publicKey,
+        const m256i& nonce,
+        const m256i& anchorDigest,
+        score_engine::ScoreBpp9000T::ANN& outChildAnn)
+    {
+        const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
+        LockGuard guard(solutionEngineLock[solutionBufIdx]);
+        score_engine::ScoreEngineT& engine = _computeBuffer[solutionBufIdx];
 
-        RELEASE(solutionEngineLock[processor_Number]);
-        return result;
+        // Derived into this slot's scratch rather than the engine's own buffer: deriveRootANN() uses
+        // currentANN as working space
+        const score_engine::ScoreBpp9000T::ANN* parent = parentAnn;
+        // Depth 1, the shared epoch root every identity starts from
+        if (parent == nullptr)
+        {
+            engine.deriveAntRootANN(currentRandomSeed.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
+            parent = &_antRootScratch[solutionBufIdx];
+        }
+
+        const unsigned int childScore = engine.computeAntScoreFromParent(
+            *parent, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
+        if (childScore == score_engine::INVALID_SCORE_VALUE)
+        {
+            return childScore;
+        }
+        engine.getAntBestANN(outChildAnn);
+        return childScore;
     }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {
         PROFILE_SCOPE();
 
-        // TODO: When neuraxon's going, this check need to be modified
-        if (!score_engine::isCanonicalBpp9000Nonce(nonce.m256i_u8))
+        if (!score_engine::ScoreEngineT::isCanonicalStandaloneNonce(nonce.m256i_u8))
         {
             return score_engine::INVALID_SCORE_VALUE;
         }
@@ -218,11 +266,11 @@ struct ScoreFunction
 #endif
 
         const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
-        ACQUIRE(solutionEngineLock[solutionBufIdx]);
-
-        score = computeScore(solutionBufIdx, publicKey, nonce);
-
-        RELEASE(solutionEngineLock[solutionBufIdx]);
+        {
+            // Scoped so the cache write below happens with the engine slot released.
+            LockGuard guard(solutionEngineLock[solutionBufIdx]);
+            score = computeScore(solutionBufIdx, publicKey, nonce);
+        }
 #if USE_SCORE_CACHE
         scoreCache.addEntry(publicKey, miningSeed, nonce, scoreCacheIndex, score);
 #endif
@@ -237,107 +285,144 @@ struct ScoreFunction
     unsigned long long stackSize = 0;
 #endif
 
-    // Multithreaded solutions verification:
-    // This module mainly serve tick processor in qubic core node, thus the queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
-    // for future use for somewhere else, you can only increase the size.
+    // Multithreaded solutions verification.
+    //
+    // A task is a (work function, payload) pair rather than a fixed tuple, so different kinds of
+    // scoring work can share one queue and one drain: the queue arbitrates nothing except who runs
+    // next. The payload is COPIED in, so the caller may reuse or discard its buffer immediately - a
+    // pointer here would make every caller responsible for keeping data alive across a drain.
+    //
+    // The work function is responsible for taking whatever locks it needs, including
+    // solutionEngineLock. The queue must not take it: solutionEngineLock is a non-reentrant spinlock
+    // and operator() takes it itself, so a queue that pre-acquired would deadlock any work function
+    // that reuses operator().
+    typedef void (*WorkFunc)(unsigned long long processorNumber, void* payload);
+
+    static constexpr unsigned int TASK_PAYLOAD_MAX = 128;
+
+private:
+    static constexpr unsigned int TASK_QUEUE_CAPACITY = NUMBER_OF_TRANSACTIONS_PER_TICK;
+
+    struct Task
+    {
+        WorkFunc func;
+        // 8-byte aligned: m256i is a plain union accessed with unaligned intrinsics, so it needs no more.
+        unsigned long long payload[TASK_PAYLOAD_MAX / sizeof(unsigned long long)];
+    };
 
     volatile char taskQueueLock = 0;
-    struct
-    {
-        m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
-        m256i miningSeed[NUMBER_OF_TRANSACTIONS_PER_TICK];
-        m256i nonce[NUMBER_OF_TRANSACTIONS_PER_TICK];
-    } taskQueue;
+    Task taskQueue[TASK_QUEUE_CAPACITY];
     unsigned int _nTask;
     unsigned int _nProcessing;
     unsigned int _nFinished;
-    bool _nIsTaskQueueReady;
+    volatile bool _nIsTaskQueueReady;
 
+public:
     void resetTaskQueue()
     {
-        ACQUIRE(taskQueueLock);
+        LockGuard guard(taskQueueLock);
         _nTask = 0;
         _nProcessing = 0;
         _nFinished = 0;
         _nIsTaskQueueReady = false;
-        RELEASE(taskQueueLock);
     }
 
-    // add task to the queue
-    // queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
-    void addTask(m256i publicKey, m256i miningSeed, m256i nonce)
+    // Copies size bytes of data. Returns false if the queue is full or the payload does not fit.
+    bool addTask(WorkFunc func, const void* data, unsigned int size)
     {
-        ACQUIRE(taskQueueLock);
-        if (_nTask < NUMBER_OF_TRANSACTIONS_PER_TICK)
-        {
-            unsigned int index = _nTask++;
-            taskQueue.publicKey[index] = publicKey;
-            taskQueue.miningSeed[index] = miningSeed;
-            taskQueue.nonce[index] = nonce;
-        }
-        RELEASE(taskQueueLock);
-    }
-
-    void startProcessTaskQueue()
-    {
-        ACQUIRE(taskQueueLock);
-        _nIsTaskQueueReady = true;
-        RELEASE(taskQueueLock);
-    }
-
-    void stopProcessTaskQueue()
-    {
-        ACQUIRE(taskQueueLock);
-        _nIsTaskQueueReady = false;
-        RELEASE(taskQueueLock);
-    }
-
-    // get a task, can call on any thread
-    bool getTask(m256i* publicKey, m256i* miningSeed, m256i* nonce)
-    {
-        if (!_nIsTaskQueueReady)
+        if (size > TASK_PAYLOAD_MAX)
         {
             return false;
         }
-        bool result = false;
-        ACQUIRE(taskQueueLock);
-        if (_nProcessing < _nTask)
+
+        LockGuard guard(taskQueueLock);
+        if (_nTask >= TASK_QUEUE_CAPACITY)
         {
-            unsigned int index = _nProcessing++;
-            *publicKey = taskQueue.publicKey[index];
-            *miningSeed = taskQueue.miningSeed[index];
-            *nonce = taskQueue.nonce[index];
-            result = true;
+            return false;
         }
-        else
+        Task& t = taskQueue[_nTask++];
+        t.func = func;
+        copyMem(t.payload, data, size);
+        return true;
+    }
+
+    // Outcome of one dispatch attempt, so a caller waiting for the batch does not need a second
+    // lock acquisition just to ask whether it is over.
+    enum TaskDispatchResult
+    {
+        TaskRan,         // a task was taken and executed
+        TaskNonePending, // nothing left to take, but tasks are still running elsewhere
+        TaskAllDone      // every queued task has finished
+    };
+
+    // Run one task if any is pending. Called from request processors' idle path and from the drain.
+    TaskDispatchResult tryProcessOneTask(unsigned long long processorNumber)
+    {
+        if (!_nIsTaskQueueReady)
         {
-            result = false;
+            // No thing to process
+            return TaskNonePending;
         }
-        RELEASE(taskQueueLock);
+
+        WorkFunc func = nullptr;
+        unsigned long long payload[TASK_PAYLOAD_MAX / sizeof(unsigned long long)];
+        TaskDispatchResult result = TaskNonePending;
+
+        // The task itself must run with the lock released
+        {
+            LockGuard guard(taskQueueLock);
+            if (_nFinished >= _nTask)
+            {
+                result = TaskAllDone;
+            }
+            else if (_nIsTaskQueueReady && _nProcessing < _nTask)
+            {
+                const Task& t = taskQueue[_nProcessing++];
+                func = t.func;
+                copyMem(payload, t.payload, TASK_PAYLOAD_MAX);
+                result = TaskRan;
+            }
+        }
+
+        if (func == nullptr)
+        {
+            return result;
+        }
+        func(processorNumber, payload);
+
+        {
+            LockGuard guard(taskQueueLock);
+            _nFinished++;
+        }
         return result;
     }
-    void finishTask()
-    {
-        ACQUIRE(taskQueueLock);
-        _nFinished++;
-        RELEASE(taskQueueLock);
-    }
 
-    bool isTaskQueueProcessed()
+    // Open the queue and work it down. The caller participates rather than spinning idle, and returns
+    // only once every task has finished - including those running on other threads
+    void runUntilDone(unsigned long long processorNumber)
     {
-        return _nFinished == _nTask;
-    }
-
-    void tryProcessSolution(unsigned long long processorNumber)
-    {
-        m256i publicKey;
-        m256i miningSeed;
-        m256i nonce;
-        bool res = this->getTask(&publicKey, &miningSeed, &nonce);
-        if (res)
         {
-            (*this)(processorNumber, publicKey, miningSeed, nonce);
-            this->finishTask();
+            LockGuard guard(taskQueueLock);
+            _nIsTaskQueueReady = true;
+        }
+
+        // Wait for task queue finish
+        for (;;)
+        {
+            const TaskDispatchResult result = tryProcessOneTask(processorNumber);
+            if (result == TaskAllDone)
+            {
+                break;
+            }
+            if (result == TaskNonePending)
+            {
+                _mm_pause();
+            }
+        }
+
+        {
+            LockGuard guard(taskQueueLock);
+            _nIsTaskQueueReady = false;
         }
     }
 };
