@@ -9567,6 +9567,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         appendNumber(stageMsg, contractLockMask, FALSE);
                         appendText(stageMsg, L" vm=");
                         appendNumber(stageMsg, isVirtualMachine, FALSE);
+                        appendText(stageMsg, L" cpRun=");
+                        if (nContractProcessorIDs > 0)
+                        {
+                            appendNumber(stageMsg, (unsigned long long)processors[computingProcessorNumber].runCount(), FALSE);
+                        }
+                        else
+                        {
+                            appendText(stageMsg, L"n/a");
+                        }
                         if (contractDispatchLostReported)
                         {
                             appendText(stageMsg, L" [DISPATCH LOST - RESTART NODE]");
