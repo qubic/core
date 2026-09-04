@@ -8229,6 +8229,38 @@ static void logHealthStatus()
     }
     logToConsole(message);
 
+    setText(message, L"Contract processor: state ");
+    appendNumber(message, contractProcessorState, FALSE);
+    appendText(message, L", dispatch ");
+    appendErrorStatus(message, contractProcessorLastDispatchStatus);
+    appendText(message, L", run ");
+    int contractSlotIndex = -1;
+    for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
+    {
+        if (processors[i].type == Processor::ContractProcessor)
+        {
+            contractSlotIndex = i;
+            break;
+        }
+    }
+    if (contractSlotIndex >= 0)
+    {
+        appendNumber(message, (unsigned long long)processors[contractSlotIndex].runCount(), FALSE);
+        appendText(message, L", return ");
+        appendNumber(message, (unsigned long long)processors[contractSlotIndex].returnCount(), FALSE);
+    }
+    else
+    {
+        appendText(message, L"n/a, return n/a");
+    }
+    appendText(message, L", enter ");
+    appendNumber(message, (unsigned long long)contractProcEntries, FALSE);
+    appendText(message, L", exit ");
+    appendNumber(message, (unsigned long long)contractProcExits, FALSE);
+    appendText(message, L", callback ");
+    appendNumber(message, (unsigned long long)contractProcCallbacks, FALSE);
+    logToConsole(message);
+
     // Print used function call stack size
     setText(message, L"Function call stack usage: ");
     unsigned int maxStackUsageTick = 0;
@@ -9513,7 +9545,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     const unsigned long long tickProcStalledSeconds = (tickProcStallStartTick && frequency)
                         ? ((curTimeTick - tickProcStallStartTick) / frequency) : 0;
 
-                    CHAR16 stageMsg[512];
+                    CHAR16 stageMsg[768];
                     setText(stageMsg, L"[stage] main=");
                     appendNumber(stageMsg, gMainStage, FALSE);
                     appendText(stageMsg, L" detail=");
@@ -9571,10 +9603,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         if (nContractProcessorIDs > 0)
                         {
                             appendNumber(stageMsg, (unsigned long long)processors[computingProcessorNumber].runCount(), FALSE);
+                            appendText(stageMsg, L" cpRet=");
+                            appendNumber(stageMsg, (unsigned long long)processors[computingProcessorNumber].returnCount(), FALSE);
                         }
                         else
                         {
-                            appendText(stageMsg, L"n/a");
+                            appendText(stageMsg, L"n/a cpRet=n/a");
                         }
                         if (contractDispatchLostReported)
                         {

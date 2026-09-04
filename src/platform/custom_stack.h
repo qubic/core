@@ -24,6 +24,7 @@ public:
         setupFuncToCall = nullptr;
         setupDataToPass = nullptr;
         runFunctionCount = 0;
+        returnFunctionCount = 0;
     }
 
     // Allocate memory, return if successful
@@ -80,12 +81,19 @@ public:
         return runFunctionCount;
     }
 
+    // Number of times the call inside runFunction() has returned on this instance
+    long long returnCount() const
+    {
+        return returnFunctionCount;
+    }
+
 private:
     char* stackTop;
     char* stackBottom;
     CustomStackProcessorFunc setupFuncToCall;
     void* setupDataToPass;
     volatile long long runFunctionCount;
+    volatile long long returnFunctionCount;
 };
 
 extern "C" void __customStackSetupAndRunFunc(void* newStackTop, CustomStackProcessorFunc funcToCall, void* dataToPass);
@@ -102,5 +110,7 @@ void CustomStack::runFunction(void* data)
     ASSERT(me->stackTop > me->stackBottom);
 
     __customStackSetupAndRunFunc(me->stackTop, me->setupFuncToCall, me->setupDataToPass);
+
+    _InterlockedIncrement64(&me->returnFunctionCount);
 }
 
