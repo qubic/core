@@ -147,6 +147,7 @@ static constexpr unsigned long long TICKPROC_STALL_WARN_SECS = 60;
 static constexpr unsigned int EPOCH_START_VERBOSE_TICKS = 10;
 static constexpr unsigned long long EPOCH_START_VERBOSE_SECS = 120;
 static constexpr unsigned long long MAIN_STALL_TEST_SECS = 10;
+static constexpr unsigned long long CONTRACT_DISPATCH_LOST_SECS = 5;
 static constexpr unsigned int MAIN_STAGE_FREEZE_TEST = 0x5555;
 static constexpr unsigned int MAIN_DETAIL_FREEZE_TEST = 0x0F0F;
 
@@ -268,6 +269,9 @@ static volatile long long contractProcEntries = 0;
 static volatile long long contractProcExits = 0;
 static volatile long long contractProcCallbacks = 0;
 static volatile unsigned int contractProcPhaseSeen = 0;
+static unsigned long long contractDispatchTsc = 0;
+static long long contractDispatchEntries = 0;
+static bool contractDispatchLostReported = false;
 static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
 static unsigned char contractProcessorPostIncomingTransferType = 0;
@@ -9041,6 +9045,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (contractProcessorState == 1)
                 {
                     contractProcessorState = 2;
+                    contractDispatchTsc = curTimeTick;
+                    contractDispatchEntries = contractProcEntries;
+                    contractDispatchLostReported = false;
                     const EFI_STATUS contractEventStatus = createEvent(EVT_NOTIFY_SIGNAL, TPL_NOTIFY, contractProcessorShutdownCallback, NULL, &contractProcessorEvent);
                     contractProcessorLastDispatchStatus = contractEventStatus;
                     if (contractEventStatus)
@@ -9064,6 +9071,28 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             logToConsole(message);
                         }
                     }
+                }
+                else if (!contractDispatchLostReported
+                    && contractProcessorState == 2
+                    && contractProcEntries == contractProcExits
+                    && contractProcEntries == contractDispatchEntries
+                    && frequency
+                    && (curTimeTick - contractDispatchTsc) / frequency >= CONTRACT_DISPATCH_LOST_SECS)
+                {
+                    contractDispatchLostReported = true;
+                    setText(message, L"FATAL: contract processor was launched but never started. Node is stuck, restart it.");
+                    logToConsole(message);
+                    setText(message, L"  StartupThisAP status ");
+                    appendErrorStatus(message, contractProcessorLastDispatchStatus);
+                    appendText(message, L", phase ");
+                    appendNumber(message, contractProcessorPhase, FALSE);
+                    appendText(message, L", entries ");
+                    appendNumber(message, (unsigned long long)contractProcEntries, FALSE);
+                    appendText(message, L", exits ");
+                    appendNumber(message, (unsigned long long)contractProcExits, FALSE);
+                    appendText(message, L", callbacks ");
+                    appendNumber(message, (unsigned long long)contractProcCallbacks, FALSE);
+                    logToConsole(message);
                 }
                 /*if (!computationProcessorState && (computation || __computation))
                 {
@@ -9538,6 +9567,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         appendNumber(stageMsg, contractLockMask, FALSE);
                         appendText(stageMsg, L" vm=");
                         appendNumber(stageMsg, isVirtualMachine, FALSE);
+                        if (contractDispatchLostReported)
+                        {
+                            appendText(stageMsg, L" [DISPATCH LOST - RESTART NODE]");
+                        }
                     }
                     appendText(stageMsg, L"\r\n");
                     outputStringToConsole(stageMsg);
