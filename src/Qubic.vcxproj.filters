@@ -442,6 +442,14 @@
     <ClInclude Include="oc_interfaces\Mock.h">
       <Filter>oc_interfaces</Filter>
     </ClInclude>
+    <ClInclude Include="oracle_interfaces\EvmLogRead.h">
+      <Filter>oracle_interfaces</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_interfaces\EvmCommon.h">
+      <Filter>oracle_interfaces</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_interfaces\QubicLogRead.h">
+      <Filter>oracle_interfaces</Filter>
     <ClInclude Include="optimizations\opt_parallel_sign_votes.h">
       <Filter>optimizations</Filter>
     </ClInclude>
