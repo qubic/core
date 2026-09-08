@@ -4296,7 +4296,7 @@ static void processTick(unsigned long long processorNumber)
             gAntColony.recordAnchorDigest(system.tick, anchorDigest);
         }
     }
-    else if (system.tick >= REVENUE_EMPTY_TICK_FIX_TICK)
+    else
     {
         // No tick data for this tick. Score it with a zero observation so that the centered tick at
         // tickOffset - REVENUE_HALF_WINDOW is finalized and the ring slot holds this tick's own data.
