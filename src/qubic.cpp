@@ -1,5 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
+// #define NO_QPAY
+
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
 
