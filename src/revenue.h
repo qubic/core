@@ -386,6 +386,10 @@ static_assert((unsigned long long)REVENUE_IPC * REVENUE_SCALE
 static constexpr unsigned int REVENUE_DOGE_K = 2;
 static constexpr unsigned int REVENUE_CONTRACT_DIMS = contractCount;
 static constexpr unsigned int REVENUE_TX_DIM = NUMBER_OF_COMPUTORS + REVENUE_CONTRACT_DIMS + 1;
+
+// Empty ticks are scored from this tick on.
+static constexpr unsigned int REVENUE_EMPTY_TICK_FIX_TICK = 78750000;
+
 static constexpr unsigned int m_SRC_COMPUTOR = 1;
 static constexpr unsigned int m_CONTRACT = 1;
 static constexpr unsigned int m_TRANSFER = 1;

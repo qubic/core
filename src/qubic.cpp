@@ -4296,6 +4296,17 @@ static void processTick(unsigned long long processorNumber)
             gAntColony.recordAnchorDigest(system.tick, anchorDigest);
         }
     }
+    else if (system.tick >= REVENUE_EMPTY_TICK_FIX_TICK)
+    {
+        // No tick data for this tick. Score it with a zero observation so that the centered tick at
+        // tickOffset - REVENUE_HALF_WINDOW is finalized and the ring slot holds this tick's own data.
+        const unsigned int tickOffset = system.tick - system.initialTick;
+        if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH)
+        {
+            setMem(gTxObservation, sizeof(gTxObservation), 0);
+            revenueOnTick(tickOffset, gTxObservation);
+        }
+    }
 
     // Resend own oracle queries for share validation if they were scheduled for but not included in this tick.
     int currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, /*currentQueryIndex=*/-1, system.tick);
