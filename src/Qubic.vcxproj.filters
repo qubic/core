@@ -453,6 +453,7 @@
     </ClInclude>
     <ClInclude Include="oracle_interfaces\QubicLogRead.h">
       <Filter>oracle_interfaces</Filter>
+	</ClInclude>
     <ClInclude Include="optimizations\opt_parallel_sign_votes.h">
       <Filter>optimizations</Filter>
     </ClInclude>
