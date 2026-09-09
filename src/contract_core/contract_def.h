@@ -297,8 +297,6 @@
 #define CONTRACT_STATE2_TYPE WOLFPACK2
 #include "contracts/GGWP.h"
 
-#ifndef NO_QPAY
-
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -308,8 +306,6 @@
 #define CONTRACT_STATE_TYPE QPAYHUB
 #define CONTRACT_STATE2_TYPE QPAYHUB2
 #include "contracts/QPayhub.h"
-
-#endif
 
 
 
@@ -428,9 +424,7 @@ constexpr struct ContractDescription
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
-#ifndef NO_QPAY
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -563,9 +557,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
-#ifndef NO_QPAY
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPAYHUB);
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
