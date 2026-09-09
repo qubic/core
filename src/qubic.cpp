@@ -1,5 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
+// #define NO_QPAY
+
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
 
@@ -4292,6 +4294,17 @@ static void processTick(unsigned long long processorNumber)
             m256i anchorDigest;
             computeAntAnchorDigest(system.tick, anchorTxDigest, anchorDigest);
             gAntColony.recordAnchorDigest(system.tick, anchorDigest);
+        }
+    }
+    else
+    {
+        // No tick data for this tick. Score it with a zero observation so that the centered tick at
+        // tickOffset - REVENUE_HALF_WINDOW is finalized and the ring slot holds this tick's own data.
+        const unsigned int tickOffset = system.tick - system.initialTick;
+        if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH)
+        {
+            setMem(gTxObservation, sizeof(gTxObservation), 0);
+            revenueOnTick(tickOffset, gTxObservation);
         }
     }
 

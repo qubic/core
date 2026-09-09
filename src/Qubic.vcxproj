@@ -43,6 +43,7 @@
     <ClInclude Include="contracts\QBAY.h" />
     <ClInclude Include="contracts\Nostromo.h" />
     <ClInclude Include="contracts\QRaffle.h" />
+    <ClInclude Include="contracts\QPayhub.h" />
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
     <ClInclude Include="contracts\Qusino.h" />
@@ -105,6 +106,8 @@
     <ClInclude Include="oracle_core\oracle_transactions.h" />
     <ClInclude Include="oracle_core\snapshot_files.h" />
     <ClInclude Include="oracle_interfaces\DogeShareValidation.h" />
+    <ClInclude Include="oracle_interfaces\EvmCommon.h" />
+    <ClInclude Include="oracle_interfaces\EvmLogRead.h" />
     <ClInclude Include="oracle_interfaces\Mock.h" />
     <ClInclude Include="oracle_interfaces\Price.h" />
     <ClInclude Include="oc_core\core_oc_network_messages.h" />
@@ -113,6 +116,7 @@
     <ClInclude Include="oc_core\oc_transactions.h" />
     <ClInclude Include="oc_core\snapshot_files.h" />
     <ClInclude Include="oc_interfaces\Mock.h" />
+    <ClInclude Include="oracle_interfaces\QubicLogRead.h" />
     <ClInclude Include="platform\assert.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
