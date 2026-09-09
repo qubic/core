@@ -102,7 +102,7 @@ constexpr uint8 QUSINO_GAME_ID_COINFLIP = 0;
 // RANDOM fees). A loss tops bonusAmount back up. STAR bets never touch Qu or
 // bonusAmount: STAR isn't redeemable for Qubic, so a win mints STAR and a loss
 // burns it, like a vote fee.
-constexpr uint64 QUSINO_COINFLIP_MIN_BET = 1000000ULL;                          // min bet, in QSC or STAR units
+constexpr uint64 QUSINO_COINFLIP_MIN_BET = 1000ULL;                             // min bet, in QSC or STAR units
 constexpr uint64 QUSINO_COINFLIP_PAYOUT_PERCENT = 196ULL;                       // 1.96x on win == ~2% house edge, placeholder
 
 // bonusAmount is shared by the daily-claim-bonus feature and Coin Flip's Qu
