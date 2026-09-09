@@ -1,5 +1,7 @@
 using namespace QPI;
 
+constexpr sint64 QX_ADDITIONAL_FEE = 100000;
+
 struct QX2
 {
 };
@@ -539,15 +541,29 @@ protected:
 
 	PUBLIC_PROCEDURE(AddToAskOrder)
 	{
-		if (qpi.invocationReward() > 0)
+		if (qpi.invocationReward() < QX_ADDITIONAL_FEE)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.addedNumberOfShares = 0;
+			return;
+		}
+		else
+		{
+			if (qpi.invocationReward() > QX_ADDITIONAL_FEE)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - QX_ADDITIONAL_FEE);
+			}
 		}
 
 		if (input.price <= 0 || input.price >= MAX_AMOUNT
 			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
 			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT)
 		{
+			qpi.transfer(qpi.invocator(), QX_ADDITIONAL_FEE);
 			output.addedNumberOfShares = 0;
 		}
 		else
@@ -557,10 +573,13 @@ protected:
 			CALL(_NumberOfReservedShares, state.mut()._numberOfReservedShares_input, state.mut()._numberOfReservedShares_output);
 			if (qpi.numberOfPossessedShares(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) - state.get()._numberOfReservedShares_output.numberOfShares < input.numberOfShares)
 			{
+				qpi.transfer(qpi.invocator(), QX_ADDITIONAL_FEE);
 				output.addedNumberOfShares = 0;
 			}
 			else
 			{
+				qpi.burn(QX_ADDITIONAL_FEE);
+				state.mut()._burnedAmount += QX_ADDITIONAL_FEE;
 				output.addedNumberOfShares = input.numberOfShares;
 
 				state.mut()._issuerAndAssetName = input.issuer;
@@ -723,7 +742,7 @@ protected:
 		if (input.price <= 0  || input.price >= MAX_AMOUNT
 			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
 			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT
-			|| qpi.invocationReward() < smul(input.price, input.numberOfShares))
+			|| qpi.invocationReward() < sadd(smul(input.price, input.numberOfShares), QX_ADDITIONAL_FEE))
 		{
 			output.addedNumberOfShares = 0;
 
@@ -734,11 +753,13 @@ protected:
 		}
 		else
 		{
-			if (qpi.invocationReward() > smul(input.price, input.numberOfShares))
+			if (qpi.invocationReward() > sadd(smul(input.price, input.numberOfShares), QX_ADDITIONAL_FEE))
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - smul(input.price, input.numberOfShares));
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - smul(input.price, input.numberOfShares) - QX_ADDITIONAL_FEE);
 			}
 
+			qpi.burn(QX_ADDITIONAL_FEE);
+			state.mut()._burnedAmount += QX_ADDITIONAL_FEE;
 			output.addedNumberOfShares = input.numberOfShares;
 
 			state.mut()._issuerAndAssetName = input.issuer;
@@ -905,15 +926,29 @@ protected:
 
 	PUBLIC_PROCEDURE(RemoveFromAskOrder)
 	{
-		if (qpi.invocationReward() > 0)
+		if (qpi.invocationReward() < QX_ADDITIONAL_FEE)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.removedNumberOfShares = 0;
+			return;
+		}
+		else
+		{
+			if (qpi.invocationReward() > QX_ADDITIONAL_FEE)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - QX_ADDITIONAL_FEE);
+			}
 		}
 
 		if (input.price <= 0 || input.price >= MAX_AMOUNT
 			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
 			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT)
 		{
+			qpi.transfer(qpi.invocator(), QX_ADDITIONAL_FEE);
 			output.removedNumberOfShares = 0;
 		}
 		else
@@ -980,6 +1015,8 @@ protected:
 				state.mut()._elementIndex = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex);
 			}
 
+			qpi.burn(QX_ADDITIONAL_FEE);
+			state.mut()._burnedAmount += QX_ADDITIONAL_FEE;
 			if (state.get()._elementIndex == NULL_INDEX) // No other ask orders for the same asset at the same price found
 			{
 				output.removedNumberOfShares = 0;
@@ -993,15 +1030,29 @@ protected:
 
 	PUBLIC_PROCEDURE(RemoveFromBidOrder)
 	{
-		if (qpi.invocationReward() > 0)
+		if (qpi.invocationReward() < QX_ADDITIONAL_FEE)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.removedNumberOfShares = 0;
+			return;
+		}
+		else
+		{
+			if (qpi.invocationReward() > QX_ADDITIONAL_FEE)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - QX_ADDITIONAL_FEE);
+			}
 		}
 
 		if (input.price <= 0 || input.price >= MAX_AMOUNT
 			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
 			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT)
 		{
+			qpi.transfer(qpi.invocator(), QX_ADDITIONAL_FEE);
 			output.removedNumberOfShares = 0;
 		}
 		else
@@ -1068,6 +1119,8 @@ protected:
 				state.mut()._elementIndex = state.get()._entityOrders.prevElementIndex(state.get()._elementIndex);
 			}
 
+			qpi.burn(QX_ADDITIONAL_FEE);
+			state.mut()._burnedAmount += QX_ADDITIONAL_FEE;
 			if (state.get()._elementIndex == NULL_INDEX) // No other bid orders for the same asset at the same price found
 			{
 				output.removedNumberOfShares = 0;
