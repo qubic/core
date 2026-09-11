@@ -7343,9 +7343,6 @@ static bool initialize()
 {
     enableAVX();
 
-#if defined (__AVX512F__) && !GENERIC_K12
-    initAVX512KangarooTwelveConstants();
-#endif
 #if defined (__AVX512F__)
     initAVX512FourQConstants();
 #endif
@@ -8502,12 +8499,7 @@ static void processKeyPresses()
             logToConsole(message);
 #endif
 
-            setText(message, L"Average K12 duration for  ");
-#if defined (__AVX512F__) && !GENERIC_K12
-            appendText(message, L"AVX512 implementation is ");
-#else
-            appendText(message, L"Generic implementation is ");
-#endif
+            setText(message, L"Average K12 duration of state digests is ");
             appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
             logToConsole(message);
