@@ -14,11 +14,6 @@
 #include <string>
 #include <vector>
 
-// Timed entry points, compiled in kangaroo_twelve_bench.cpp without gtest and with NDEBUG so that
-// KangarooTwelveStream's ASSERT() calls compile to nothing, as in the Release UEFI build. In this
-// TU they would expand to EXPECT_TRUE and be part of the measured time.
-void k12BenchOneShot(const unsigned char* data, size_t len, unsigned char out[32]);
-void k12BenchNativeStream(const unsigned char* data, size_t len, const size_t* updates, size_t updateCount, unsigned char out[32]);
 
 
 // This file pins the exact output of every K12 code path used by the node:
@@ -409,11 +404,14 @@ TEST(TestCoreK12, LoggingDigestChainContract)
     }
 }
 
-// Performance gate for the streaming replacement: cost of the two stream shapes the node produces
-// per tick, for whichever K12 configuration this binary was built with. Direct API calls only
-// (native ones from the NDEBUG TU), one warmup, then equal repetitions per backend with the
+// Smoke-level timing of the two stream shapes the node produces per tick, for whichever K12
+// configuration this binary was built with. One warmup, then equal repetitions per backend with the
 // backend order rotated every repetition, minimum reported; results are validated outside the
 // timed region.
+// Caveat: in this binary every KangarooTwelveStream::update() carries the gtest expansion of
+// ASSERT(!finalized), which the Release UEFI build does not have. The production-equivalent
+// measurement is tools/k12_bench/k12_bench.cpp (single TU, no gtest, NDEBUG); use that for
+// performance decisions.
 //  - txBodyDigest: up to NUMBER_OF_TRANSACTIONS_PER_TICK updates of transaction size
 //  - logging chain: many small updates
 TEST(TestCoreK12, PerformanceStreamShapes)
@@ -428,8 +426,8 @@ TEST(TestCoreK12, PerformanceStreamShapes)
         unsigned char outXkcp[32], outNative[32], outOneShot[32];
 
         auto runXkcp = [&] { streamXkcpRaw(m.data(), len, splits, outXkcp); };
-        auto runNative = [&] { k12BenchNativeStream(m.data(), len, splits.data(), splits.size(), outNative); };
-        auto runOneShot = [&] { k12BenchOneShot(m.data(), len, outOneShot); };
+        auto runNative = [&] { streamNativeRaw(m.data(), len, splits, outNative); };
+        auto runOneShot = [&] { KangarooTwelve(m.data(), (unsigned int)len, outOneShot, 32); };
         auto timeOnce = [](auto&& fn)
         {
             auto start = std::chrono::high_resolution_clock::now();
@@ -546,7 +544,7 @@ TEST(TestCoreK12, CompareK12Implementations)
     char outputArrayStream[outputN];
     startTime = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < repN; ++i)
-        k12BenchNativeStream((unsigned char *) inputPtr, inputN, nullptr, 0, (unsigned char*) outputArrayStream);
+        streamNativeRaw((unsigned char *) inputPtr, inputN, {}, (unsigned char*) outputArrayStream);
     durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
     bytePerMilliSec = double(repN * inputN) / double(durationMilliSec.count());
     gigaBytePerSec = bytePerMilliSec * (1000.0 / bytesPerGigaByte);
