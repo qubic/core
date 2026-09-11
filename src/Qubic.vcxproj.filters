@@ -248,7 +248,6 @@
     <ClInclude Include="platform\uint128.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="K12/kangaroo_twelve_xkcp.h" />
     <ClInclude Include="contracts\TestExampleC.h">
       <Filter>contracts</Filter>
     </ClInclude>

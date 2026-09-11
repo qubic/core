@@ -2,7 +2,6 @@
 
 #include "gtest/gtest.h"
 
-#include "../src/K12/kangaroo_twelve_xkcp.h"
 #include "../src/kangaroo_twelve.h"
 #include "../src/platform/memory.h"
 #include <lib/platform_common/qintrin.h>
@@ -18,8 +17,7 @@
 
 // This file pins the exact output of every K12 code path used by the node:
 //  - one-shot KangarooTwelve() and KangarooTwelve64To32() from kangaroo_twelve.h (all digests)
-//  - streaming KangarooTwelveStream from kangaroo_twelve.h
-//  - streaming XKCP Initialize/Update/Final (txBodyDigest, logging digest chain)
+//  - streaming KangarooTwelveStream from kangaroo_twelve.h (txBodyDigest, logging digest chain)
 // Anchors: KT128 vectors from RFC 9861 section 5, plus golden digests recorded from the
 // production implementation at boundary lengths. Any change to the hash code must keep these green.
 
@@ -66,30 +64,8 @@ namespace
         return toHex(out, 32);
     }
 
-    std::string oneShotXkcp(const unsigned char* d, size_t len)
-    {
-        unsigned char out[32];
-        XKCP::KangarooTwelve(d, (unsigned int)len, out, 32);
-        return toHex(out, 32);
-    }
-
-    // Streaming hashes fed in the given update sizes (remaining bytes are fed as a last update).
-    // No test checks inside, so they can be timed as well.
-    void streamXkcpRaw(const unsigned char* d, size_t len, const std::vector<size_t>& updates, unsigned char out[32])
-    {
-        XKCP::KangarooTwelve_Instance inst;
-        XKCP::KangarooTwelve_Initialize(&inst, 128, 32);
-        size_t pos = 0;
-        for (size_t u : updates)
-        {
-            XKCP::KangarooTwelve_Update(&inst, d + pos, u);
-            pos += u;
-        }
-        if (pos < len)
-            XKCP::KangarooTwelve_Update(&inst, d + pos, len - pos);
-        XKCP::KangarooTwelve_Final(&inst, out, (const unsigned char*)"", 0);
-    }
-
+    // Streaming hash fed in the given update sizes (remaining bytes are fed as a last update).
+    // No test checks inside, so it can be timed as well.
     void streamNativeRaw(const unsigned char* d, size_t len, const std::vector<size_t>& updates, unsigned char out[32])
     {
         KangarooTwelveStream s;
@@ -105,17 +81,6 @@ namespace
         s.finalize(out);
     }
 
-    std::string streamXkcp(const unsigned char* d, size_t len, const std::vector<size_t>& updates)
-    {
-        size_t total = 0;
-        for (size_t u : updates)
-            total += u;
-        EXPECT_LE(total, len);
-        unsigned char out[32];
-        streamXkcpRaw(d, len, updates, out);
-        return toHex(out, 32);
-    }
-
     std::string streamNative(const unsigned char* d, size_t len, const std::vector<size_t>& updates)
     {
         size_t total = 0;
@@ -127,14 +92,13 @@ namespace
         return toHex(out, 32);
     }
 
-    // Both streaming implementations must produce `expected` for the given update pattern.
+    // The stream must produce `expected` for the given update pattern.
     testing::AssertionResult streamsMatch(const unsigned char* d, size_t len, const std::vector<size_t>& updates, const char* expected)
     {
-        const std::string x = streamXkcp(d, len, updates);
         const std::string n = streamNative(d, len, updates);
-        if (x == expected && n == expected)
+        if (n == expected)
             return testing::AssertionSuccess();
-        return testing::AssertionFailure() << "expected " << expected << ", xkcp stream " << x << ", native stream " << n;
+        return testing::AssertionFailure() << "expected " << expected << ", stream " << n;
     }
 
     // Deterministic split sizes in [1, maxSize], covering the whole input.
@@ -225,14 +189,11 @@ TEST(TestCoreK12, Rfc9861Kt128Vectors)
     {
         const std::vector<unsigned char> m = ptn(v.len);
         EXPECT_EQ(oneShot(m.data(), v.len), v.digest) << "one-shot, len " << v.len;
-        EXPECT_EQ(oneShotXkcp(m.data(), v.len), v.digest) << "xkcp one-shot, len " << v.len;
         EXPECT_TRUE(streamsMatch(m.data(), v.len, {}, v.digest)) << "streams, len " << v.len;
     }
 
     unsigned char out64[64];
     KangarooTwelve((const unsigned char*)"", 0, out64, 64);
-    EXPECT_EQ(toHex(out64, 64), rfc9861Empty64);
-    XKCP::KangarooTwelve((const unsigned char*)"", 0, out64, 64);
     EXPECT_EQ(toHex(out64, 64), rfc9861Empty64);
 }
 
@@ -242,7 +203,6 @@ TEST(TestCoreK12, GoldenOneShot)
     {
         const std::vector<unsigned char> m = ptn(v.len);
         EXPECT_EQ(oneShot(m.data(), v.len), v.digest) << "one-shot, len " << v.len;
-        EXPECT_EQ(oneShotXkcp(m.data(), v.len), v.digest) << "xkcp one-shot, len " << v.len;
     }
 }
 
@@ -321,7 +281,6 @@ TEST(TestCoreK12, RandomInputAllImplementationsAgree)
     {
         const std::vector<unsigned char> m = pseudoRandom(len, 0xC0FFEE + len);
         const std::string expected = oneShot(m.data(), len);
-        EXPECT_EQ(oneShotXkcp(m.data(), len), expected) << "len " << len;
         EXPECT_TRUE(streamsMatch(m.data(), len, {}, expected.c_str())) << "len " << len;
         EXPECT_TRUE(streamsMatch(m.data(), len, randomSplits(len, 5000, len + 1), expected.c_str())) << "len " << len << " split";
     }
@@ -356,8 +315,8 @@ TEST(TestCoreK12, Digest64To32MatchesOneShot)
 // where messages[t] are the selected log messages of tick t fed by separate updates, and the
 // stream is finalized once per tick and re-initialized with the previous digest.
 // The chain itself is not compiled in NO_UEFI builds today (LOG_STATE_DIGEST forced to 0), so this
-// test drives the same call sequence directly on both streaming implementations; a test through
-// qLogger follows once the K12 stream no longer has that restriction.
+// test drives the same call sequence directly on the stream; logging_digest.cpp checks the wiring
+// through qLogger itself.
 TEST(TestCoreK12, LoggingDigestChainContract)
 {
     const std::vector<unsigned char> pool = pseudoRandom(5000, 7);
@@ -369,12 +328,9 @@ TEST(TestCoreK12, LoggingDigestChainContract)
         {{402, 4000}},
     };
 
-    XKCP::KangarooTwelve_Instance k12;
     KangarooTwelveStream stream;
     unsigned char prev[32];
     setMem(prev, 32, 0);
-    ASSERT_EQ(XKCP::KangarooTwelve_Initialize(&k12, 128, 32), 0);
-    ASSERT_EQ(XKCP::KangarooTwelve_Update(&k12, prev, 32), 0);
     stream.init();
     stream.update(prev, 32);
 
@@ -383,21 +339,15 @@ TEST(TestCoreK12, LoggingDigestChainContract)
         std::vector<unsigned char> expectedInput(prev, prev + 32);
         for (const auto& msg : ticks[t])
         {
-            ASSERT_EQ(XKCP::KangarooTwelve_Update(&k12, pool.data() + msg.first, msg.second), 0);
             stream.update(pool.data() + msg.first, msg.second);
             expectedInput.insert(expectedInput.end(), pool.data() + msg.first, pool.data() + msg.first + msg.second);
         }
         const std::string expected = oneShot(expectedInput.data(), expectedInput.size());
 
         unsigned char digest[32];
-        ASSERT_EQ(XKCP::KangarooTwelve_Final(&k12, digest, (const unsigned char*)"", 0), 0);
-        EXPECT_EQ(toHex(digest, 32), expected) << "xkcp, tick " << t;
-        unsigned char nativeDigest[32];
-        stream.finalize(nativeDigest);
-        EXPECT_EQ(toHex(nativeDigest, 32), expected) << "native, tick " << t;
+        stream.finalize(digest);
+        EXPECT_EQ(toHex(digest, 32), expected) << "tick " << t;
 
-        ASSERT_EQ(XKCP::KangarooTwelve_Initialize(&k12, 128, 32), 0);
-        ASSERT_EQ(XKCP::KangarooTwelve_Update(&k12, digest, 32), 0);
         stream.init();
         stream.update(digest, 32);
         copyMem(prev, digest, 32);
@@ -423,9 +373,8 @@ TEST(TestCoreK12, PerformanceStreamShapes)
     {
         const std::vector<size_t> splits(updates, updateSize);
         const size_t len = updates * updateSize;
-        unsigned char outXkcp[32], outNative[32], outOneShot[32];
+        unsigned char outNative[32], outOneShot[32];
 
-        auto runXkcp = [&] { streamXkcpRaw(m.data(), len, splits, outXkcp); };
         auto runNative = [&] { streamNativeRaw(m.data(), len, splits, outNative); };
         auto runOneShot = [&] { KangarooTwelve(m.data(), (unsigned int)len, outOneShot, 32); };
         auto timeOnce = [](auto&& fn)
@@ -435,25 +384,23 @@ TEST(TestCoreK12, PerformanceStreamShapes)
             return (long long)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
         };
 
-        runXkcp();
         runNative();
         runOneShot();
-        long long best[3] = {-1, -1, -1};
+        long long best[2] = {-1, -1};
         for (int rep = 0; rep < repetitions; ++rep)
         {
-            for (int k = 0; k < 3; ++k)
+            for (int k = 0; k < 2; ++k)
             {
-                const int backend = (rep + k) % 3;
-                const long long us = backend == 0 ? timeOnce(runXkcp) : backend == 1 ? timeOnce(runNative) : timeOnce(runOneShot);
+                const int backend = (rep + k) % 2;
+                const long long us = backend == 0 ? timeOnce(runNative) : timeOnce(runOneShot);
                 if (best[backend] < 0 || us < best[backend])
                     best[backend] = us;
             }
         }
 
         std::cout << name << ": " << updates << " x " << updateSize << " B, min of " << repetitions << " runs [us]: "
-                  << "xkcp stream " << best[0] << ", native stream " << best[1] << ", one-shot " << best[2] << std::endl;
+                  << "stream " << best[0] << ", one-shot " << best[1] << std::endl;
 
-        EXPECT_EQ(memcmp(outXkcp, outOneShot, 32), 0);
         EXPECT_EQ(memcmp(outNative, outOneShot, 32), 0);
     };
 
@@ -481,7 +428,7 @@ TEST(TestCoreK12, PerformanceDigest32Of1GB)
 
     auto startTime = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < repN; ++i)
-        XKCP::KangarooTwelve((unsigned char *) inputPtr, inputN, (unsigned char*) outputArray, outputN);
+        KangarooTwelve((unsigned char *) inputPtr, inputN, (unsigned char*) outputArray, outputN);
     auto durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
 
     double bytePerMilliSec = double(repN * inputN) / double(durationMilliSec.count());
@@ -491,10 +438,9 @@ TEST(TestCoreK12, PerformanceDigest32Of1GB)
     delete [] inputPtr;
 }
 
-TEST(TestCoreK12, CompareK12Implementations)
+TEST(TestCoreK12, CompareOneShotAndStream1GB)
 {
     constexpr size_t bytesPerGigaByte = 1024 * 1024 * 1024;
-    constexpr size_t repN = 1;
     constexpr size_t inputN = bytesPerGigaByte;
     constexpr size_t outputN = 32;
 
@@ -506,49 +452,20 @@ TEST(TestCoreK12, CompareK12Implementations)
         _rdrand32_step(&val);
         inputPtr[pos % inputN] = val & 0xff;
     }
-    char outputArrayXKCP[outputN];
-
-    auto startTime = std::chrono::high_resolution_clock::now();
-    for (size_t i = 0; i < repN; ++i)
-        XKCP::KangarooTwelve((unsigned char *) inputPtr, inputN, (unsigned char*) outputArrayXKCP, outputN);
-    auto durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
-
-    double bytePerMilliSec = double(repN * inputN) / double(durationMilliSec.count());
-    double gigaBytePerSec = bytePerMilliSec * (1000.0 / bytesPerGigaByte);
-    std::cout << "K12 of 1 GB to 32 Byte digest: " << gigaBytePerSec << " GB/sec = " << 1.0 / gigaBytePerSec << " sec/GB" << std::endl;
-    std::cout << "Digest of xkcp implementation: ";
-    for (int i = 0; i < sizeof(outputArrayXKCP); i++){
-        std::cout << std::hex << std::setfill('0') << std::setw(2)
-                  << (static_cast<int>(outputArrayXKCP[i]) & 0xff);
-    }
-    std::cout << std::endl;
 
     char outputArray[outputN];
-    startTime = std::chrono::high_resolution_clock::now();
-    for (size_t i = 0; i < repN; ++i)
-        KangarooTwelve((unsigned char *) inputPtr, inputN, (unsigned char*) outputArray, outputN);
-    durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
-
-    bytePerMilliSec = double(repN * inputN) / double(durationMilliSec.count());
-    gigaBytePerSec = bytePerMilliSec * (1000.0 / bytesPerGigaByte);
-    std::cout << "K12 of 1 GB to 32 Byte digest: " << gigaBytePerSec << " GB/sec = " << 1.0 / gigaBytePerSec << " sec/GB" << std::endl;
-    std::cout << "Digest of native implementation: ";
-
-    for (int i = 0; i < sizeof(outputArray); i++){
-        std::cout << std::hex << std::setfill('0') << std::setw(2)
-                  << (static_cast<int>(outputArray[i]) & 0xff);
-    }
-    std::cout << std::endl;
-    ASSERT_EQ(memcmp(outputArrayXKCP, outputArray, outputN), 0);
+    auto startTime = std::chrono::high_resolution_clock::now();
+    KangarooTwelve((unsigned char *) inputPtr, inputN, (unsigned char*) outputArray, outputN);
+    auto durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
+    double gigaBytePerSec = double(inputN) / double(durationMilliSec.count()) * (1000.0 / bytesPerGigaByte);
+    std::cout << "K12 of 1 GB to 32 Byte digest via one-shot: " << gigaBytePerSec << " GB/sec, digest " << toHex((const unsigned char*)outputArray, outputN) << std::endl;
 
     char outputArrayStream[outputN];
     startTime = std::chrono::high_resolution_clock::now();
-    for (size_t i = 0; i < repN; ++i)
-        streamNativeRaw((unsigned char *) inputPtr, inputN, {}, (unsigned char*) outputArrayStream);
+    streamNativeRaw((unsigned char *) inputPtr, inputN, {}, (unsigned char*) outputArrayStream);
     durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
-    bytePerMilliSec = double(repN * inputN) / double(durationMilliSec.count());
-    gigaBytePerSec = bytePerMilliSec * (1000.0 / bytesPerGigaByte);
-    std::cout << "K12 of 1 GB to 32 Byte digest via native stream: " << gigaBytePerSec << " GB/sec = " << 1.0 / gigaBytePerSec << " sec/GB" << std::endl;
+    gigaBytePerSec = double(inputN) / double(durationMilliSec.count()) * (1000.0 / bytesPerGigaByte);
+    std::cout << "K12 of 1 GB to 32 Byte digest via stream: " << gigaBytePerSec << " GB/sec" << std::endl;
     ASSERT_EQ(memcmp(outputArrayStream, outputArray, outputN), 0);
 
     delete [] inputPtr;

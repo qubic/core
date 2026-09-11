@@ -6,10 +6,6 @@
 // addDebugMessageAssert() with no definition -> C2129 at link.
 #include "gtest/gtest.h"
 
-// Self-contained one-shot K12 wrapper (static/internal linkage) for the
-// standalone padding test below. Do NOT include K12/kangaroo_twelve_xkcp.h
-// here: its external-linkage XKCP backend would clash at link with
-// test/kangaroo_twelve.cpp, which also defines those symbols.
 #include "../src/kangaroo_twelve.h"
 #include "../src/platform/m256.h"
 #include "../src/platform/memory.h"
