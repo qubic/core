@@ -2,6 +2,11 @@
 
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
+// Collect per-scope run-time measurements and write them to profiling.csv (F6 key, autosave,
+// shutdown). Adds locking overhead in every profiled scope, so leave this commented out on
+// production nodes.
+#define ENABLE_PROFILING
+
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -4036,6 +4041,12 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
 
 static void processTick(unsigned long long processorNumber)
 {
+#ifdef ENABLE_PROFILING
+    // Discard startup measurements so profiling.csv reflects steady-state ticking only.
+    if (system.tick == system.initialTick + 10)
+        gProfilingDataCollector.clear();
+#endif
+
     PROFILE_SCOPE();
 
     if (system.tick > system.initialTick)
