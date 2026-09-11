@@ -173,8 +173,6 @@ static unsigned int resourceTestingDigest = 0;
 
 static unsigned int numberOfTransactions = 0;
 
-static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
-
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static volatile unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
@@ -4498,79 +4496,7 @@ static void processTick(unsigned long long processorNumber)
     WAIT_WHILE(contractProcessorState);
     PROFILE_SCOPE_END();
 
-    PROFILE_NAMED_SCOPE_BEGIN("processTick(): get spectrum digest");
-    unsigned int digestIndex;
-    ACQUIRE(spectrumLock);
-
-    // Dirty-index tracking. increaseEnergy/decreaseEnergy
-    // append the modified index to spectrumDirtyList[]; here we hash only
-    // those instead of scanning all SPECTRUM_CAPACITY entries. On overflow
-    // or after reorganizeSpectrum we fall back to the full 16M scan
-    // (consensus-identical path). Digest bit output unchanged in both paths.
-    if (spectrumDirtyOverflow)
-    {
-        // Fallback: full scan
-        constexpr unsigned int kSpectrumPrefetchAhead = 8;
-        for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
-        {
-            if (digestIndex + kSpectrumPrefetchAhead < SPECTRUM_CAPACITY)
-            {
-                _mm_prefetch((const char*)&spectrum[digestIndex + kSpectrumPrefetchAhead], _MM_HINT_T2);
-            }
-            if (spectrum[digestIndex].latestIncomingTransferTick == system.tick || spectrum[digestIndex].latestOutgoingTransferTick == system.tick)
-            {
-                KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
-                spectrumChangeFlags[digestIndex >> 6] |= (1ULL << (digestIndex & 63));
-            }
-        }
-    }
-    else
-    {
-        // Fast path: walk dirty indices only. Duplicate indices in the list
-        // re-hash the same entry to the same bits — harmless.
-        const unsigned int dirtyN = spectrumDirtyCount;
-        for (unsigned int di = 0; di < dirtyN; di++)
-        {
-            const unsigned int idx = spectrumDirtyList[di];
-            // Still gated by the original tick-equality predicate so we never
-            // hash an entry whose dirty mark is from an older tick (safety
-            // against stale list entries if reset was missed).
-            if (spectrum[idx].latestIncomingTransferTick == system.tick || spectrum[idx].latestOutgoingTransferTick == system.tick)
-            {
-                KangarooTwelve64To32(&spectrum[idx], &spectrumDigests[idx]);
-                spectrumChangeFlags[idx >> 6] |= (1ULL << (idx & 63));
-            }
-        }
-        // Needed by the merkle-climb loop below which uses digestIndex as
-        // the running node-index starting right after the leaf level.
-        digestIndex = SPECTRUM_CAPACITY;
-    }
-    // Reset for next tick. Both fast and fallback paths end here.
-    spectrumDirtyReset();
-
-    unsigned int previousLevelBeginning = 0;
-    unsigned int numberOfLeafs = SPECTRUM_CAPACITY;
-    while (numberOfLeafs > 1)
-    {
-        for (unsigned int i = 0; i < numberOfLeafs; i += 2)
-        {
-            if (spectrumChangeFlags[i >> 6] & (3ULL << (i & 63)))
-            {
-                KangarooTwelve64To32(&spectrumDigests[previousLevelBeginning + i], &spectrumDigests[digestIndex]);
-                spectrumChangeFlags[i >> 6] &= ~(3ULL << (i & 63));
-                spectrumChangeFlags[i >> 7] |= (1ULL << ((i >> 1) & 63));
-            }
-            digestIndex++;
-        }
-        previousLevelBeginning += numberOfLeafs;
-        numberOfLeafs >>= 1;
-    }
-    spectrumChangeFlags[0] = 0;
-
-    etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-    RELEASE(spectrumLock);
-    PROFILE_SCOPE_END();
-
+    getSpectrumDigest(etalonTick.saltedSpectrumDigest);
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
 
