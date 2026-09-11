@@ -1,12 +1,10 @@
 // Standalone K12 benchmark: production-equivalent timing of the one-shot, streaming and 64To32
-// paths of src/kangaroo_twelve.h, plus the vendored XKCP implementation while it still exists.
+// paths of src/kangaroo_twelve.h.
 // Single translation unit, no gtest, NDEBUG: ASSERT() inside KangarooTwelveStream compiles to
 // nothing, exactly as in the Release UEFI build (in test.exe it expands to EXPECT_TRUE).
 //
 // Build (from the repository root), scalar and AVX-512 flavours:
-//   clang++ -std=c++17 -O2 -w -I src -I . -mavx2 -mbmi -DNDEBUG \
-//       "-D_rotl64(a,b)=(((unsigned long long)(a)<<(b))|((unsigned long long)(a)>>(64-(b))))" \
-//       tools/k12_bench/k12_bench.cpp -o k12_bench_avx2
+//   clang++ -std=c++17 -O2 -w -I src -I . -mavx2 -mbmi -DNDEBUG tools/k12_bench/k12_bench.cpp -o k12_bench_avx2
 //   ... same with -mavx512f -mavx512bw -mavx512dq -mavx512vl for the AVX-512 flavour.
 // MSVC: cl /O2 /arch:AVX2 /DNDEBUG /DNO_UEFI /I src /I . tools\k12_bench\k12_bench.cpp
 // Run pinned to one idle core, e.g.  taskset -c 2 ./k12_bench_avx2
@@ -21,20 +19,10 @@
 #include <cstring>
 #include <vector>
 
-#include "K12/kangaroo_twelve_xkcp.h"
 #include "kangaroo_twelve.h"
 
 void setMem(void* buffer, unsigned long long size, unsigned char value) { memset(buffer, value, size); }
 void copyMem(void* destination, const void* source, unsigned long long length) { memcpy(destination, source, length); }
-
-static void streamXkcp(const unsigned char* d, size_t len, size_t updateSize, unsigned char out[32])
-{
-    XKCP::KangarooTwelve_Instance inst;
-    XKCP::KangarooTwelve_Initialize(&inst, 128, 32);
-    for (size_t p = 0; p < len; p += updateSize)
-        XKCP::KangarooTwelve_Update(&inst, d + p, updateSize);
-    XKCP::KangarooTwelve_Final(&inst, out, (const unsigned char*)"", 0);
-}
 
 static void streamNative(const unsigned char* d, size_t len, size_t updateSize, unsigned char out[32])
 {
@@ -62,11 +50,6 @@ int main()
 #else
     puts("custom K12: scalar path");
 #endif
-#ifdef __AVX512F__
-    puts("XKCP K12: AVX-512 plain-C path");
-#else
-    puts("XKCP K12: opt64 scalar path");
-#endif
 
     std::vector<unsigned char> m(256u << 20);
     for (size_t i = 0; i < m.size(); i++)
@@ -76,22 +59,21 @@ int main()
     auto shape = [&](size_t updates, size_t updateSize, const char* name)
     {
         const size_t len = updates * updateSize;
-        unsigned char a[32], b[32], c[32];
-        auto runXkcp = [&] { streamXkcp(m.data(), len, updateSize, a); };
+        unsigned char b[32], c[32];
         auto runNative = [&] { streamNative(m.data(), len, updateSize, b); };
         auto runOneShot = [&] { KangarooTwelve(m.data(), (unsigned int)len, c, 32); };
-        runXkcp(); runNative(); runOneShot();
-        long long best[3] = {-1, -1, -1};
+        runNative(); runOneShot();
+        long long best[2] = {-1, -1};
         for (int rep = 0; rep < repetitions; ++rep)
-            for (int k = 0; k < 3; ++k)
+            for (int k = 0; k < 2; ++k)
             {
-                const int backend = (rep + k) % 3;
-                const long long us = backend == 0 ? timeOnce(runXkcp) : backend == 1 ? timeOnce(runNative) : timeOnce(runOneShot);
+                const int backend = (rep + k) % 2;
+                const long long us = backend == 0 ? timeOnce(runNative) : timeOnce(runOneShot);
                 if (best[backend] < 0 || us < best[backend])
                     best[backend] = us;
             }
-        printf("%-22s %5zu x %4zu B  [us] xkcp stream %6lld | native stream %6lld | one-shot %6lld | %s\n", name, updates, updateSize,
-               best[0], best[1], best[2], (memcmp(a, c, 32) || memcmp(b, c, 32)) ? "MISMATCH" : "ok");
+        printf("%-22s %5zu x %4zu B  [us] stream %6lld | one-shot %6lld | %s\n", name, updates, updateSize,
+               best[0], best[1], memcmp(b, c, 32) ? "MISMATCH" : "ok");
     };
     shape(4096, 1200, "txBodyDigest worst");
     shape(4096, 100, "txBodyDigest small");
@@ -99,22 +81,20 @@ int main()
 
     {
         const size_t big = m.size();
-        unsigned char a[32], b[32], c[32];
-        long long best[3] = {-1, -1, -1};
-        auto runXkcp = [&] { XKCP::KangarooTwelve(m.data(), (unsigned int)big, a, 32); };
+        unsigned char b[32], c[32];
+        long long best[2] = {-1, -1};
         auto runNative = [&] { streamNative(m.data(), big, 8192 * 64, b); };
         auto runOneShot = [&] { KangarooTwelve(m.data(), (unsigned int)big, c, 32); };
-        runXkcp(); runNative(); runOneShot();
+        runNative(); runOneShot();
         for (int rep = 0; rep < repetitions; ++rep)
-            for (int k = 0; k < 3; ++k)
+            for (int k = 0; k < 2; ++k)
             {
-                const int backend = (rep + k) % 3;
-                const long long us = backend == 0 ? timeOnce(runXkcp) : backend == 1 ? timeOnce(runNative) : timeOnce(runOneShot);
+                const int backend = (rep + k) % 2;
+                const long long us = backend == 0 ? timeOnce(runNative) : timeOnce(runOneShot);
                 if (best[backend] < 0 || us < best[backend])
                     best[backend] = us;
             }
-        printf("256 MiB [MB/s]: xkcp one-shot %.0f | native stream %.0f | custom one-shot %.0f | %s\n",
-               big / 1.048576 / best[0], big / 1.048576 / best[1], big / 1.048576 / best[2], (memcmp(a, c, 32) || memcmp(b, c, 32)) ? "MISMATCH" : "ok");
+        printf("256 MiB [MB/s]: stream %.0f | one-shot %.0f | %s\n", big / 1.048576 / best[0], big / 1.048576 / best[1], memcmp(b, c, 32) ? "MISMATCH" : "ok");
     }
 
     {

@@ -37,7 +37,6 @@
 
 #include "text_output.h"
 
-#include "K12/kangaroo_twelve_xkcp.h"
 #include "kangaroo_twelve.h"
 #include "four_q.h"
 #include "score.h"
@@ -190,7 +189,7 @@ const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateD
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
 static m256i lastExpectedTickTransactionDigest;
-XKCP::KangarooTwelve_Instance g_k12_instance;
+static KangarooTwelveStream txBodyDigestStream;
 // rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
 
@@ -6135,9 +6134,8 @@ static void prepareNextTickTransactions()
 static void computeTxBodyDigestBase(const int tick)
 {
     ASSERT(nextTickData.epoch == system.epoch); // nextTickData need to be valid
-    constexpr size_t outputLen = 4; // output length in bytes
 
-    XKCP::KangarooTwelve_Initialize(&g_k12_instance, 128, outputLen);
+    txBodyDigestStream.init();
 
     const unsigned int tickIndex = ts.tickToIndexCurrentEpoch(tick);
     const auto* tsTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
@@ -6160,22 +6158,7 @@ static void computeTxBodyDigestBase(const int tick)
                     KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
                     if (digest == nextTickData.transactionDigests[i])
                     {
-                        int ret = 1;
-                        while(ret == 1)
-                        {
-                            ret = XKCP::KangarooTwelve_Update(&g_k12_instance, reinterpret_cast<const unsigned char *>(transaction), transaction->totalSize());
-                            if (ret == 0)
-                            {
-                                break;
-                            }
-#if !defined(NDEBUG)
-                            else
-                            {
-                                setText(message, L"txBodyDigest: XKCP failed to create hash of tx");
-                                addDebugMessage(message);
-                            }
-#endif
-                        }
+                        txBodyDigestStream.update(transaction, transaction->totalSize());
                     }
                 }
 #if !defined(NDEBUG)
@@ -6191,18 +6174,10 @@ static void computeTxBodyDigestBase(const int tick)
         }
     }
 
-    int ret = 1;
-    while(ret == 1)
-    {
-        ret = XKCP::KangarooTwelve_Final(&g_k12_instance, reinterpret_cast<unsigned char*>(&etalonTick.saltedTransactionBodyDigest), (const unsigned char *)"", 0);
-#if !defined(NDEBUG)
-        if(ret == 1)
-        {
-            setText(message, L"txBodyDigest: XKCP failed to finalize hash");
-            addDebugMessage(message);
-        }
-#endif
-    }
+    // the tx body digest is the first 4 bytes of the K12 output
+    unsigned char txBodyDigest[32];
+    txBodyDigestStream.finalize(txBodyDigest);
+    copyMem(&etalonTick.saltedTransactionBodyDigest, txBodyDigest, sizeof(etalonTick.saltedTransactionBodyDigest));
 }
 
 // special procedure to sign the tick vote

@@ -25,18 +25,16 @@ struct Peer;
 #endif
 
 
+#ifndef LOG_STATE_DIGEST
 #if LOG_SPECTRUM && LOG_UNIVERSE
 #define LOG_STATE_DIGEST 1
 #else
 #define LOG_STATE_DIGEST 0
 #endif
+#endif
 
-#ifdef NO_UEFI
-#undef LOG_STATE_DIGEST
-#define LOG_STATE_DIGEST 0
-#else
-// if we include xkcp "outside" it will break the gtest
-#include "K12/kangaroo_twelve_xkcp.h"
+#include "kangaroo_twelve.h"
+#ifndef NO_UEFI
 #include "common_buffers.h"
 #endif
 
@@ -310,6 +308,57 @@ struct OcInvocationStatusChange
 #define TEXT_BUF_AS_NUMBER 28710885718818914ULL  // L"buff"
 #endif
 
+#if LOG_STATE_DIGEST
+// On-disk form of the log digest K12 stream in logEventState.db. This is the layout of the XKCP
+// KangarooTwelve_Instance that was used before KangarooTwelveStream; it is kept so that saved node
+// states stay loadable across the switch, in both directions.
+struct K12StreamFileLayout
+{
+    struct Node
+    {
+        unsigned char state[200];
+        unsigned int rateInBits;
+        unsigned char byteIOIndex;
+        unsigned char squeezing;
+    };
+    Node queueNode;
+    Node finalNode;
+    unsigned long long fixedOutputLength;
+    unsigned long long blockNumber;
+    unsigned int queueAbsorbedLen;
+    int phase;
+    int securityLevel;
+};
+static_assert(sizeof(K12StreamFileLayout) == 448, "logEventState.db layout must not change");
+
+static void k12StreamToFileLayout(const KangarooTwelveStream& stream, K12StreamFileLayout& file)
+{
+    setMem(&file, sizeof(file), 0);
+    copyMem(file.queueNode.state, stream.queueNode.state, sizeof(file.queueNode.state));
+    file.queueNode.rateInBits = K12_rateInBytes * 8;
+    file.queueNode.byteIOIndex = stream.queueNode.byteIOIndex;
+    copyMem(file.finalNode.state, stream.finalNode.state, sizeof(file.finalNode.state));
+    file.finalNode.rateInBits = K12_rateInBytes * 8;
+    file.finalNode.byteIOIndex = stream.finalNode.byteIOIndex;
+    file.fixedOutputLength = 32;
+    file.blockNumber = stream.blockNumber;
+    file.queueAbsorbedLen = stream.queueAbsorbedLen;
+    file.phase = 0; // absorbing
+    file.securityLevel = K12_security;
+}
+
+static void k12StreamFromFileLayout(const K12StreamFileLayout& file, KangarooTwelveStream& stream)
+{
+    stream.init();
+    copyMem(stream.queueNode.state, file.queueNode.state, sizeof(stream.queueNode.state));
+    stream.queueNode.byteIOIndex = file.queueNode.byteIOIndex;
+    copyMem(stream.finalNode.state, file.finalNode.state, sizeof(stream.finalNode.state));
+    stream.finalNode.byteIOIndex = file.finalNode.byteIOIndex;
+    stream.blockNumber = file.blockNumber;
+    stream.queueAbsorbedLen = file.queueAbsorbedLen;
+}
+#endif
+
 class qLogger
 {
 public:
@@ -336,13 +385,13 @@ private:
     // d(i) = K12(concat(d(i-1), log(spectrum), log(universe))
     // custom log from smart contracts are not included in the digest computation
     inline static m256i digests[MAX_NUMBER_OF_TICKS_PER_EPOCH];
-    inline static XKCP::KangarooTwelve_Instance k12;
+    inline static KangarooTwelveStream k12;
 
     // Framing of logEventState.db
     static constexpr unsigned long long logStateVmSize = (LOG_BUFFER_PAGE_SIZE * sizeof(char) + 16)
         + (PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + 16)
         + (IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo) + 16);
-    static constexpr unsigned long long logStateTailSize = sizeof(k12) + 8 + 8 + 4 + 4 + 4 + 4;
+    static constexpr unsigned long long logStateTailSize = sizeof(K12StreamFileLayout) + 8 + 8 + 4 + 4 + 4 + 4;
     static constexpr unsigned long long logStateBufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo)
         + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo) + sizeof(digests) + 600;
 #endif
@@ -418,13 +467,7 @@ private:
             messageType == BURNING || messageType == DUST_BURNING || messageType == SPECTRUM_STATS || messageType == ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE ||
             messageType == ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE)
         {
-            auto ret = XKCP::KangarooTwelve_Update(&k12, reinterpret_cast<const unsigned char*>(message), messageSize);
-#ifndef NDEBUG
-            if (ret != 0)
-            {
-                addDebugMessage(L"Failed to update log digests k12");
-            }
-#endif
+            k12.update(message, messageSize);
         }
 #endif
 #endif
@@ -646,13 +689,21 @@ public:
         tickBegin = _tickBegin;
         tx.cleanCurrentTickTxToId();
 #if LOG_STATE_DIGEST
-        XKCP::KangarooTwelve_Initialize(&k12, 128, 32);
+        k12.init();
         m256i zeroHash = m256i::zero();
-        XKCP::KangarooTwelve_Update(&k12, zeroHash.m256i_u8, 32); // init tick, feed zero hash
+        k12.update(zeroHash.m256i_u8, 32); // init tick, feed zero hash
 #endif
         isPausing = false;
 #endif
     }
+
+#if LOG_STATE_DIGEST
+    // Digest of the logged state up to and including _tick; valid once updateTick(_tick) has run
+    static const m256i& getStateDigest(unsigned int _tick)
+    {
+        return digests[_tick - tickBegin];
+    }
+#endif
 
     // updateTick is called right after _tick is processed
     static void updateTick(unsigned int _tick)
@@ -662,9 +713,9 @@ public:
         ASSERT(_tick >= tickBegin);
 #if LOG_STATE_DIGEST
         unsigned long long index = _tick - tickBegin;
-        XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
-        XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
-        XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
+        k12.finalize(digests[index].m256i_u8);
+        k12.init(); // init new k12
+        k12.update(digests[index].m256i_u8, 32); // feed the prev hash back to this
 #endif
         tx.commitAndCleanCurrentTxToLogId();
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
@@ -707,10 +758,12 @@ public:
         buffer += sizeof(digests);
         writeSz += sizeof(digests);
 
-        // copy k12 instance
-        copyMem(buffer, &k12, sizeof(k12));
-        buffer += sizeof(k12);
-        writeSz += sizeof(k12);
+        // copy k12 stream in its on-disk layout
+        K12StreamFileLayout k12File;
+        k12StreamToFileLayout(k12, k12File);
+        copyMem(buffer, &k12File, sizeof(k12File));
+        buffer += sizeof(k12File);
+        writeSz += sizeof(k12File);
 
         // copy variables
         *((unsigned long long*)buffer) = logBufferTail; buffer += 8;
@@ -807,10 +860,12 @@ public:
         buffer += savedDigestsSz;
         readSz += savedDigestsSz;
 
-        // copy k12 instance
-        copyMem(&k12, buffer, sizeof(k12));
-        buffer += sizeof(k12);
-        readSz += sizeof(k12);
+        // copy k12 stream from its on-disk layout
+        K12StreamFileLayout k12File;
+        copyMem(&k12File, buffer, sizeof(k12File));
+        k12StreamFromFileLayout(k12File, k12);
+        buffer += sizeof(k12File);
+        readSz += sizeof(k12File);
 
         // copy variables
         logBufferTail = *((unsigned long long*)buffer); buffer += 8;
