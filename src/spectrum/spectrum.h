@@ -34,6 +34,38 @@ static constexpr unsigned long long spectrumDigestsSizeInByte = (SPECTRUM_CAPACI
 GLOBAL_VAR_DECL unsigned long long spectrumReorgTotalExecutionTicks GLOBAL_VAR_INIT(0);
 
 
+// Dirty-index tracking for spectrum digest.
+// increaseEnergy / decreaseEnergy append the modified index here; the
+// digest loop consumes this list instead of scanning all 16M entries.
+// On overflow or on reorganizeSpectrum, callers set spectrumDirtyOverflow=1
+// which forces a full scan next getSpectrumDigest (consensus-safe fallback).
+// Duplicate indices are harmless (re-hashing same entry produces same
+// bit-identical digest byte).
+#define SPECTRUM_DIRTY_CAPACITY 16384
+GLOBAL_VAR_DECL unsigned int spectrumDirtyList[SPECTRUM_DIRTY_CAPACITY];
+GLOBAL_VAR_DECL volatile unsigned int spectrumDirtyCount GLOBAL_VAR_INIT(0);
+GLOBAL_VAR_DECL volatile unsigned char spectrumDirtyOverflow GLOBAL_VAR_INIT(1); // start overflow so very first digest does full scan
+
+static inline void spectrumMarkDirty(unsigned int idx)
+{
+    unsigned int c = spectrumDirtyCount;
+    if (c < SPECTRUM_DIRTY_CAPACITY)
+    {
+        spectrumDirtyList[c] = idx;
+        spectrumDirtyCount = c + 1;
+    }
+    else
+    {
+        spectrumDirtyOverflow = 1;
+    }
+}
+
+static inline void spectrumDirtyReset()
+{
+    spectrumDirtyCount = 0;
+    spectrumDirtyOverflow = 0;
+}
+
 // Update SpectrumInfo data (exensive, because it iterates the whole spectrum), acquire no lock
 static void updateSpectrumInfo(SpectrumInfo& si = spectrumInfo)
 {
@@ -157,6 +189,11 @@ static void reorganizeSpectrum()
     PROFILE_SCOPE();
 
     unsigned long long spectrumReorgStartTick = __rdtsc();
+
+    // reorg shuffles entries across indices, any dirty list built before this point is now stale,
+    // force full-scan next getSpectrumDigest to re-derive merkle tree from scratch.
+    spectrumDirtyOverflow = 1;
+    spectrumDirtyCount = 0;
 
     EntityRecord* reorgSpectrum = (EntityRecord*)commonBuffers.acquireBuffer(spectrumSizeInBytes);
     ASSERT(reorgSpectrum);
@@ -329,6 +366,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             spectrum[index].incomingAmount += amount;
             spectrum[index].numberOfIncomingTransfers++;
             spectrum[index].latestIncomingTransferTick = system.tick;
+            spectrumMarkDirty(index);
 
             spectrumInfo.totalAmount += amount;
         }
@@ -340,6 +378,7 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrum[index].incomingAmount = amount;
                 spectrum[index].numberOfIncomingTransfers = 1;
                 spectrum[index].latestIncomingTransferTick = system.tick;
+                spectrumMarkDirty(index);
 
                 spectrumInfo.numberOfEntities++;
                 spectrumInfo.totalAmount += amount;
@@ -378,6 +417,7 @@ static bool decreaseEnergy(const int index, long long amount)
             spectrum[index].outgoingAmount += amount;
             spectrum[index].numberOfOutgoingTransfers++;
             spectrum[index].latestOutgoingTransferTick = system.tick;
+            spectrumMarkDirty(index);
 
             spectrumInfo.totalAmount -= amount;
 
