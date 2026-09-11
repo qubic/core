@@ -1534,6 +1534,123 @@ static inline void KangarooTwelve(const void* input, unsigned int inputByteLen, 
     KangarooTwelve((const unsigned char*)input, inputByteLen, (unsigned char*)output, outputByteLen);
 }
 
+// Streaming (incremental) KangarooTwelve: 128-bit security, empty customization string, 32-byte output.
+// Uses the same tree, suffix and padding steps as KangarooTwelve() above, so the digest of a byte
+// sequence is identical to the one-shot digest no matter how the sequence is split across update() calls.
+// Lifecycle: init() -> update()* -> finalize() once; call init() again before reuse.
+struct KangarooTwelveStream
+{
+    KangarooTwelve_F finalNode;
+    KangarooTwelve_F queueNode;
+    unsigned long long blockNumber;
+    unsigned int queueAbsorbedLen;
+    bool finalized;
+
+    void init()
+    {
+        setMem(this, sizeof(*this), 0);
+    }
+
+    void update(const void* input, unsigned long long inputByteLen)
+    {
+        ASSERT(!finalized);
+        const unsigned char* data = (const unsigned char*)input;
+        if (blockNumber == 0)
+        {
+            // The first chunk is absorbed by the final node
+            const unsigned long long len = (inputByteLen < K12_chunkSize - queueAbsorbedLen) ? inputByteLen : K12_chunkSize - queueAbsorbedLen;
+            KangarooTwelve_F_Absorb(&finalNode, data, len);
+            data += len;
+            inputByteLen -= len;
+            queueAbsorbedLen += (unsigned int)len;
+            if (queueAbsorbedLen == K12_chunkSize && inputByteLen)
+            {
+                // First chunk complete and more data follows: switch to tree mode
+                blockNumber = 1;
+                queueAbsorbedLen = 0;
+                finalNode.state[finalNode.byteIOIndex] ^= 0x03;
+                if (++finalNode.byteIOIndex == K12_rateInBytes)
+                {
+                    KeccakP1600_Permute_12rounds(finalNode.state);
+                    finalNode.byteIOIndex = 0;
+                }
+                else
+                {
+                    finalNode.byteIOIndex = (finalNode.byteIOIndex + 7) & ~7;
+                }
+            }
+        }
+        while (inputByteLen)
+        {
+            if (!queueAbsorbedLen)
+            {
+                setMem(&queueNode, sizeof(queueNode), 0);
+            }
+            const unsigned long long len = (inputByteLen < K12_chunkSize - queueAbsorbedLen) ? inputByteLen : K12_chunkSize - queueAbsorbedLen;
+            KangarooTwelve_F_Absorb(&queueNode, data, len);
+            data += len;
+            inputByteLen -= len;
+            queueAbsorbedLen += (unsigned int)len;
+            if (queueAbsorbedLen == K12_chunkSize)
+            {
+                chainQueueNode();
+            }
+        }
+    }
+
+    void finalize(void* output32)
+    {
+        ASSERT(!finalized);
+        // length_encode of the empty customization string is a single 0x00 byte; it is part of the
+        // message and may complete a chunk, so it goes through update()
+        const unsigned char customizationLengthEncoding = 0;
+        update(&customizationLengthEncoding, 1);
+        finalized = true;
+
+        if (blockNumber)
+        {
+            if (queueAbsorbedLen)
+            {
+                chainQueueNode();
+            }
+            // right_encode(number of chaining values) || 0xFF || 0xFF
+            unsigned int n = 0;
+            for (unsigned long long v = --blockNumber; v && (n < sizeof(unsigned long long)); ++n, v >>= 8)
+            {
+            }
+            unsigned char encbuf[sizeof(unsigned long long) + 1 + 2];
+            for (unsigned int i = 1; i <= n; ++i)
+            {
+                encbuf[i - 1] = (unsigned char)(blockNumber >> (8 * (n - i)));
+            }
+            encbuf[n] = (unsigned char)n;
+            encbuf[++n] = 0xFF;
+            encbuf[++n] = 0xFF;
+            KangarooTwelve_F_Absorb(&finalNode, encbuf, ++n);
+            finalNode.state[finalNode.byteIOIndex] ^= 0x06;
+        }
+        else
+        {
+            finalNode.state[finalNode.byteIOIndex] ^= 0x07;
+        }
+        finalNode.state[K12_rateInBytes - 1] ^= 0x80;
+        KeccakP1600_Permute_12rounds(finalNode.state);
+        copyMem(output32, finalNode.state, 32);
+    }
+
+private:
+    // Finish the current (full or partial) leaf in the queue node and absorb its chaining value into the final node
+    void chainQueueNode()
+    {
+        ++blockNumber;
+        queueAbsorbedLen = 0;
+        queueNode.state[queueNode.byteIOIndex] ^= K12_suffixLeaf;
+        queueNode.state[K12_rateInBytes - 1] ^= 0x80;
+        KeccakP1600_Permute_12rounds(queueNode.state);
+        KangarooTwelve_F_Absorb(&finalNode, queueNode.state, K12_capacityInBytes);
+    }
+};
+
 static void KangarooTwelve64To32(const unsigned char* input, unsigned char* output)
 {
 #if defined (__AVX512F__) && !GENERIC_K12
