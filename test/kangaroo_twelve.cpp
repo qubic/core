@@ -14,6 +14,12 @@
 #include <string>
 #include <vector>
 
+// Timed entry points, compiled in kangaroo_twelve_bench.cpp without gtest and with NDEBUG so that
+// KangarooTwelveStream's ASSERT() calls compile to nothing, as in the Release UEFI build. In this
+// TU they would expand to EXPECT_TRUE and be part of the measured time.
+void k12BenchOneShot(const unsigned char* data, size_t len, unsigned char out[32]);
+void k12BenchNativeStream(const unsigned char* data, size_t len, const size_t* updates, size_t updateCount, unsigned char out[32]);
+
 
 // This file pins the exact output of every K12 code path used by the node:
 //  - one-shot KangarooTwelve() and KangarooTwelve64To32() from kangaroo_twelve.h (all digests)
@@ -404,8 +410,10 @@ TEST(TestCoreK12, LoggingDigestChainContract)
 }
 
 // Performance gate for the streaming replacement: cost of the two stream shapes the node produces
-// per tick, for whichever K12 configuration this binary was built with. Direct API calls only,
-// warmup plus repeated runs, minimum reported; results are validated outside the timed region.
+// per tick, for whichever K12 configuration this binary was built with. Direct API calls only
+// (native ones from the NDEBUG TU), one warmup, then equal repetitions per backend with the
+// backend order rotated every repetition, minimum reported; results are validated outside the
+// timed region.
 //  - txBodyDigest: up to NUMBER_OF_TRANSACTIONS_PER_TICK updates of transaction size
 //  - logging chain: many small updates
 TEST(TestCoreK12, PerformanceStreamShapes)
@@ -413,36 +421,39 @@ TEST(TestCoreK12, PerformanceStreamShapes)
     const std::vector<unsigned char> m = ptn(4096 * 1200);
     constexpr int repetitions = 7;
 
-    auto timeMin = [](auto&& fn)
-    {
-        fn(); // warmup
-        long long best = -1;
-        for (int i = 0; i < repetitions; ++i)
-        {
-            auto start = std::chrono::high_resolution_clock::now();
-            fn();
-            long long us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
-            if (best < 0 || us < best)
-                best = us;
-        }
-        return best;
-    };
-
     auto measure = [&](size_t updates, size_t updateSize, const char* name)
     {
         const std::vector<size_t> splits(updates, updateSize);
         const size_t len = updates * updateSize;
         unsigned char outXkcp[32], outNative[32], outOneShot[32];
 
-        // alternate order to avoid a fixed cache-warming bias
-        const long long nativeUs = timeMin([&] { streamNativeRaw(m.data(), len, splits, outNative); });
-        const long long xkcpUs = timeMin([&] { streamXkcpRaw(m.data(), len, splits, outXkcp); });
-        const long long oneShotUs = timeMin([&] { KangarooTwelve(m.data(), (unsigned int)len, outOneShot, 32); });
-        const long long nativeUs2 = timeMin([&] { streamNativeRaw(m.data(), len, splits, outNative); });
+        auto runXkcp = [&] { streamXkcpRaw(m.data(), len, splits, outXkcp); };
+        auto runNative = [&] { k12BenchNativeStream(m.data(), len, splits.data(), splits.size(), outNative); };
+        auto runOneShot = [&] { k12BenchOneShot(m.data(), len, outOneShot); };
+        auto timeOnce = [](auto&& fn)
+        {
+            auto start = std::chrono::high_resolution_clock::now();
+            fn();
+            return (long long)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
+        };
+
+        runXkcp();
+        runNative();
+        runOneShot();
+        long long best[3] = {-1, -1, -1};
+        for (int rep = 0; rep < repetitions; ++rep)
+        {
+            for (int k = 0; k < 3; ++k)
+            {
+                const int backend = (rep + k) % 3;
+                const long long us = backend == 0 ? timeOnce(runXkcp) : backend == 1 ? timeOnce(runNative) : timeOnce(runOneShot);
+                if (best[backend] < 0 || us < best[backend])
+                    best[backend] = us;
+            }
+        }
 
         std::cout << name << ": " << updates << " x " << updateSize << " B, min of " << repetitions << " runs [us]: "
-                  << "xkcp stream " << xkcpUs << ", native stream " << (nativeUs < nativeUs2 ? nativeUs : nativeUs2)
-                  << ", one-shot " << oneShotUs << std::endl;
+                  << "xkcp stream " << best[0] << ", native stream " << best[1] << ", one-shot " << best[2] << std::endl;
 
         EXPECT_EQ(memcmp(outXkcp, outOneShot, 32), 0);
         EXPECT_EQ(memcmp(outNative, outOneShot, 32), 0);
@@ -535,7 +546,7 @@ TEST(TestCoreK12, CompareK12Implementations)
     char outputArrayStream[outputN];
     startTime = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < repN; ++i)
-        streamNativeRaw((unsigned char *) inputPtr, inputN, {}, (unsigned char*) outputArrayStream);
+        k12BenchNativeStream((unsigned char *) inputPtr, inputN, nullptr, 0, (unsigned char*) outputArrayStream);
     durationMilliSec = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime);
     bytePerMilliSec = double(repN * inputN) / double(durationMilliSec.count());
     gigaBytePerSec = bytePerMilliSec * (1000.0 / bytesPerGigaByte);
