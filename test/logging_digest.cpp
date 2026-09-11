@@ -68,6 +68,7 @@ TEST(TestCoreLogging, StateDigestChain)
     {
         const unsigned int tick = tickBegin + (unsigned int)i;
         system.tick = tick;
+        logger.registerNewTx(tick, logger.SC_BEGIN_TICK_TX); // logs need a registered tx context
         std::vector<unsigned char> expectedInput(prev.m256i_u8, prev.m256i_u8 + 32);
         for (const QuTransfer& t : ticks[i])
         {
@@ -85,6 +86,7 @@ TEST(TestCoreLogging, StateDigestChain)
     // a new epoch restarts the chain from the zero hash
     qLogger::reset(tickBegin + 100);
     system.tick = tickBegin + 100;
+    logger.registerNewTx(tickBegin + 100, logger.SC_BEGIN_TICK_TX);
     logger.logQuTransfer(transfer(7, 700));
     qLogger::updateTick(tickBegin + 100);
     std::vector<unsigned char> input(32, 0);
