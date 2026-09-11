@@ -330,20 +330,32 @@ struct K12StreamFileLayout
     int securityLevel;
 };
 static_assert(sizeof(K12StreamFileLayout) == 448, "logEventState.db layout must not change");
+// XKCP KCP_Phases: NOT_INITIALIZED = 0, ABSORBING = 1, FINAL = 2, SQUEEZING = 3
+static constexpr int K12_STREAM_FILE_PHASE_ABSORBING = 1;
 
 static void k12StreamToFileLayout(const KangarooTwelveStream& stream, K12StreamFileLayout& file)
 {
     setMem(&file, sizeof(file), 0);
     copyMem(file.queueNode.state, stream.queueNode.state, sizeof(file.queueNode.state));
-    file.queueNode.rateInBits = K12_rateInBytes * 8;
-    file.queueNode.byteIOIndex = stream.queueNode.byteIOIndex;
+    // XKCP initialized the queue node only when the first leaf started
+    file.queueNode.rateInBits = stream.blockNumber ? K12_rateInBytes * 8 : 0;
+    if (stream.blockNumber && !stream.queueAbsorbedLen)
+    {
+        // between two leaves: XKCP left the queue node in squeezed state, with the chaining value read out
+        file.queueNode.byteIOIndex = K12_capacityInBytes;
+        file.queueNode.squeezing = 1;
+    }
+    else
+    {
+        file.queueNode.byteIOIndex = stream.queueNode.byteIOIndex;
+    }
     copyMem(file.finalNode.state, stream.finalNode.state, sizeof(file.finalNode.state));
     file.finalNode.rateInBits = K12_rateInBytes * 8;
     file.finalNode.byteIOIndex = stream.finalNode.byteIOIndex;
     file.fixedOutputLength = 32;
     file.blockNumber = stream.blockNumber;
     file.queueAbsorbedLen = stream.queueAbsorbedLen;
-    file.phase = 0; // absorbing
+    file.phase = K12_STREAM_FILE_PHASE_ABSORBING;
     file.securityLevel = K12_security;
 }
 
