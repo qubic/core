@@ -1113,8 +1113,9 @@ TEST(ContractQUSINO, coinFlip_InsufficientBonusAmountRejectsQscBet)
 {
     ContractTestingQUSINO QUSINO;
 
-    // Fund the bankroll just enough for the entropy fee -- nowhere near enough to cover
-    // a win payout on this bet (bet * 196 Qu).
+    // Fund the bankroll just enough for the entropy fee -- leaving it at exactly zero,
+    // nowhere near enough to cover even the net liability a win on this bet would incur
+    // (let alone the payout's gross backing).
     QUSINO.fundBonusAmount(QUSINO_RNG_ENTROPY_FEE);
     increaseEnergy(QUSINO_testUser1, 1);
     QUSINO.seedRandomEntropy(0xA11CE);
@@ -1176,8 +1177,10 @@ TEST(ContractQUSINO, coinFlip_QscSettlesConsistentlyAndUpdatesBank)
         EXPECT_EQ(output.payout, expectedQscPayout);
         EXPECT_EQ(QUSINO.getUserAssetVolume(user).QSCAmount, qscBefore - bet + expectedQscPayout);
         EXPECT_EQ(QUSINO.getSCInfo().QSCCirclatingSupply, qscSupplyBefore - bet + expectedQscPayout);
-        // The bankroll is debited by exactly the Qu backing the credited QSC.
-        EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, bonusBefore - expectedQscPayout * QUSINO_QSC_PRICE);
+        // The bankroll moves by exactly the payout's Qu backing net of the stake's own
+        // freed backing (the stake's burn above already freed qscRedemptionValueQu of
+        // backing, so only the shortfall needs to come out of bonusAmount).
+        EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, bonusBefore + qscRedemptionValueQu - expectedQscPayout * QUSINO_QSC_PRICE);
         EXPECT_EQ(QUSINO.getSCInfo().epochRevenue, epochRevenueBefore);
     }
     else
@@ -1188,6 +1191,55 @@ TEST(ContractQUSINO, coinFlip_QscSettlesConsistentlyAndUpdatesBank)
         // The redeemed QSC's Qu value tops up the game bankroll instead of paying out.
         EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, bonusBefore + qscRedemptionValueQu);
         EXPECT_EQ(QUSINO.getSCInfo().epochRevenue, epochRevenueBefore);
+    }
+}
+
+TEST(ContractQUSINO, coinFlip_NetGateAllowsBetGrossGateWouldReject)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id user = QUSINO_testUser2;
+    uint64 bet = 1000ULL;
+    uint64 qscRedemptionValueQu = bet * QUSINO_QSC_PRICE;
+    uint64 winAmountQu = qscRedemptionValueQu * QUSINO_COINFLIP_PAYOUT_PERCENT / 100; // gross backing: 196000
+    uint64 qscPayout = winAmountQu / QUSINO_QSC_PRICE;                               // 1960
+    uint64 netDebitQu = qscPayout * QUSINO_QSC_PRICE - qscRedemptionValueQu;         // net liability: 96000
+
+    // Fund the bankroll to a level strictly between the net liability this bet would
+    // actually incur (netDebitQu) and the payout's full gross backing (winAmountQu) -- a
+    // bet the pool can genuinely afford, but only if gated on the net figure. The old
+    // gross-based gate would have wrongly rejected this exact bet.
+    uint64 targetBonus = (netDebitQu + winAmountQu) / 2;
+    ASSERT_GT(targetBonus, netDebitQu);
+    ASSERT_LT(targetBonus, winAmountQu);
+
+    QUSINO.fundBonusAmount(QUSINO_RNG_ENTROPY_FEE + targetBonus);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+    ASSERT_EQ(QUSINO.getSCInfo().bonusAmount, targetBonus);
+
+    QUSINO.giveUserQSC(user, bet);
+    uint64 bonusBefore = QUSINO.getSCInfo().bonusAmount;
+    uint64 qscBefore = QUSINO.getUserAssetVolume(user).QSCAmount;
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, bet);
+
+    // The point of this test: bonusAmount sits below the gross payout backing but above
+    // the net liability, and the bet must still be accepted either way the coin lands.
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+
+    if (output.won)
+    {
+        EXPECT_EQ(output.payout, qscPayout);
+        EXPECT_EQ(QUSINO.getUserAssetVolume(user).QSCAmount, qscBefore - bet + qscPayout);
+        EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, bonusBefore - netDebitQu);
+    }
+    else
+    {
+        EXPECT_EQ(output.payout, 0u);
+        EXPECT_EQ(QUSINO.getUserAssetVolume(user).QSCAmount, qscBefore - bet);
+        EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, bonusBefore + qscRedemptionValueQu);
     }
 }
 

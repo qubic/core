@@ -1007,6 +1007,7 @@ public:
         uint64 qscRedemptionValueQu;
         uint64 winAmount;
         uint64 qscPayout;
+        uint64 qscNetDebitQu;
         uint64 newBonus;
         uint64 overflow;
         uint8 outcome;
@@ -1079,10 +1080,21 @@ public:
                 return;
             }
 
-            // Gate on the win payout (not just the bet) so a win can't underflow bonusAmount.
+            // Gate on the NET liability a win would add (payout backing minus the stake's
+            // own backing, freed by the unconditional burn below) -- not the gross payout,
+            // which would reject bets the pool can actually afford. Precomputed here since
+            // it only depends on `amount`, not the RNG outcome.
+            //
+            // Settle with one direct subtraction (see win branch below), no addWithCap: an
+            // add-then-subtract settlement could underflow if the credit-back gets capped
+            // at QUSINO_GAME_BANKROLL_CAP before the gross payout is debited, even though
+            // this net gate passed. A single subtraction can't underflow (gate guarantees
+            // bonusAmount >= qscNetDebitQu) and can't overflow the cap (it's a decrease).
             locals.qscRedemptionValueQu = smul(input.amount, QUSINO_QSC_PRICE);
             locals.winAmount = div(smul(locals.qscRedemptionValueQu, QUSINO_COINFLIP_PAYOUT_PERCENT), 100ULL);
-            if (state.get().bonusAmount < locals.winAmount)
+            locals.qscPayout = div(locals.winAmount, QUSINO_QSC_PRICE);
+            locals.qscNetDebitQu = smul(locals.qscPayout, QUSINO_QSC_PRICE) - locals.qscRedemptionValueQu;
+            if (state.get().bonusAmount < locals.qscNetDebitQu)
             {
                 output.returnCode = QUSINO_INSUFFICIENT_BONUS_AMOUNT;
                 output.result = 0;
@@ -1145,12 +1157,15 @@ public:
             if (output.won)
             {
                 // Credit QSC instead of sending Qu -- caller redeems it themselves later.
-                // Debit the bankroll by exactly the Qu backing the credited QSC.
-                locals.qscPayout = div(locals.winAmount, QUSINO_QSC_PRICE);
+                // (locals.qscPayout was already computed above, before the draw, to gate on
+                // locals.qscNetDebitQu.)
                 output.payout = locals.qscPayout;
                 locals.userVolume.volumeOfQSC = sadd(locals.userVolume.volumeOfQSC, locals.qscPayout);
                 state.mut().QSCCirclatingSupply = sadd(state.get().QSCCirclatingSupply, locals.qscPayout);
-                state.mut().bonusAmount -= smul(locals.qscPayout, QUSINO_QSC_PRICE);
+
+                // Net of the stake's backing (already freed by the burn above); gated
+                // above, so this direct subtraction is safe (see gate comment).
+                state.mut().bonusAmount -= locals.qscNetDebitQu;
             }
             else
             {
