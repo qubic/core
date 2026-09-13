@@ -3,6 +3,7 @@
 #include "gtest/gtest.h"
 
 #include "../src/kangaroo_twelve.h"
+#include "../src/optimizations/opt_parallel_k12_leaves.h"
 #include "../src/platform/memory.h"
 #include <lib/platform_common/qintrin.h>
 
@@ -11,6 +12,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 
@@ -89,6 +91,34 @@ namespace
         EXPECT_LE(total, len);
         unsigned char out[32];
         streamNativeRaw(d, len, updates, out);
+        return toHex(out, 32);
+    }
+
+    // Digest via KangarooTwelveLeaf() chaining values absorbed by the stream (the parallel-leaf split,
+    // computed sequentially here).
+    std::string digestViaLeaves(const unsigned char* d, size_t len)
+    {
+        KangarooTwelveStream s;
+        s.init();
+        if (len > K12_chunkSize)
+        {
+            const size_t leafCount = (len - K12_chunkSize) / K12_chunkSize;
+            s.update(d, K12_chunkSize);
+            for (size_t k = 0; k < leafCount; k++)
+            {
+                unsigned char cv[32];
+                KangarooTwelveLeaf(d + K12_chunkSize + k * K12_chunkSize, cv);
+                s.absorbChainingValue(cv);
+            }
+            const size_t tail = K12_chunkSize + leafCount * K12_chunkSize;
+            s.update(d + tail, len - tail);
+        }
+        else
+        {
+            s.update(d, len);
+        }
+        unsigned char out[32];
+        s.finalize(out);
         return toHex(out, 32);
     }
 
@@ -469,4 +499,76 @@ TEST(TestCoreK12, CompareOneShotAndStream1GB)
     ASSERT_EQ(memcmp(outputArrayStream, outputArray, outputN), 0);
 
     delete [] inputPtr;
+}
+
+TEST(TestCoreK12, LeafChainingValuesMatchOneShot)
+{
+    for (const Vector& v : golden)
+    {
+        const std::vector<unsigned char> m = ptn(v.len);
+        EXPECT_EQ(digestViaLeaves(m.data(), v.len), v.digest) << "len " << v.len;
+    }
+    const size_t lens[] = {8193, 16383, 16384, 16385, 30000, 100000, 2097151, 2097152, 2097153};
+    for (size_t len : lens)
+    {
+        const std::vector<unsigned char> m = pseudoRandom(len, 0xBEEF + len);
+        EXPECT_EQ(digestViaLeaves(m.data(), len), oneShot(m.data(), len)) << "len " << len;
+    }
+}
+
+namespace
+{
+    // Run `pool.digest()` on the calling thread while `helperCount` threads act as request processors.
+    template <class Pool>
+    std::string parallelDigest(Pool& pool, const unsigned char* d, size_t len, int helperCount)
+    {
+        volatile bool stop = false;
+        std::vector<std::thread> helpers;
+        for (int i = 0; i < helperCount; i++)
+        {
+            helpers.emplace_back([&] {
+                while (!stop)
+                {
+                    if (!pool.tryProcessOne())
+                        std::this_thread::yield();
+                }
+            });
+        }
+        unsigned char out[32];
+        pool.digest(d, len, out);
+        stop = true;
+        for (auto& h : helpers)
+            h.join();
+        return toHex(out, 32);
+    }
+}
+
+TEST(TestCoreK12, ParallelLeafPoolMatchesOneShot)
+{
+    // small pool: 2 leaves per task, 4 tasks per round, so a 3 MB state takes ~48 rounds
+    typedef ParallelK12LeafTasksT<2, 4> SmallPool;
+    static SmallPool smallPool;
+    const size_t lens[] = {0, 100, 8192, 8193, 16384, 3 * 1024 * 1024 + 17, 3 * 1024 * 1024 + 8192};
+    std::vector<unsigned char> buffer(SmallPool::chainingValueBufferSize(4 * 1024 * 1024));
+    smallPool.init(buffer.data(), 4 * 1024 * 1024);
+    for (size_t len : lens)
+    {
+        const std::vector<unsigned char> m = pseudoRandom(len, 0xABC + len);
+        const std::string expected = oneShot(m.data(), len);
+        EXPECT_EQ(parallelDigest(smallPool, m.data(), len, 0), expected) << "len " << len << ", ticker only";
+        for (int round = 0; round < 10; round++)
+        {
+            EXPECT_EQ(parallelDigest(smallPool, m.data(), len, 3), expected) << "len " << len << ", 3 helpers";
+            EXPECT_EQ(parallelDigest(smallPool, m.data(), len, 7), expected) << "len " << len << ", 7 helpers";
+        }
+    }
+
+    // production pool geometry on a 40 MB state (several tasks, one round)
+    const size_t len = 40 * 1024 * 1024 + 4321;
+    std::vector<unsigned char> cvBuffer(ParallelK12LeafTasks::chainingValueBufferSize(len));
+    parallelK12Leaves.init(cvBuffer.data(), len);
+    const std::vector<unsigned char> m = pseudoRandom(len, 99);
+    const std::string expected = oneShot(m.data(), len);
+    EXPECT_EQ(parallelDigest(parallelK12Leaves, m.data(), len, 0), expected) << "ticker only";
+    EXPECT_EQ(parallelDigest(parallelK12Leaves, m.data(), len, 7), expected) << "7 helpers";
 }

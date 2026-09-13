@@ -94,6 +94,9 @@
 #if USE_PARALLEL_SIGN_VOTES
 #include "optimizations/opt_parallel_sign_votes.h"
 #endif
+#if USE_PARALLEL_K12_LEAVES
+#include "optimizations/opt_parallel_k12_leaves.h"
+#endif
 
 ////////// Qubic \\\\\\\\\\
 
@@ -828,7 +831,16 @@ static void getComputerDigest(m256i& digest)
                 contractStateLock[digestIndex].acquireRead();
 
                 const unsigned long long startTime = __rdtsc();
-                KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
+#if USE_PARALLEL_K12_LEAVES
+                if (size >= PARALLEL_K12_LEAVES_MIN_STATE_SIZE)
+                {
+                    parallelK12Leaves.digest(contractStates[digestIndex], size, &contractStateDigests[digestIndex]);
+                }
+                else
+#endif
+                {
+                    KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
+                }
                 const unsigned long long executionTime = __rdtsc() - startTime;
 
                 contractStateLock[digestIndex].releaseRead();
@@ -2498,6 +2510,12 @@ static void requestProcessor(void* ProcedureArgument)
         // Pull pending signTickVote tasks dispatched by broadcastTickVotes().
         // Cheap fast-path when nothing pending, otherwise loop until pool empty.
         while (parallelSignVotes.tryProcessOne())
+        {
+        }
+#endif
+#if USE_PARALLEL_K12_LEAVES
+        // Hash K12 leaves of large contract states dispatched by getComputerDigest().
+        while (parallelK12Leaves.tryProcessOne())
         {
         }
 #endif
@@ -7405,6 +7423,24 @@ static bool initialize()
                 return false;
             }
         }
+#if USE_PARALLEL_K12_LEAVES
+        {
+            unsigned long long maxStateSize = 0;
+            for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+            {
+                if (contractDescriptions[contractIndex].stateSize > maxStateSize)
+                {
+                    maxStateSize = contractDescriptions[contractIndex].stateSize;
+                }
+            }
+            void* chainingValueBuffer = nullptr;
+            if (!allocPoolWithErrorLog(L"parallelK12Leaves", ParallelK12LeafTasks::chainingValueBufferSize(maxStateSize), &chainingValueBuffer, __LINE__))
+            {
+                return false;
+            }
+            parallelK12Leaves.init((unsigned char*)chainingValueBuffer, maxStateSize);
+        }
+#endif
 
         if (!allocPoolWithErrorLog(L"score", sizeof(*score), (void**)&score, __LINE__))
         {

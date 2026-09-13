@@ -456,6 +456,9 @@
     <ClInclude Include="optimizations\opt_parallel_sign_votes.h">
       <Filter>optimizations</Filter>
     </ClInclude>
+    <ClInclude Include="optimizations\opt_parallel_k12_leaves.h">
+      <Filter>optimizations</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

@@ -896,6 +896,20 @@ static inline void KangarooTwelve(const void* input, unsigned int inputByteLen, 
     KangarooTwelve((const unsigned char*)input, inputByteLen, (unsigned char*)output, outputByteLen);
 }
 
+// Chaining value of one full K12 leaf (K12_chunkSize bytes, tree mode). Leaves are independent of each
+// other, so they can be hashed in any order and on any core; KangarooTwelveStream::absorbChainingValue()
+// feeds the results into the final node in place of the leaf bytes.
+static void KangarooTwelveLeaf(const void* leaf, void* chainingValue32)
+{
+    KangarooTwelve_F node;
+    setMem(&node, sizeof(node), 0);
+    KangarooTwelve_F_Absorb(&node, (const unsigned char*)leaf, K12_chunkSize);
+    node.state[node.byteIOIndex] ^= K12_suffixLeaf;
+    node.state[K12_rateInBytes - 1] ^= 0x80;
+    KeccakP1600_Permute_12rounds(node.state);
+    copyMem(chainingValue32, node.state, K12_capacityInBytes);
+}
+
 // Streaming (incremental) KangarooTwelve: 128-bit security, empty customization string, 32-byte output.
 // Uses the same tree, suffix and padding steps as KangarooTwelve() above, so the digest of a byte
 // sequence is identical to the one-shot digest no matter how the sequence is split across update() calls.
@@ -927,19 +941,7 @@ struct KangarooTwelveStream
             queueAbsorbedLen += (unsigned int)len;
             if (queueAbsorbedLen == K12_chunkSize && inputByteLen)
             {
-                // First chunk complete and more data follows: switch to tree mode
-                blockNumber = 1;
-                queueAbsorbedLen = 0;
-                finalNode.state[finalNode.byteIOIndex] ^= 0x03;
-                if (++finalNode.byteIOIndex == K12_rateInBytes)
-                {
-                    KeccakP1600_Permute_12rounds(finalNode.state);
-                    finalNode.byteIOIndex = 0;
-                }
-                else
-                {
-                    finalNode.byteIOIndex = (finalNode.byteIOIndex + 7) & ~7;
-                }
+                finishFirstChunk();
             }
         }
         while (inputByteLen)
@@ -958,6 +960,21 @@ struct KangarooTwelveStream
                 chainQueueNode();
             }
         }
+    }
+
+    // Absorb the chaining value of a full leaf computed elsewhere (KangarooTwelveLeaf()) instead of the
+    // leaf bytes. Valid only right after the first chunk (exactly K12_chunkSize bytes) was fed with update()
+    // and while no partial leaf is pending, i.e. every leaf so far was fed this way.
+    void absorbChainingValue(const void* chainingValue32)
+    {
+        ASSERT(!finalized);
+        ASSERT(queueAbsorbedLen == (blockNumber ? 0 : K12_chunkSize));
+        if (blockNumber == 0)
+        {
+            finishFirstChunk();
+        }
+        ++blockNumber;
+        KangarooTwelve_F_Absorb(&finalNode, (const unsigned char*)chainingValue32, K12_capacityInBytes);
     }
 
     void finalize(void* output32)
@@ -1001,6 +1018,23 @@ struct KangarooTwelveStream
     }
 
 private:
+    // First chunk complete and more data follows: switch the final node to tree mode
+    void finishFirstChunk()
+    {
+        blockNumber = 1;
+        queueAbsorbedLen = 0;
+        finalNode.state[finalNode.byteIOIndex] ^= 0x03;
+        if (++finalNode.byteIOIndex == K12_rateInBytes)
+        {
+            KeccakP1600_Permute_12rounds(finalNode.state);
+            finalNode.byteIOIndex = 0;
+        }
+        else
+        {
+            finalNode.byteIOIndex = (finalNode.byteIOIndex + 7) & ~7;
+        }
+    }
+
     // Finish the current (full or partial) leaf in the queue node and absorb its chaining value into the final node
     void chainQueueNode()
     {
