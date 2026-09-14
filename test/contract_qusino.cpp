@@ -1077,6 +1077,33 @@ TEST(ContractQUSINO, coinFlip_BelowMinBetRejected)
     EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_FUNDS);
 }
 
+TEST(ContractQUSINO, coinFlip_AboveMaxBetRejected)
+{
+    ContractTestingQUSINO QUSINO;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    increaseEnergy(user, 1);
+
+    // Rejected purely on amount, before ever checking the caller's own QSC
+    // balance (this user has none) -- same ordering as the min-bet gate.
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, QUSINO_COINFLIP_MAX_BET + 1);
+    EXPECT_EQ(output.returnCode, QUSINO_EXCEEDS_MAX_BET);
+
+    // Exactly at the ceiling is still fine (rejected here for a different,
+    // expected reason: this user genuinely has no QSC to bet with).
+    QUSINO::coinFlip_output atMax = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, QUSINO_COINFLIP_MAX_BET);
+    EXPECT_EQ(atMax.returnCode, QUSINO_INSUFFICIENT_QSC);
+
+    // STAR is covered by the same asset-agnostic gate, not just QSC.
+    QUSINO::coinFlip_output starOutput = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_STAR, QUSINO_COINFLIP_MAX_BET + 1);
+    EXPECT_EQ(starOutput.returnCode, QUSINO_EXCEEDS_MAX_BET);
+}
+
 TEST(ContractQUSINO, coinFlip_InsufficientQscRejected)
 {
     ContractTestingQUSINO QUSINO;

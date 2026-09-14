@@ -45,6 +45,7 @@ constexpr sint32 QUSINO_INVALID_INPUT = 20;
 constexpr sint32 QUSINO_RNG_NOT_READY = 21;
 constexpr sint32 QUSINO_RNG_REFILL_TOO_SOON = 22;
 constexpr sint32 QUSINO_RNG_REFILL_FAILED = 23;
+constexpr sint32 QUSINO_EXCEEDS_MAX_BET = 24;
 
 constexpr uint8 QUSINO_ASSET_TYPE_QUBIC = 0;
 constexpr uint8 QUSINO_ASSET_TYPE_QSC = 1;
@@ -70,6 +71,7 @@ constexpr uint32 QUSINO_LOG_RNG_REFILL_TOO_SOON = 15;
 constexpr uint32 QUSINO_LOG_RNG_REFILL_FAILED = 16;
 constexpr uint32 QUSINO_LOG_RNG_REFILL_SUCCESS = 17;
 constexpr uint32 QUSINO_LOG_COINFLIP_RESULT = 18;
+constexpr uint32 QUSINO_LOG_EXCEEDS_MAX_BET = 19;
 
 // ---------------------------------------------------------------------------
 // Coin Flip + shared RNG "Result Bank"
@@ -103,6 +105,19 @@ constexpr uint8 QUSINO_GAME_ID_COINFLIP = 0;
 // bonusAmount: STAR isn't redeemable for Qubic, so a win mints STAR and a loss
 // burns it, like a vote fee.
 constexpr uint64 QUSINO_COINFLIP_MIN_BET = 3ULL;                                // min bet, in QSC or STAR units
+// Max bet, in QSC or STAR units, regardless of asset, balance, or the
+// bonusAmount pool's own affordability cap (QUSINO_INSUFFICIENT_BONUS_AMOUNT
+// below is a separate, additional restriction on QSC specifically -- this
+// ceiling applies on top of it, and to STAR too, where that other check
+// doesn't apply at all). A flat business/UX limit, not something the
+// protocol's own accounting requires -- unlike MIN_BET (avoids degenerate
+// dust bets) or the bonus-pool gate (avoids underflowing bonusAmount), nothing
+// here would go wrong arithmetically without this cap. It exists only so a
+// single bet can never be enormous purely by virtue of a large balance or a
+// large pool. Previously enforced client-side only (qusino-frontend's
+// FIXED_MAX_BET_UNITS) -- moved on-chain after a report that a client
+// bypassing/not using that frontend could place an arbitrarily large bet.
+constexpr uint64 QUSINO_COINFLIP_MAX_BET = 100000ULL;
 constexpr uint64 QUSINO_COINFLIP_PAYOUT_PERCENT = 196ULL;                       // 1.96x on win == ~2% house edge, placeholder
 
 // bonusAmount is shared by the daily-claim-bonus feature and Coin Flip's Qu
@@ -980,8 +995,9 @@ public:
     // loss burns it (like a vote fee). Outcome is drawn instantly from the Coin
     // Flip RNG pool (see Result Bank comment above), then the slot is topped up.
     // Return codes: QUSINO_SUCCESS, QUSINO_INVALID_INPUT, QUSINO_WRONG_ASSET_TYPE,
-    // QUSINO_INSUFFICIENT_FUNDS, QUSINO_RNG_NOT_READY, QUSINO_INSUFFICIENT_QSC /
-    // QUSINO_INSUFFICIENT_STAR, QUSINO_INSUFFICIENT_BONUS_AMOUNT.
+    // QUSINO_INSUFFICIENT_FUNDS, QUSINO_EXCEEDS_MAX_BET, QUSINO_RNG_NOT_READY,
+    // QUSINO_INSUFFICIENT_QSC / QUSINO_INSUFFICIENT_STAR,
+    // QUSINO_INSUFFICIENT_BONUS_AMOUNT.
     // ---------------------------------------------------------------------------
     struct CoinFlipSelectContext
     {
@@ -1049,6 +1065,17 @@ public:
             output.won = 0;
             output.payout = 0;
             locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_FUNDS, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        if (input.amount > QUSINO_COINFLIP_MAX_BET)
+        {
+            output.returnCode = QUSINO_EXCEEDS_MAX_BET;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_EXCEEDS_MAX_BET, 0 };
             LOG_INFO(locals.log);
             return;
         }
