@@ -100,8 +100,11 @@ int main()
         std::vector<unsigned char> state(stateSize);
         for (size_t i = 0; i < stateSize; i++)
             state[i] = (unsigned char)(i % 251);
-        std::vector<unsigned char> cvBuffer(ParallelK12LeafTasks::chainingValueBufferSize(stateSize));
-        parallelK12Leaves.init(cvBuffer.data(), stateSize);
+        // production task size, helper cap lifted so the scaling beyond PARALLEL_K12_LEAVES_MAX_HELPERS is visible
+        typedef ParallelK12LeafTasksT<ParallelK12LeafTasks::TASK_LEAVES, 64> BenchPool;
+        static BenchPool benchPool;
+        std::vector<unsigned char> cvBuffer(BenchPool::chainingValueBufferSize(stateSize));
+        benchPool.init(cvBuffer.data(), stateSize);
         unsigned char ref[32], out[32];
         long long oneShotUs = -1;
         for (int rep = 0; rep < 3; rep++)
@@ -118,11 +121,11 @@ int main()
             volatile bool stop = false;
             std::vector<std::thread> helpers;
             for (int i = 0; i < helperCount; i++)
-                helpers.emplace_back([&] { while (!stop) { if (!parallelK12Leaves.tryProcessOne()) std::this_thread::yield(); } });
+                helpers.emplace_back([&] { while (!stop) { if (!benchPool.tryProcessOne()) std::this_thread::yield(); } });
             long long best = -1;
             for (int rep = 0; rep < 3; rep++)
             {
-                const long long us = timeOnce([&] { parallelK12Leaves.digest(state.data(), stateSize, out); });
+                const long long us = timeOnce([&] { benchPool.digest(state.data(), stateSize, out); });
                 if (best < 0 || us < best) best = us;
             }
             stop = true;

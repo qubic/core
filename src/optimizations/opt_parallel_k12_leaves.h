@@ -6,58 +6,65 @@
 // input as a tree: the first K12_chunkSize bytes go into the final node, every further full chunk
 // is an independent leaf whose 32-byte chaining value is absorbed by the final node, and only the
 // final node is sequential. For a 600 MB state that is ~75000 independent leaves and 2.4 MB of
-// sequential work, so the leaves are split into tasks that the request processors pick up in their
-// loop (like parallelSignVotes) while the tick processor claims the rest and then races stragglers.
+// sequential work, so the leaves are handed out in fixed-size tasks that the request processors
+// pick up in their loop (like parallelSignVotes) while the tick processor takes the rest.
 //
 // The result is bit-identical to KangarooTwelve(state, size, out, 32): KangarooTwelveLeaf() performs
 // exactly the leaf steps of the one-shot code and KangarooTwelveStream absorbs the chaining values in
-// leaf order. Tasks are idempotent (every core computes the same values), each core hashes into a
-// private scratch buffer, and only the winner of the done-CAS stores its result, so a straggler and
-// the ticker racing the same task never tear the output. A round is published only when no worker
-// is inside the pool any more (busy counter), and the task fields are published before the
-// generation is bumped, so a worker that copied stale fields always fails the generation check and
-// never stores a stale result.
+// leaf order.
+//
+// Ownership is exclusive: a task is claimed by an atomic counter, hashed by exactly one core straight
+// into its slot of the chaining-value buffer, and never redone. A leaf hash is deterministic and takes
+// microseconds, and application processors are not preempted under UEFI, so racing a claimed task
+// could not finish it earlier anyway; it would only duplicate work. The tail of a digest is therefore
+// bounded by one task of a helper's time. digest() returns only when every worker has left the pool,
+// because the caller releases the state's read lock right after.
+//
+// Workers see a consistent (range, counter) pair without a generation counter: a range is published
+// only while active == 0 and after the previous digest drained busy to 0, and a worker registers as
+// busy before it re-checks active and reads the range.
 //
 // Disable via USE_PARALLEL_K12_LEAVES in private_settings.h; getComputerDigest() then hashes on
-// the tick processor as before.
+// the tick processor as before. PARALLEL_K12_LEAVES_MAX_HELPERS caps the request processors that
+// hash at the same time; the others keep serving requests.
 
 #include "../kangaroo_twelve.h"
 #include "../platform/memory.h"
 
 #if defined(_MSC_VER)
-#define PK12_CAS32(target, exchange, comparand) _InterlockedCompareExchange((volatile long*)(target), (exchange), (comparand))
 #define PK12_ADD32(target, value) _InterlockedExchangeAdd((volatile long*)(target), (value))
-#define PK12_COMPILER_BARRIER() _ReadWriteBarrier()
 #else
-#define PK12_CAS32(target, exchange, comparand) __sync_val_compare_and_swap((volatile long*)(target), (comparand), (exchange))
 #define PK12_ADD32(target, value) __sync_fetch_and_add((volatile long*)(target), (value))
-#define PK12_COMPILER_BARRIER() __asm__ __volatile__("" ::: "memory")
 #endif
 
 // States below this size are hashed on the tick processor alone: the dispatch is not worth it.
+#ifndef PARALLEL_K12_LEAVES_MIN_STATE_SIZE
 #define PARALLEL_K12_LEAVES_MIN_STATE_SIZE (4 * 1024 * 1024)
+#endif
 
-template <unsigned int LEAVES_PER_TASK_ = 256, unsigned int MAX_TASKS_ = 1024>
+// Request processors hashing at the same time. Scaling flattens between 8 and 16 and every helper
+// stops handling requests while it hashes.
+#ifndef PARALLEL_K12_LEAVES_MAX_HELPERS
+#define PARALLEL_K12_LEAVES_MAX_HELPERS 8
+#endif
+
+template <unsigned int TASK_LEAVES_ = 64, unsigned int MAX_HELPERS_ = PARALLEL_K12_LEAVES_MAX_HELPERS>
 struct ParallelK12LeafTasksT
 {
-    static constexpr unsigned int LEAVES_PER_TASK = LEAVES_PER_TASK_;   // 2 MiB of input per task
-    static constexpr unsigned int MAX_TASKS = MAX_TASKS_;               // 2 GiB per round; larger states take several rounds
+    static constexpr unsigned int TASK_LEAVES = TASK_LEAVES_;   // 512 KiB of input per task, ~0.4 ms
+    static constexpr unsigned int MAX_HELPERS = MAX_HELPERS_;
 
-    struct alignas(64) Task
-    {
-        const unsigned char* leaves;
-        unsigned char* chainingValues;
-        unsigned int leafCount;
-        volatile long claimed;   // 0 = free, 1 = a core owns it
-        volatile long done;      // 0 = in progress, 1 = chaining values stored
-    };
-
-    Task tasks[MAX_TASKS];
+    // the published range: task i covers leaves [i * TASK_LEAVES, (i + 1) * TASK_LEAVES)
+    const unsigned char* volatile leaves = nullptr;
+    unsigned char* volatile chainingValues = nullptr;
     volatile long taskCount = 0;
+    volatile long lastTaskLeaves = 0;   // leaves in the last task (1..TASK_LEAVES)
+
+    volatile long nextTask = 0;         // claim counter
     volatile long completedCount = 0;
-    volatile long active = 0;       // 1 while a round is published
-    volatile long busy = 0;         // workers currently inside tryProcessOne()
-    volatile long generation = 0;   // bumped per round, after the task fields are published
+    volatile long active = 0;           // 1 while a range is published
+    volatile long busy = 0;             // workers currently inside the pool (ticker excluded)
+
     unsigned char* chainingValueBuffer = nullptr;   // room for chainingValueBufferSize(maxStateSize) bytes
     unsigned long long maxStateSize = 0;
 
@@ -70,22 +77,17 @@ struct ParallelK12LeafTasksT
     {
         chainingValueBuffer = buffer;
         maxStateSize = maxStateSize_;
-        for (unsigned int i = 0; i < MAX_TASKS; i++)
-        {
-            tasks[i].leaves = nullptr;
-            tasks[i].chainingValues = nullptr;
-            tasks[i].leafCount = 0;
-            tasks[i].claimed = 0;
-            tasks[i].done = 0;
-        }
+        leaves = nullptr;
+        chainingValues = nullptr;
         taskCount = 0;
+        lastTaskLeaves = 0;
+        nextTask = 0;
         completedCount = 0;
         active = 0;
         busy = 0;
-        generation = 0;
     }
 
-    // Request processor: hash one task if any is unclaimed, otherwise race an unfinished one.
+    // Request processor: hash one task if any is left and fewer than MAX_HELPERS are hashing.
     // Returns true if it did work.
     bool tryProcessOne()
     {
@@ -93,27 +95,15 @@ struct ParallelK12LeafTasksT
         {
             return false;
         }
-        PK12_ADD32(&busy, 1);
-        bool didWork = false;
-        if (active) // re-check after registering as busy: the ticker waits for busy == 0 while active == 0
+        if (PK12_ADD32(&busy, 1) >= (long)MAX_HELPERS)
         {
-            const long n = taskCount;
-            for (long i = 0; i < n && !didWork; i++)
-            {
-                if (PK12_CAS32(&tasks[i].claimed, 1, 0) == 0)
-                {
-                    processTask((unsigned int)i);
-                    didWork = true;
-                }
-            }
-            for (long i = 0; i < n && !didWork; i++)
-            {
-                if (tasks[i].done == 0)
-                {
-                    processTask((unsigned int)i);
-                    didWork = true;
-                }
-            }
+            PK12_ADD32(&busy, -1);
+            return false;
+        }
+        bool didWork = false;
+        if (active) // re-check after registering as busy: the ticker publishes only while busy == 0
+        {
+            didWork = claimAndProcessOne();
         }
         PK12_ADD32(&busy, -1);
         return didWork;
@@ -147,71 +137,33 @@ struct ParallelK12LeafTasksT
         stream.finalize(output32);
     }
 
-    // Tick processor: chaining values of leafCount consecutive full leaves into chainingValues (32 bytes
-    // each), using the request processors that call tryProcessOne() plus this core. Returns when all
-    // chaining values are stored.
-    void hashLeaves(const unsigned char* leaves, unsigned long long leafCount, unsigned char* chainingValues)
+    // Tick processor: chaining values of leafCount consecutive full leaves into chainingValues_ (32 bytes
+    // each), using this core plus the request processors that call tryProcessOne(). Returns when all
+    // chaining values are stored and no worker is inside the pool any more.
+    void hashLeaves(const unsigned char* leaves_, unsigned long long leafCount, unsigned char* chainingValues_)
     {
-        while (leafCount)
+        if (!leafCount)
         {
-            // no worker may still be inside the previous round when its slots are reused
-            while (busy)
-            {
-                _mm_pause();
-            }
-            // publish one round of tasks: fields first, then the generation, then active
-            long n = 0;
-            while (leafCount && n < (long)MAX_TASKS)
-            {
-                const unsigned int count = leafCount < LEAVES_PER_TASK ? (unsigned int)leafCount : LEAVES_PER_TASK;
-                tasks[n].leaves = leaves;
-                tasks[n].chainingValues = chainingValues;
-                tasks[n].leafCount = count;
-                tasks[n].claimed = 0;
-                tasks[n].done = 0;
-                leaves += (unsigned long long)count * K12_chunkSize;
-                chainingValues += (unsigned long long)count * K12_capacityInBytes;
-                leafCount -= count;
-                n++;
-            }
-            completedCount = 0;
-            taskCount = n;
-            PK12_ADD32(&generation, 1); // full barrier: fields are visible before the new generation
-            active = 1;
-
-            // claim what is free, then race stragglers until every task is done
-            for (long i = 0; i < n; i++)
-            {
-                if (PK12_CAS32(&tasks[i].claimed, 1, 0) == 0)
-                {
-                    processTask((unsigned int)i);
-                }
-            }
-            while (completedCount < n)
-            {
-                long straggler = -1;
-                for (long i = 0; i < n; i++)
-                {
-                    if (tasks[i].done == 0)
-                    {
-                        straggler = i;
-                        break;
-                    }
-                }
-                if (straggler >= 0)
-                {
-                    processTask((unsigned int)straggler);
-                }
-                else
-                {
-                    _mm_pause();
-                }
-            }
-            active = 0;
-            taskCount = 0;
+            return;
         }
-        // Drain: a worker that lost a race may still be reading the input. The caller releases the
-        // state's read lock right after this returns, so no worker may touch the input any more.
+        ASSERT(!active && !busy);
+        leaves = leaves_;
+        chainingValues = chainingValues_;
+        taskCount = (long)((leafCount + TASK_LEAVES - 1) / TASK_LEAVES);
+        lastTaskLeaves = (long)(leafCount - (unsigned long long)(taskCount - 1) * TASK_LEAVES);
+        nextTask = 0;
+        completedCount = 0;
+        PK12_ADD32(&active, 1); // full barrier: the range is visible before workers see active
+
+        while (claimAndProcessOne())
+        {
+        }
+        while (completedCount < taskCount)
+        {
+            _mm_pause();
+        }
+        active = 0;
+        // a worker may still be between its busy++ and its active re-check: let it leave
         while (busy)
         {
             _mm_pause();
@@ -219,36 +171,22 @@ struct ParallelK12LeafTasksT
     }
 
 private:
-    // Hash one task into a private scratch buffer; the done-CAS winner stores it. Bails early if
-    // another core finished the task meanwhile.
-    void processTask(unsigned int i)
+    bool claimAndProcessOne()
     {
-        // read the generation before the fields: fields are published before the generation is bumped,
-        // so stale fields always come with a stale generation and the check below rejects the result
-        const long myGeneration = generation;
-        PK12_COMPILER_BARRIER();
-        const unsigned char* leaves = tasks[i].leaves;
-        unsigned char* chainingValues = tasks[i].chainingValues;
-        const unsigned int leafCount = tasks[i].leafCount;
-        unsigned char scratch[LEAVES_PER_TASK * K12_capacityInBytes];
-        for (unsigned int k = 0; k < leafCount; k++)
+        const long i = PK12_ADD32(&nextTask, 1);
+        if (i >= taskCount)
         {
-            if (tasks[i].done)
-            {
-                return;
-            }
-            KangarooTwelveLeaf(leaves + (unsigned long long)k * K12_chunkSize, scratch + k * K12_capacityInBytes);
+            return false;
         }
-        PK12_COMPILER_BARRIER();
-        if (generation != myGeneration)
+        const unsigned int count = (i == taskCount - 1) ? (unsigned int)lastTaskLeaves : TASK_LEAVES;
+        const unsigned char* leaf = leaves + (unsigned long long)i * TASK_LEAVES * K12_chunkSize;
+        unsigned char* chainingValue = chainingValues + (unsigned long long)i * TASK_LEAVES * K12_capacityInBytes;
+        for (unsigned int k = 0; k < count; k++)
         {
-            return;
+            KangarooTwelveLeaf(leaf + (unsigned long long)k * K12_chunkSize, chainingValue + k * K12_capacityInBytes);
         }
-        if (PK12_CAS32(&tasks[i].done, 1, 0) == 0)
-        {
-            copyMem(chainingValues, scratch, leafCount * K12_capacityInBytes);
-            PK12_ADD32(&completedCount, 1);
-        }
+        PK12_ADD32(&completedCount, 1);
+        return true;
     }
 };
 
