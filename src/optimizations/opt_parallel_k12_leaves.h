@@ -22,7 +22,11 @@
 //
 // Workers see a consistent (range, counter) pair without a generation counter: a range is published
 // only while active == 0 and after the previous digest drained busy to 0, and a worker registers as
-// busy before it re-checks active and reads the range.
+// busy before it re-checks active and reads the range. Closing admission (active = 0) and registering
+// (busy++) are both locked instructions, i.e. full barriers, so either the ticker sees the worker's
+// busy and waits for it, or the worker sees active == 0 and leaves: a plain store for active = 0
+// could stay in the store buffer while the ticker already reads busy == 0, letting a worker slip
+// into a range that is about to be replaced.
 //
 // Disable via USE_PARALLEL_K12_LEAVES in private_settings.h; getComputerDigest() then hashes on
 // the tick processor as before. PARALLEL_K12_LEAVES_MAX_HELPERS caps the request processors that
@@ -31,10 +35,13 @@
 #include "../kangaroo_twelve.h"
 #include "../platform/memory.h"
 
+// Both are full memory barriers on x86 (locked instructions); the protocol below relies on that.
 #if defined(_MSC_VER)
 #define PK12_ADD32(target, value) _InterlockedExchangeAdd((volatile long*)(target), (value))
+#define PK12_XCHG32(target, value) _InterlockedExchange((volatile long*)(target), (value))
 #else
 #define PK12_ADD32(target, value) __sync_fetch_and_add((volatile long*)(target), (value))
+#define PK12_XCHG32(target, value) __atomic_exchange_n((volatile long*)(target), (value), __ATOMIC_SEQ_CST)
 #endif
 
 // States below this size are hashed on the tick processor alone: the dispatch is not worth it.
@@ -146,7 +153,11 @@ struct ParallelK12LeafTasksT
         {
             return;
         }
-        ASSERT(!active && !busy);
+        ASSERT(!active);
+        while (busy) // defensive: publication must never overlap a worker that is still inside
+        {
+            _mm_pause();
+        }
         leaves = leaves_;
         chainingValues = chainingValues_;
         taskCount = (long)((leafCount + TASK_LEAVES - 1) / TASK_LEAVES);
@@ -162,7 +173,7 @@ struct ParallelK12LeafTasksT
         {
             _mm_pause();
         }
-        active = 0;
+        PK12_XCHG32(&active, 0); // full barrier: close admission before reading busy
         // a worker may still be between its busy++ and its active re-check: let it leave
         while (busy)
         {
