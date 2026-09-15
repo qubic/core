@@ -36,9 +36,11 @@ algorithm defines what a solution is and how it scores. Under **bpp9000** a solu
 better** (a flawless network makes zero mistakes). The rest of this overview uses bpp9000's terms, but
 the tree structure around them is identical for any algorithm.
 
-Under bpp9000 the network's **wiring** (which neuron reads which) is **global** - the same graph for
-everyone, from the epoch's task file - and a miner searches over each neuron's **lookup table (LUT)**,
-the ternary function it computes.
+Under bpp9000 a solution has two parts: the network's **wiring** (which neuron reads which) and each
+neuron's **lookup table (LUT)**, the ternary function it computes. Both start from the epoch's shared
+root - the task file supplies the root wiring, the spectrum digest the root LUT - and a miner searches
+by **rewiring neuron links** (and, when LUT mutation is enabled, changing LUT entries too), inheriting
+both parts from the parent it extends.
 
 Standalone mining searches alone: every attempt starts from scratch. Ant-colony mining searches
 **together, as a tree**:
@@ -121,7 +123,7 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 2. **Get a starting point** - derive the epoch's shared virtual root (from the spectrum digest), or
    fetch an existing node you want to extend (`REQUEST_ANT_PARENT_ANN`).
 3. **Pick a parent** - the root, or any node in your own tree.
-4. **Search** - choose a nonce (section 2.2), inherit the parent LUT, run the mutation walk, score
+4. **Search** - choose a nonce (section 2.2), inherit the parent's wiring and LUT, run the mutation walk, score
    (section 2.3).
 5. **Submit** - if it passes the local rules (section 2.4), send `AntSolutionBroadcastPayload` to the
    computor you mine for (section 2.6, stage 1).
@@ -135,7 +137,7 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 | Byte(s)     | Meaning | Valid range |
 |-------------|---------|-------------|
 | `nonce[0]`  | algorithm selector (must select bpp9000) | - |
-| `nonce[1]`  | `L` = LUT entries rewritten per mutation step | `[1, 10]` |
+| `nonce[1]`  | `L` = changes per mutation step (links rewired; LUT entries too when LUT mutation is enabled) | `[1, 10]` |
 | `nonce[2]`  | `K` = number of **explore** steps | `[0, 100]` |
 | `nonce[3..31]` | the walk seed (the actual search space) | any |
 
@@ -158,18 +160,20 @@ becomes the transaction's `sourcePublicKey`. The **mutation seed** derives from 
 worker key, or the node's recompute will not match yours. The **root** derives from no key at all -
 see below.
 
-**Root.** `deriveRootANN(spectrumDigest, epochPool)`: `K12(spectrumDigest)` - the epoch-start
-spectrum digest from the epoch context - seeds a per-neuron LUT from the epoch's random pool (the
-pool itself also comes from that digest). No mutation walk. Never stored. **One root per epoch,
-identical for every identity**; per-identity variation enters only through the mutation seeds.
+**Root.** `deriveRootANN(spectrumDigest, epochPool)`: the root **wiring** is the epoch's task-file
+topology; the root **LUT** comes from `K12(spectrumDigest)` - the epoch-start spectrum digest from the
+epoch context - seeding a per-neuron LUT from the epoch's random pool (the pool itself also comes from
+that digest). No mutation walk. Never stored. **One root per epoch, identical for every identity**;
+per-identity variation enters only through the mutation seeds.
 
-**Child.** `computeScoreFromParent(parentLUT, publicKey, nonce, anchorTickDigest)`:
+**Child.** `computeScoreFromParent(parentANN, publicKey, nonce, anchorTickDigest)`:
 
-1. Inherit `parentLUT`.
+1. Inherit the parent's wiring and LUT.
 2. `mutationSeed = K12(publicKey || nonce || anchorTickDigest)` with `nonce[0..2]` zeroed in place
    (the full 32-byte nonce is hashed, its first 3 bytes set to 0, not dropped) - still keyed by the
    mining identity, so different identities walk differently from the shared root.
-3. Walk `numberOfMutations = 100` steps. Each step rewrites `L` LUT entries. For the first `K` steps
+3. Walk `numberOfMutations = 100` steps. Each step rewires `L` neuron links (and, when LUT mutation is
+   enabled, changes `L` LUT entries too). For the first `K` steps
    accept a worse-or-equal result (**explore**); after that accept only better-or-equal (**exploit**);
    one-step rollback on reject. Keep and return the **best** score seen. The best is seeded with the
    inherited network's own score, so a child that fails to improve on its parent is rejected (see
@@ -302,7 +306,7 @@ from extending an existing node only in how the parent is named and scored.
    context (section 2.3) - do **not** call `REQUEST_ANT_PARENT_ANN` for the root; it answers
    `status = IS_ROOT` with no ANN payload precisely so you derive it locally. The root is identical
    for every identity.
-3. **Search.** Pick a canonical nonce (section 2.2), inherit the derived root LUT, run the walk, and
+3. **Search.** Pick a canonical nonce (section 2.2), inherit the derived root wiring and LUT, run the walk, and
    take the best score - exactly as for any parent.
 4. **The only score gate is the threshold.** The root's record score is the worst possible value, so
    the "strictly beats the parent" rule passes trivially; a root child is accepted on score iff its
@@ -395,30 +399,34 @@ unsigned int parentRefTick;
 unsigned int parentRefSolutionIndexInTick;
 ```
 
-Response `RespondAntParentAnnHeader` (16 bytes), then `annSizeBytes` of **canonical ANN** (one trit per
-byte, the exact form the scorer consumes - no unpacking needed):
+Response `RespondAntParentAnnHeader` (16 bytes), then `annSizeBytes` of **canonical ANN** (the wiring
+plus the LUT, the exact form the scorer consumes - no unpacking needed):
 
 ```
 unsigned int  parentRefTick;
 unsigned int  parentRefSolutionIndexInTick;
-unsigned int  annSizeBytes;   // ANN LUT size when status is OK, else 0
+unsigned int  annSizeBytes;   // sizeof(ANN) when status is OK, else 0
 unsigned char status;         // 0 = OK, 1 = NOT_FOUND, 2 = IS_ROOT (derive the epoch root instead)
 unsigned char padding[3];
 ```
 
-**Canonical ANN layout.** The same byte form is used everywhere ANN bytes leave the node: this response, the snapshot pool, and the epoch export. Under the current bpp9000 parameters it is 1728 bytes = 64 rows of 27:
+**Canonical ANN layout.** The same byte form is used everywhere ANN bytes leave the node: this response, the snapshot pool, and the epoch export. Under the current bpp9000 parameters it is 2112 bytes = 384 wiring + 1728 LUT:
 
 ```
-row k, k = 0..45     LUT of neuron updatedNeuronIndices[k]: the k-th NON-INPUT neuron in
-                     ascending absolute index (input neurons have no LUT; which indices are
-                     inputs comes from the task topology)
-row k, k = 46..63    zero (the row count is fixed at the population size, the live count is
-                     population minus inputs and so task-dependent)
+wiring: neighbor[192]  192 uint16 link targets = 64 neurons x 3 neighbours; neighbor[n*3 + k]
+                       is neuron n's k-th neighbour (any neuron index in [0, population))
+
+lut: 1728 bytes = 64 rows of 27:
+row k, k = 0..45       LUT of neuron updatedNeuronIndices[k]: the k-th NON-INPUT neuron in
+                       ascending absolute index (input neurons have no LUT; which indices are
+                       inputs comes from the task topology)
+row k, k = 46..63      zero (the row count is fixed at the population size, the live count is
+                       population minus inputs and so task-dependent)
 
 byte[line] of a row, line = t0 + 3*t1 + 9*t2
-                     the neuron's next trit for that neighbor state; t0, t1, t2 are the
-                     current trits {0,1,2} of its three wired neighbors in task wiring
-                     order (2 = UNKNOWN is an ordinary value)
+                       the neuron's next trit for that neighbor state; t0, t1, t2 are the
+                       current trits {0,1,2} of its three wired neighbors (2 = UNKNOWN is
+                       an ordinary value)
 ```
 
 Rows are ordered **by updated-neuron position, not by absolute neuron index**. A miner or tool that keeps LUTs indexed by absolute neuron number must convert through the task's `updatedNeuronIndices` mapping before comparing or reusing these bytes.
@@ -445,7 +453,7 @@ The ant colony adds the following files on the node's disk. File names are defin
 | `snapshotAntColonyPool.{epoch}` | packed ANN pool | snapshot set |
 | `snapshotAntSolutionFlag` | ant solution flags bitmap | snapshot set |
 | `antColonyReplayCache.{epoch}` | score cache | optional, recommended |
-| `antColonySolutions.eoe` | end-of-epoch export: best 676 networks (pubkey, score, depth, LUT) | output only |
+| `antColonySolutions.eoe` | end-of-epoch export: best 676 networks (pubkey, score, depth, ANN) | output only |
 | `bpp9000.task` | the epoch's pinned task | required at boot |
 
 **Snapshot set**: the four snapshot files are part of the node snapshot. When you back up, copy, or restore node state, take them TOGETHER with the other snapshot files (spectrum, universe, contracts, system) from the same point. On load the node cross-checks the colony snapshot's rootSeed, error threshold, and initial tick against the restored node state, a colony snapshot from a different moment is refused and the node will not start from it.

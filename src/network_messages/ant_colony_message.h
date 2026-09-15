@@ -113,16 +113,15 @@ struct RequestAntParentAnn
 };
 static_assert(sizeof(RequestAntParentAnn) == 8, "RequestAntParentAnn unexpected size");
 
-// Metadata header, when status is Ok, annSizeBytes bytes of CANONICAL ANN follow it - one trit per
-// byte, the form the scorer consumes, so the receiver does no unpacking. annSizeBytes is 0 for every
-// other status. Kept ANN-agnostic here to avoid a heavy include; the receiver reads the trailing
-// blob by annSizeBytes.
+// Metadata header; when status is Ok, annSizeBytes bytes of the ANN follow it in the scorer's own
+// form, so the receiver does no unpacking. annSizeBytes is 0 for every other status. Kept ANN-agnostic
+// here to avoid a heavy include; the receiver reads the trailing blob by annSizeBytes, so the ANN may
+// change size (wiring, LUT, or both) without changing this message.
 struct RespondAntParentAnnHeader
 {
     unsigned int parentRefTick;
     unsigned int parentRefSolutionIndexInTick;
-    // Bytes of canonical ANN that follow this header: ANN LUT size when status is Ok, 0 for every other
-    // status.
+    // Bytes of ANN that follow this header: sizeof(ANN) when status is Ok, 0 for every other status.
     unsigned int annSizeBytes;
     unsigned char status;
     unsigned char padding[3];
