@@ -169,6 +169,10 @@ struct QTREAT : public ContractBase
         uint32 partFan;
         uint64 weight;
         uint64 active;
+        // Epoch this rig was registered in. A rig only becomes payable once a full
+        // QTREAT_ASIC_VERIFY_SPREAD_EPOCHS cycle has passed since then, which is what stops
+        // slot churn from beating the 1-in-N payout schedule (see the END_EPOCH mining loop).
+        uint64 registeredEpoch;
     };
 
     struct AssetKey
@@ -846,6 +850,7 @@ struct QTREAT : public ContractBase
         locals.rig.partFan = input.partFan;
         locals.rig.weight = locals.points;
         locals.rig.active = 1;
+        locals.rig.registeredEpoch = qpi.epoch();
         state.mut().asicRigs.set(locals.freeSlot, locals.rig);
         state.mut().asicUsedParts.set((uint64)input.partMotherboard, (uint64)locals.freeSlot + 1);
         state.mut().asicUsedParts.set((uint64)input.partChip, (uint64)locals.freeSlot + 1);
@@ -1045,12 +1050,12 @@ struct QTREAT : public ContractBase
             state.get().pendingRevoke.asset.assetName, state.get().pendingRevoke.asset.issuer,
             SELF, SELF, (sint64)state.get().pendingRevoke.amount, state.get().pendingRevoke.destination);
         if (locals.xfer < 0) { output.returnCode = QTREAT_ERR_TRANSFER_FAILED; return; }
-        locals.rel = qpi.releaseShares(state.get().pendingRevoke.asset,
-            state.get().pendingRevoke.destination, state.get().pendingRevoke.destination,
-            (sint64)state.get().pendingRevoke.amount, QTREAT_QX_CONTRACT_INDEX, QTREAT_QX_CONTRACT_INDEX,
-            QTREAT_QX_TRANSFER_FEE);
-        if (locals.rel < 0) { output.returnCode = QTREAT_ERR_TRANSFER_FAILED; return; }
 
+        // The shares have left SELF, so settle the books and close the proposal NOW, before the
+        // release below - which can fail independently - gets a chance to return early. Settling
+        // afterwards would leave a failed release with the proposal still open and the balance
+        // undecremented, letting any signer execute the same proposal again and move a second
+        // `amount` out of other depositors' shares of the same asset.
         if (locals.bal - state.get().pendingRevoke.amount == 0)
         {
             state.mut().generalAssetBalances.removeByKey(locals.key);
@@ -1060,6 +1065,13 @@ struct QTREAT : public ContractBase
             state.mut().generalAssetBalances.set(locals.key, locals.bal - state.get().pendingRevoke.amount);
         }
         state.mut().pendingRevoke.active = 0;
+
+        // Best effort from here, as in ClaimQtreatBonus: the destination owns the shares either
+        // way, and can hand management back to QX itself with ReleaseManagedShares if this fails.
+        locals.rel = qpi.releaseShares(state.get().pendingRevoke.asset,
+            state.get().pendingRevoke.destination, state.get().pendingRevoke.destination,
+            (sint64)state.get().pendingRevoke.amount, QTREAT_QX_CONTRACT_INDEX, QTREAT_QX_CONTRACT_INDEX,
+            QTREAT_QX_TRANSFER_FEE);
         output.returnCode = QTREAT_OK;
     }
 
@@ -1529,6 +1541,14 @@ struct QTREAT : public ContractBase
     struct POST_INCOMING_TRANSFER_locals { uint64 prev; };
     POST_INCOMING_TRANSFER_WITH_LOCALS()
     {
+        // A transfer from SELF to SELF fires this callback but does not raise the contract
+        // balance, because the same amount was deducted first. Crediting a fund here would
+        // invent QU the contract does not hold. This is reachable through the END_EPOCH call
+        // to qpi.distributeDividends() whenever SELF possesses any QTREAT contract share: the
+        // self-paid slice would be added to dividendFund mid-distribution and then counted a
+        // second time by the undistributed-remainder refund at the end of that same procedure.
+        if (input.sourceId == SELF) return;
+
         if (input.type == TransferType::qpiDistributeDividends)
         {
             state.mut().dividendFund = sadd(state.get().dividendFund, (uint64)input.amount);
@@ -1929,6 +1949,18 @@ struct QTREAT : public ContractBase
                 continue;
             }
 
+            // A rig's payout turn is decided by its slot index, and RegisterAsic hands out the
+            // lowest free slot deterministically while register/unregister are both free. Left
+            // unchecked, an owner of two or more rigs could unregister and re-register each
+            // epoch to land on a slot that is due, and collect the N-times-scaled reward below
+            // every epoch instead of every Nth - up to N times their fair share, taken out of
+            // miningFund at every honest miner's expense. Requiring a rig to survive a full
+            // verification cycle before it earns removes the incentive: any slot change costs
+            // at least one skipped cycle, so churning can never beat simply holding the rig.
+            // Verification above still runs while the rig is maturing, so a rig whose parts
+            // were sold is still deactivated on schedule.
+            if (qpi.epoch() < locals.rig.registeredEpoch + QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) continue;
+
             // Freshly verified as still valid this epoch: pay its share now, scaled by the
             // spread factor to compensate for only being eligible on 1-in-N epochs (so the
             // rig's total earnings over a full verification cycle match what continuous
@@ -2063,6 +2095,14 @@ struct QTREAT : public ContractBase
                 locals.bal = locals.it.numberOfPossessedShares();
                 if (locals.bal == 0) continue;
                 locals.h = locals.it.possessor();
+                // Only holders snapshotted in BEGIN_EPOCH can ever be paid, because the payout
+                // loop below iterates beginBalances. Storing anyone else - an address excluded
+                // from dividends, a dust holder, or someone who first bought during the epoch -
+                // is dead weight that can push endBalances to capacity, at which point set()
+                // starts failing silently and entitled holders drop to endBal 0, which
+                // min(begin, end) turns into no dividend at all. This filter also makes
+                // endBalances a subset of beginBalances, so set() cannot fail.
+                if (!state.get().beginBalances.contains(locals.h)) continue;
                 locals.existing = 0;
                 state.get().endBalances.get(locals.h, locals.existing);
                 state.mut().endBalances.set(locals.h, sadd(locals.existing, locals.bal));
