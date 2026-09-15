@@ -8,6 +8,7 @@
 //   ... same with -mavx512f -mavx512bw -mavx512dq -mavx512vl for the AVX-512 flavour.
 // MSVC: cl /O2 /arch:AVX2 /DNDEBUG /DNO_UEFI /I src /I . tools\k12_bench\k12_bench.cpp
 // Run pinned to one idle core, e.g.  taskset -c 2 ./k12_bench_avx2
+// File mode:  ./k12_bench_avx2 <helpers> contract0001.230 ...   (real state files, one-shot vs parallel)
 
 #define NO_UEFI
 #ifndef NDEBUG
@@ -16,6 +17,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -43,8 +45,59 @@ static long long timeOnce(F fn)
     return (long long)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count();
 }
 
-int main()
+// File mode: k12_bench <helpers> <file>...   hashes each file (e.g. a saved contract state contract0001.230)
+// one-shot and through the parallel leaf pool with the given number of helper threads, compares the
+// digests and prints both timings. Returns non-zero on any mismatch.
+static int fileMode(int argc, char** argv)
 {
+    const int helperCount = atoi(argv[1]);
+    typedef ParallelK12LeafTasksT<ParallelK12LeafTasks::TASK_LEAVES, 64> BenchPool;
+    static BenchPool pool;
+    int mismatches = 0;
+    for (int a = 2; a < argc; a++)
+    {
+        FILE* f = fopen(argv[a], "rb");
+        if (!f) { printf("%s: cannot open\n", argv[a]); mismatches++; continue; }
+        fseek(f, 0, SEEK_END);
+        const long long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        std::vector<unsigned char> state((size_t)size);
+        if (fread(state.data(), 1, (size_t)size, f) != (size_t)size) { printf("%s: short read\n", argv[a]); fclose(f); mismatches++; continue; }
+        fclose(f);
+        std::vector<unsigned char> cvBuffer(BenchPool::chainingValueBufferSize((unsigned long long)size));
+        pool.init(cvBuffer.data(), (unsigned long long)size);
+
+        unsigned char ref[32], out[32];
+        long long oneShotUs = -1, parUs = -1;
+        for (int rep = 0; rep < 3; rep++)
+        {
+            const long long us = timeOnce([&] { KangarooTwelve(state.data(), (unsigned int)size, ref, 32); });
+            if (oneShotUs < 0 || us < oneShotUs) oneShotUs = us;
+        }
+        volatile bool stop = false;
+        std::vector<std::thread> helpers;
+        for (int i = 0; i < helperCount; i++)
+            helpers.emplace_back([&] { while (!stop) { if (!pool.tryProcessOne()) std::this_thread::yield(); } });
+        for (int rep = 0; rep < 3; rep++)
+        {
+            const long long us = timeOnce([&] { pool.digest(state.data(), (unsigned long long)size, out); });
+            if (parUs < 0 || us < parUs) parUs = us;
+        }
+        stop = true;
+        for (auto& h : helpers) h.join();
+        const bool ok = memcmp(out, ref, 32) == 0;
+        if (!ok) mismatches++;
+        printf("%-22s %8.1f MB  one-shot %7.1f ms  parallel(%d helpers) %7.1f ms  %5.1fx  digest ", argv[a], size / 1048576.0, oneShotUs / 1000.0, helperCount, parUs / 1000.0, (double)oneShotUs / parUs);
+        for (int i = 0; i < 32; i++) printf("%02x", ref[i]);
+        printf("  %s\n", ok ? "ok" : "MISMATCH");
+    }
+    return mismatches ? 1 : 0;
+}
+
+int main(int argc, char** argv)
+{
+    if (argc >= 3)
+        return fileMode(argc, argv);
     constexpr int repetitions = 7;
 
     std::vector<unsigned char> m(256u << 20);
