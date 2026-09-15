@@ -2,8 +2,8 @@
 
 // Ternary storage: values {0,1,2} at 2 bits each.
 //
-// Qubic's mining networks store their genome as trits 
-// One byte per trit wastes six bits of eight; two bits per trit cuts the stored genome to a quarter.
+// Qubic's mining networks store their ANN as trits 
+// One byte per trit wastes six bits of eight; two bits per trit cuts the stored ANN to a quarter.
 // Callers hash and transmit the unpacked bytes
 
 namespace score_engine

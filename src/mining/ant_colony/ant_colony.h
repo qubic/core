@@ -258,12 +258,8 @@ public:
     // The ANN state will depend on score type
     using Ann = typename ScoreT::ANN;
 
-    // In-store form of Ann: 2 bits per trit
-    using PackedAnn = score_engine::PackedTrits<ScoreT::maxNumberOfNeurons, ScoreT::lutSize>;
-    static_assert(sizeof(PackedAnn) == PackedAnn::groupCount * sizeof(unsigned long long),
-        "PackedAnn must not be padded");
-    // Catches sizing from a scorer's padded genome (bpp9000: lutSize 27 vs PaddedLut 32).
-    static_assert(PackedAnn::tritCount == sizeof(Ann), "PackedAnn must cover exactly one ANN");
+    // In-store form owned by the scorer; ScoreT::store()/load() convert it to/from the ANN.
+    using PackedAnn = typename ScoreT::StoredAnn;
 
     using ExportSlot = AntExportSlotT<PackedAnn>;
 
@@ -435,7 +431,7 @@ public:
         {
             return false;
         }
-        _annPool[rec.annStateSlot].unpack(out.lut);
+        ScoreT::load(_annPool[rec.annStateSlot], out);
         return true;
     }
 
@@ -504,7 +500,7 @@ private:
         set.slots[slot].pubkey = pubkey;
         set.slots[slot].score = score;
         set.slots[slot].depth = depth;
-        set.slots[slot].ann.pack(ann.lut);
+        ScoreT::store(ann, set.slots[slot].ann);
 
         // Insert into the order, shifting indices only. Equal scores keep the incumbent ahead, so
         // among equals the earlier solution ranks first
@@ -762,7 +758,7 @@ inline void AntColony<ScoreT>::putReplayScore(const ReplayKey& key, unsigned int
     }
     ReplayEntry staged;
     staged.key = key;
-    staged.ann.pack(ann.lut);
+    ScoreT::store(ann, staged.ann);
     staged.score = score;
     staged.occupied = 1;
 
@@ -789,7 +785,7 @@ inline bool AntColony<ScoreT>::tryGetReplayScore(const ReplayKey& key, unsigned 
         return false;
     }
     outScore = slot.score;
-    slot.ann.unpack(outAnn.lut);
+    ScoreT::load(slot.ann, outAnn);
     return true;
 }
 
@@ -939,7 +935,7 @@ inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16*
         out[i].meta.pubkey = slot.pubkey;
         out[i].meta.score = slot.score;
         out[i].meta.depth = slot.depth;
-        slot.ann.unpack(out[i].ann.lut);
+        ScoreT::load(slot.ann, out[i].ann);
     }
 
     const long long saved = gAsyncFileIO
@@ -1195,7 +1191,7 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
 
     // The record and its network share an index, which keeps the used portion of the allocation a
     // contiguous prefix.
-    _annPool[newIdx].pack(childAnn.lut);
+    ScoreT::store(childAnn, _annPool[newIdx]);
 
     AntSolutionRecord& newRec = _records[newIdx];
     newRec.pubkey = in.pubkey;
@@ -1575,7 +1571,7 @@ inline bool AntColony<ScoreT>::rebuildDerivedState()
         }
 
         // Re-derive the hash from the stored network
-        _annPool[i].unpack(annBuffer.lut);
+        ScoreT::load(_annPool[i], annBuffer);
         unsigned int annHash;
         KangarooTwelve(&annBuffer, sizeof(annBuffer), &annHash, sizeof(annHash));
         if (annHash != rec.childAnnHash)
