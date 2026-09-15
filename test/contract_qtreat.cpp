@@ -34,6 +34,8 @@ public:
     AsicRig getRig(sint64 idx) const { return asicRigs.get(idx); }
     uint64 getAsicRigHighWater() const { return asicRigHighWater; }
     id getAdminAddress() const { return adminAddress; }
+    id getSigner(sint64 i) const { return multisigSigners.get(i); }
+    id getAdminApproval(sint64 i) const { return adminApprovals.get(i); }
     Asset getQdogeToken() const { return qdogeToken; }
     Asset getQtreatToken() const { return qtreatToken; }
     uint64 generalAssetBalanceOf(const id& issuer, uint64 assetName) const
@@ -336,12 +338,90 @@ public:
         return output.returnCode;
     }
 
-    uint32 revokeGeneralAsset(const id& caller, const Asset& asset, uint64 amount, sint64 fee)
+    // ---- Multisig asset withdrawal (3-of-6 + 72h timelock) ----
+    QTREAT::ProposeRevoke_output proposeRevoke(const id& caller, const Asset& asset, uint64 amount, const id& destination)
     {
-        QTREAT::RevokeGeneralAsset_input input{ asset, amount };
-        QTREAT::RevokeGeneralAsset_output output;
-        invokeUserProcedure(QTREAT_CONTRACT_INDEX, 9, input, output, caller, fee);
+        QTREAT::ProposeRevoke_input input{ asset, amount, destination };
+        QTREAT::ProposeRevoke_output output;
+        invokeUserProcedure(QTREAT_CONTRACT_INDEX, 9, input, output, caller, 0);
+        return output;
+    }
+    QTREAT::ApproveRevoke_output approveRevoke(const id& caller, uint64 proposalId)
+    {
+        QTREAT::ApproveRevoke_input input{ proposalId };
+        QTREAT::ApproveRevoke_output output;
+        invokeUserProcedure(QTREAT_CONTRACT_INDEX, 17, input, output, caller, 0);
+        return output;
+    }
+    uint32 executeRevoke(const id& caller, uint64 proposalId, sint64 fee)
+    {
+        QTREAT::ExecuteRevoke_input input{ proposalId };
+        QTREAT::ExecuteRevoke_output output;
+        invokeUserProcedure(QTREAT_CONTRACT_INDEX, 18, input, output, caller, fee);
         return output.returnCode;
+    }
+    uint32 cancelRevoke(const id& caller, uint64 proposalId)
+    {
+        QTREAT::CancelRevoke_input input{ proposalId };
+        QTREAT::CancelRevoke_output output;
+        invokeUserProcedure(QTREAT_CONTRACT_INDEX, 19, input, output, caller, 0);
+        return output.returnCode;
+    }
+    QTREAT::GetPendingRevoke_output getPendingRevoke()
+    {
+        QTREAT::GetPendingRevoke_input input;
+        QTREAT::GetPendingRevoke_output output;
+        callFunction(QTREAT_CONTRACT_INDEX, 9, input, output);
+        return output;
+    }
+    // ---- Multisig admin rotation (3-of-6, no timelock) ----
+    QTREAT::ApproveNewAdmin_output approveNewAdmin(const id& caller, const id& newAdmin)
+    {
+        QTREAT::ApproveNewAdmin_input input{ newAdmin };
+        QTREAT::ApproveNewAdmin_output output;
+        invokeUserProcedure(QTREAT_CONTRACT_INDEX, 20, input, output, caller, 0);
+        return output;
+    }
+    uint32 cancelAdminApproval(const id& caller)
+    {
+        QTREAT::CancelAdminApproval_input input;
+        QTREAT::CancelAdminApproval_output output;
+        invokeUserProcedure(QTREAT_CONTRACT_INDEX, 21, input, output, caller, 0);
+        return output.returnCode;
+    }
+    QTREAT::GetAdminApprovals_output getAdminApprovals()
+    {
+        QTREAT::GetAdminApprovals_input input;
+        QTREAT::GetAdminApprovals_output output;
+        callFunction(QTREAT_CONTRACT_INDEX, 10, input, output);
+        return output;
+    }
+    // Signer wallet i (0 = admin), ensured to exist in the spectrum.
+    id signerWallet(sint64 i)
+    {
+        id s = getState()->getSigner(i);
+        increaseEnergy(s, 1);
+        return s;
+    }
+    // Set the QPI wall clock (UTC) used by qpi.now().
+    void setClock(uint16 year, uint8 month, uint8 day, uint8 hour)
+    {
+        utcTime.Year = year; utcTime.Month = month; utcTime.Day = day; utcTime.Hour = hour;
+        utcTime.Minute = 0; utcTime.Second = 0; utcTime.Nanosecond = 0;
+        updateQpiTime();
+    }
+    // Issue a test asset and deposit `amount` shares of it as a general asset.
+    Asset depositTestAsset(uint64 amount)
+    {
+        id assetIssuer = getUser(50);
+        increaseEnergy(assetIssuer, 2000000000ULL);
+        uint64 assetName = assetNameFromString("TASSET");
+        EXPECT_GT(issueAsset(assetIssuer, assetName, 1000000, 0, 0), 0);
+        Asset asset; asset.issuer = assetIssuer; asset.assetName = assetName;
+        xferOwnership(assetIssuer, assetName, assetIssuer, (sint64)amount, adminAddress);
+        EXPECT_EQ(xferManagementRights(assetIssuer, assetName, QTREAT_CONTRACT_INDEX, (sint64)amount, adminAddress), (sint64)amount);
+        EXPECT_EQ(depositGeneralAssetRaw(adminAddress, asset, amount), QTREAT_OK);
+        return asset;
     }
 
     uint32 releaseManagedShares(const id& caller, const Asset& asset, uint64 amount, sint64 fee)
@@ -939,15 +1019,236 @@ TEST(ContractQtreat, GeneralAssetCustodyIsAdminGatedAndRoundTrips)
     EXPECT_EQ(t.depositGeneralAssetRaw(t.adminAddress, asset, 5000), QTREAT_OK);
     EXPECT_EQ(t.getState()->generalAssetBalanceOf(assetIssuer, assetName), 5000u);
 
-    // Revoke: non-admin rejected, over-revoke rejected, full revoke clears the entry.
-    EXPECT_EQ(t.revokeGeneralAsset(nonAdmin, asset, 1000, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_ACCESS_DENIED);
+    // Withdrawal is 3-of-6 multisig + 72h timelock (see the MultisigRevoke* tests):
+    // non-signer cannot propose, over-revoke rejected, destination must be a signer.
+    EXPECT_EQ(t.proposeRevoke(nonAdmin, asset, 1000, t.adminAddress).returnCode, QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.proposeRevoke(t.adminAddress, asset, 6000, t.adminAddress).returnCode, QTREAT_ERR_INVALID_INPUT);
+    EXPECT_EQ(t.proposeRevoke(t.adminAddress, asset, 5000, nonAdmin).returnCode, QTREAT_ERR_INVALID_INPUT);
+
+    // Full round trip: admin proposes, two more signers approve, 72h pass, execute.
+    t.setClock(2026, 9, 10, 12);
+    auto prop = t.proposeRevoke(t.adminAddress, asset, 5000, t.adminAddress);
+    EXPECT_EQ(prop.returnCode, QTREAT_OK);
+    EXPECT_EQ(t.approveRevoke(t.signerWallet(1), prop.proposalId).returnCode, QTREAT_OK);
+    EXPECT_EQ(t.approveRevoke(t.signerWallet(2), prop.proposalId).returnCode, QTREAT_OK);
+    t.setClock(2026, 9, 13, 12);
     increaseEnergy(t.adminAddress, QTREAT_QX_TRANSFER_FEE * 2);
-    EXPECT_EQ(t.revokeGeneralAsset(t.adminAddress, asset, 6000, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_INVALID_INPUT);
-    EXPECT_EQ(t.revokeGeneralAsset(t.adminAddress, asset, 5000, QTREAT_QX_TRANSFER_FEE), QTREAT_OK);
+    EXPECT_EQ(t.executeRevoke(t.adminAddress, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_OK);
     EXPECT_EQ(t.getState()->generalAssetBalanceOf(assetIssuer, assetName), 0u);
 
     sint64 backInWallet = numberOfPossessedShares(assetName, assetIssuer, t.adminAddress, t.adminAddress, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
     EXPECT_EQ(backInWallet, 5000);
+}
+
+TEST(ContractQtreat, MultisigSignersAreConfigured)
+{
+    ContractTestingQtreat t;
+    EXPECT_EQ(t.getState()->getSigner(0), t.adminAddress);
+    for (sint64 i = 0; i < (sint64)QTREAT_MULTISIG_SIGNERS; i++)
+    {
+        EXPECT_NE(t.getState()->getSigner(i), NULL_ID);
+        for (sint64 j = i + 1; j < (sint64)QTREAT_MULTISIG_SIGNERS; j++)
+            EXPECT_NE(t.getState()->getSigner(i), t.getState()->getSigner(j));
+    }
+    auto pending = t.getPendingRevoke();
+    EXPECT_EQ(pending.active, 0u);
+    EXPECT_EQ(pending.threshold, QTREAT_MULTISIG_THRESHOLD);
+    EXPECT_EQ(pending.timelockMicrosec, QTREAT_REVOKE_TIMELOCK_MICROSEC);
+
+    // No admin-rotation approvals stand at deployment; the view mirrors the signer set.
+    auto votes = t.getAdminApprovals();
+    EXPECT_EQ(votes.admin, t.adminAddress);
+    EXPECT_EQ(votes.threshold, QTREAT_MULTISIG_THRESHOLD);
+    EXPECT_EQ(votes.leadingCandidate, NULL_ID);
+    EXPECT_EQ(votes.leadingApprovals, 0u);
+    for (sint64 i = 0; i < (sint64)QTREAT_MULTISIG_SIGNERS; i++)
+    {
+        EXPECT_EQ(votes.signers.get(i), t.getState()->getSigner(i));
+        EXPECT_EQ(votes.approvals.get(i), NULL_ID);
+    }
+}
+
+TEST(ContractQtreat, MultisigRevokeRequiresThreeApprovalsAndTimelock)
+{
+    ContractTestingQtreat t;
+    Asset asset = t.depositTestAsset(5000);
+    id s1 = t.signerWallet(1), s2 = t.signerWallet(2), s3 = t.signerWallet(3);
+    id outsider = getUser(7);
+    increaseEnergy(outsider, 1000);
+    increaseEnergy(s3, QTREAT_QX_TRANSFER_FEE * 8);
+
+    t.setClock(2026, 9, 10, 12);
+    auto prop = t.proposeRevoke(t.adminAddress, asset, 5000, s3); // destination = a signer wallet
+    EXPECT_EQ(prop.returnCode, QTREAT_OK);
+    EXPECT_EQ(t.getPendingRevoke().approvalCount, 1u);
+
+    // Only one proposal may be open at a time.
+    EXPECT_EQ(t.proposeRevoke(s1, asset, 1000, s1).returnCode, QTREAT_ERR_REVOKE_PENDING);
+    // Non-signers cannot approve; execution is blocked below threshold.
+    EXPECT_EQ(t.approveRevoke(outsider, prop.proposalId).returnCode, QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.executeRevoke(s3, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_REVOKE_NOT_APPROVED);
+    // Each signer counts once (proposer re-approving and duplicate approvals are no-ops).
+    EXPECT_EQ(t.approveRevoke(t.adminAddress, prop.proposalId).approvals, 1u);
+    EXPECT_EQ(t.approveRevoke(s1, prop.proposalId).approvals, 2u);
+    EXPECT_EQ(t.approveRevoke(s1, prop.proposalId).approvals, 2u);
+    EXPECT_EQ(t.executeRevoke(s3, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_REVOKE_NOT_APPROVED);
+    // The clock has NOT started yet: below threshold, elapsed stays 0.
+    EXPECT_EQ(t.getPendingRevoke().elapsedMicrosec, 0u);
+
+    // The 3rd approval lands two days after the proposal: the 72h clock starts NOW.
+    t.setClock(2026, 9, 12, 12);
+    EXPECT_EQ(t.approveRevoke(s2, prop.proposalId).approvals, 3u);
+    // Wrong proposal id is rejected.
+    EXPECT_EQ(t.approveRevoke(s2, prop.proposalId + 1).returnCode, QTREAT_ERR_NO_PENDING_REVOKE);
+    // A 4th approval does not restart the clock (elapsed keeps counting from the 3rd).
+    t.setClock(2026, 9, 13, 12);
+    EXPECT_EQ(t.approveRevoke(t.signerWallet(4), prop.proposalId).approvals, 4u);
+    EXPECT_EQ(t.getPendingRevoke().elapsedMicrosec, 24ULL * 3600ULL * 1000000ULL);
+
+    // 72h since the PROPOSAL but only 24h since the threshold: still locked.
+    EXPECT_EQ(t.getPendingRevoke().executable, 0u);
+    EXPECT_EQ(t.executeRevoke(s3, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_REVOKE_TIMELOCK);
+    // 71h since the threshold: still locked.
+    t.setClock(2026, 9, 15, 11);
+    EXPECT_EQ(t.getPendingRevoke().executable, 0u);
+    EXPECT_EQ(t.executeRevoke(s3, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_REVOKE_TIMELOCK);
+    EXPECT_EQ(t.getState()->generalAssetBalanceOf(asset.issuer, asset.assetName), 5000u);
+
+    // 72h since the threshold: any signer executes; shares land in the signer destination.
+    t.setClock(2026, 9, 15, 12);
+    EXPECT_EQ(t.getPendingRevoke().executable, 1u);
+    EXPECT_EQ(t.executeRevoke(s3, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_OK);
+    EXPECT_EQ(t.getState()->generalAssetBalanceOf(asset.issuer, asset.assetName), 0u);
+    EXPECT_EQ(numberOfPossessedShares(asset.assetName, asset.issuer, s3, s3, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 5000);
+    EXPECT_EQ(t.getPendingRevoke().active, 0u);
+    // No replay: the proposal is closed.
+    EXPECT_EQ(t.executeRevoke(s3, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_NO_PENDING_REVOKE);
+}
+
+TEST(ContractQtreat, MultisigRevokeAnySignerCanCancel)
+{
+    ContractTestingQtreat t;
+    Asset asset = t.depositTestAsset(5000);
+    id s1 = t.signerWallet(1), s2 = t.signerWallet(2), s4 = t.signerWallet(4);
+    id outsider = getUser(7);
+    increaseEnergy(outsider, 1000);
+    increaseEnergy(t.adminAddress, QTREAT_QX_TRANSFER_FEE * 4);
+
+    t.setClock(2026, 9, 10, 12);
+    auto prop = t.proposeRevoke(t.adminAddress, asset, 5000, t.adminAddress);
+    EXPECT_EQ(prop.returnCode, QTREAT_OK);
+    EXPECT_EQ(t.approveRevoke(s1, prop.proposalId).approvals, 2u);
+    EXPECT_EQ(t.approveRevoke(s2, prop.proposalId).approvals, 3u);
+
+    // A non-signer cannot cancel; any signer (even one who never approved) can.
+    EXPECT_EQ(t.cancelRevoke(outsider, prop.proposalId), QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.cancelRevoke(s4, prop.proposalId), QTREAT_OK);
+    EXPECT_EQ(t.getPendingRevoke().active, 0u);
+
+    // Even fully approved and past the timelock, a cancelled proposal cannot execute.
+    t.setClock(2026, 9, 14, 12);
+    EXPECT_EQ(t.executeRevoke(t.adminAddress, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_NO_PENDING_REVOKE);
+    EXPECT_EQ(t.getState()->generalAssetBalanceOf(asset.issuer, asset.assetName), 5000u);
+
+    // A fresh proposal gets a new id and restarts approvals from the proposer only.
+    auto prop2 = t.proposeRevoke(s1, asset, 2000, s1);
+    EXPECT_EQ(prop2.returnCode, QTREAT_OK);
+    EXPECT_EQ(prop2.proposalId, prop.proposalId + 1);
+    EXPECT_EQ(t.getPendingRevoke().approvalCount, 1u);
+    // Old approvals do not carry over: approving with the OLD id is rejected.
+    EXPECT_EQ(t.approveRevoke(s2, prop.proposalId).returnCode, QTREAT_ERR_NO_PENDING_REVOKE);
+}
+
+TEST(ContractQtreat, MultisigSignersCanRotateAdminWithThreeApprovals)
+{
+    ContractTestingQtreat t;
+    id oldAdmin = t.adminAddress;
+    id s1 = t.signerWallet(1), s2 = t.signerWallet(2), s3 = t.signerWallet(3);
+    id outsider = getUser(7);
+    id newAdmin = getUser(60);
+    id otherCandidate = getUser(61);
+    increaseEnergy(outsider, 1000);
+    increaseEnergy(newAdmin, 1000);
+    increaseEnergy(otherCandidate, 1000);
+
+    // A withdrawal request approved by the (about to be replaced) admin is open.
+    Asset asset = t.depositTestAsset(5000);
+    t.setClock(2026, 9, 10, 12);
+    auto prop = t.proposeRevoke(oldAdmin, asset, 5000, oldAdmin);
+    EXPECT_EQ(prop.returnCode, QTREAT_OK);
+    EXPECT_EQ(t.approveRevoke(s1, prop.proposalId).approvals, 2u);
+    EXPECT_EQ(t.approveRevoke(s2, prop.proposalId).approvals, 3u);
+
+    // Only signers may approve; the candidate must be a fresh wallet.
+    EXPECT_EQ(t.approveNewAdmin(outsider, newAdmin).returnCode, QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.approveNewAdmin(s1, NULL_ID).returnCode, QTREAT_ERR_BAD_ADMIN_CANDIDATE);
+    EXPECT_EQ(t.approveNewAdmin(s1, oldAdmin).returnCode, QTREAT_ERR_BAD_ADMIN_CANDIDATE);
+    EXPECT_EQ(t.approveNewAdmin(s1, s2).returnCode, QTREAT_ERR_BAD_ADMIN_CANDIDATE);
+    EXPECT_EQ(t.cancelAdminApproval(outsider), QTREAT_ERR_ACCESS_DENIED);
+
+    // 1st approval = the proposal; 2nd approval; nothing changes yet.
+    auto a = t.approveNewAdmin(s1, newAdmin);
+    EXPECT_EQ(a.returnCode, QTREAT_OK);
+    EXPECT_EQ(a.approvals, 1u);
+    EXPECT_EQ(a.executed, 0u);
+    a = t.approveNewAdmin(s2, newAdmin);
+    EXPECT_EQ(a.approvals, 2u);
+    EXPECT_EQ(a.executed, 0u);
+    EXPECT_EQ(t.getState()->getAdminAddress(), oldAdmin);
+    EXPECT_EQ(t.getAdminApprovals().leadingCandidate, newAdmin);
+    EXPECT_EQ(t.getAdminApprovals().leadingApprovals, 2u);
+
+    // A signer holds ONE approval: approving another wallet moves it.
+    EXPECT_EQ(t.approveNewAdmin(s2, otherCandidate).approvals, 1u);
+    EXPECT_EQ(t.getAdminApprovals().leadingApprovals, 1u);
+    EXPECT_EQ(t.getState()->getAdminApproval(2), otherCandidate);
+    EXPECT_EQ(t.approveNewAdmin(s2, newAdmin).approvals, 2u);
+    // Re-approving the same wallet is idempotent; a signer can withdraw their own approval.
+    EXPECT_EQ(t.approveNewAdmin(s2, newAdmin).approvals, 2u);
+    EXPECT_EQ(t.cancelAdminApproval(s1), QTREAT_OK);
+    EXPECT_EQ(t.getState()->getAdminApproval(1), NULL_ID);
+    EXPECT_EQ(t.getAdminApprovals().leadingApprovals, 1u);
+    EXPECT_EQ(t.approveNewAdmin(s1, newAdmin).approvals, 2u);
+    // The (compromised) admin cannot veto: cancelling only touches its own (empty) approval.
+    EXPECT_EQ(t.cancelAdminApproval(oldAdmin), QTREAT_OK);
+    EXPECT_EQ(t.getAdminApprovals().leadingApprovals, 2u);
+
+    // 3rd approval executes the rotation in the same call.
+    a = t.approveNewAdmin(s3, newAdmin);
+    EXPECT_EQ(a.returnCode, QTREAT_OK);
+    EXPECT_EQ(a.approvals, 3u);
+    EXPECT_EQ(a.executed, 1u);
+    EXPECT_EQ(t.getState()->getAdminAddress(), newAdmin);
+    EXPECT_EQ(t.getState()->getSigner(0), newAdmin);
+    EXPECT_EQ(t.getAdminApprovals().admin, newAdmin);
+    for (sint64 i = 1; i < (sint64)QTREAT_MULTISIG_SIGNERS; i++)
+        EXPECT_NE(t.getState()->getSigner(i), oldAdmin);
+    // Approvals are cleared and the old admin's open withdrawal is cancelled.
+    EXPECT_EQ(t.getAdminApprovals().leadingApprovals, 0u);
+    for (sint64 i = 0; i < (sint64)QTREAT_MULTISIG_SIGNERS; i++)
+        EXPECT_EQ(t.getState()->getAdminApproval(i), NULL_ID);
+    EXPECT_EQ(t.getPendingRevoke().active, 0u);
+    t.setClock(2026, 9, 14, 12);
+    increaseEnergy(oldAdmin, QTREAT_QX_TRANSFER_FEE * 2);
+    EXPECT_EQ(t.executeRevoke(oldAdmin, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.getState()->generalAssetBalanceOf(asset.issuer, asset.assetName), 5000u);
+
+    // The old key has lost every role: admin-only procedures and every signer action.
+    id excluded = getUser(8);
+    EXPECT_EQ(t.setExcludeAddress(oldAdmin, 0, excluded), QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.setExcludeAddress(newAdmin, 0, excluded), QTREAT_OK);
+    EXPECT_EQ(t.approveNewAdmin(oldAdmin, otherCandidate).returnCode, QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.cancelAdminApproval(oldAdmin), QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.proposeRevoke(oldAdmin, asset, 1000, s1).returnCode, QTREAT_ERR_ACCESS_DENIED);
+    EXPECT_EQ(t.cancelRevoke(oldAdmin, prop.proposalId), QTREAT_ERR_ACCESS_DENIED);
+    // ...and is no longer a valid withdrawal destination, while the new admin is a full signer.
+    EXPECT_EQ(t.proposeRevoke(s1, asset, 1000, oldAdmin).returnCode, QTREAT_ERR_INVALID_INPUT);
+    auto prop2 = t.proposeRevoke(newAdmin, asset, 1000, newAdmin);
+    EXPECT_EQ(prop2.returnCode, QTREAT_OK);
+    EXPECT_EQ(t.getPendingRevoke().approvalCount, 1u);
+    // The new admin (now signer slot 0) cannot be nominated again; the old key can be re-admitted later if wanted.
+    EXPECT_EQ(t.approveNewAdmin(s1, newAdmin).returnCode, QTREAT_ERR_BAD_ADMIN_CANDIDATE);
+    EXPECT_EQ(t.approveNewAdmin(s1, oldAdmin).returnCode, QTREAT_OK);
 }
 
 TEST(ContractQtreat, ReleaseManagedSharesAllowsAdminToPullBackUnaccountedQdoge)

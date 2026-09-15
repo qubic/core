@@ -73,10 +73,42 @@ static_assert(QTREAT_DIVIDEND_SHAREHOLDER_PERMILLE < 1000);
 constexpr uint64 QTREAT_MAX_NFT_HOLDERS = 1024;
 constexpr uint64 QTREAT_MAX_DIVIDEND_NFTS = 256;
 
-constexpr uint64 QTREAT_MAX_EXCLUDE_ADDRESSES = 4;
+constexpr uint64 QTREAT_MAX_EXCLUDE_ADDRESSES = 10;  // usable slots (0..9)
+constexpr uint64 QTREAT_EXCLUDE_CAPACITY = 16;      // Array capacity must be a power of 2
+static_assert(QTREAT_MAX_EXCLUDE_ADDRESSES <= QTREAT_EXCLUDE_CAPACITY);
 
 constexpr uint16 QTREAT_QX_CONTRACT_INDEX = 1;
 constexpr sint64 QTREAT_QX_TRANSFER_FEE   = 100LL;
+
+// ---- Multisig + timelock for admin asset withdrawal ----
+// Withdrawing deposited general assets is the only admin path that moves
+// value out of the contract, so it is not a single-key action: a signer
+// proposes, QTREAT_MULTISIG_THRESHOLD distinct signers must approve, AND
+// QTREAT_REVOKE_TIMELOCK_MICROSEC (72h) must then elapse from the moment the
+// threshold was reached before any signer can execute it. Any signer can
+// cancel at any time. The destination must itself
+// be a signer wallet, so assets can never be routed to an unknown address.
+// A single compromised key can therefore propose, but never withdraw.
+//
+// The same signer set can also replace the admin key if it is lost or
+// compromised: any signer approves a new admin wallet (the first approval is
+// the proposal), each signer holds exactly one approval at a time (approving
+// another wallet moves it), and the moment QTREAT_MULTISIG_THRESHOLD signers
+// have approved the SAME wallet the rotation executes: that wallet becomes
+// the admin and takes signer slot 0, the old key loses both roles, all
+// approvals are cleared and any open withdrawal request is cancelled. There
+// is deliberately no timelock here - this is the emergency brake against a
+// hijacked key, it must be fast, and the admin role by itself cannot move
+// value out of the contract (withdrawals still need the multisig + 72h).
+// One approval per signer means a single compromised key can neither block
+// nor hijack the rotation.
+constexpr uint64 QTREAT_MULTISIG_SIGNERS   = 6;   // admin + 5
+constexpr uint64 QTREAT_MULTISIG_CAPACITY  = 8;   // Array capacity (2^N >= signers)
+constexpr uint64 QTREAT_MULTISIG_THRESHOLD = 3;   // 3-of-6
+constexpr uint64 QTREAT_REVOKE_TIMELOCK_MICROSEC = 259200000000ULL; // 72 hours
+static_assert(QTREAT_MULTISIG_THRESHOLD <= QTREAT_MULTISIG_SIGNERS);
+static_assert(QTREAT_MULTISIG_SIGNERS <= QTREAT_MULTISIG_CAPACITY);
+static_assert(QTREAT_MULTISIG_SIGNERS <= 64); // approvalMask bits
 
 constexpr uint32 QTREAT_OK = 0;
 constexpr uint32 QTREAT_ERR_ACCESS_DENIED = 1;
@@ -94,6 +126,11 @@ constexpr uint32 QTREAT_ERR_INVALID_INPUT = 12;
 constexpr uint32 QTREAT_ERR_PHASES_ENDED = 13;
 constexpr uint32 QTREAT_ERR_BONUS_POOL_EMPTY = 14;
 constexpr uint32 QTREAT_ERR_EXTERNAL_CALL = 15;
+constexpr uint32 QTREAT_ERR_NO_PENDING_REVOKE = 16;
+constexpr uint32 QTREAT_ERR_REVOKE_PENDING = 17;
+constexpr uint32 QTREAT_ERR_REVOKE_NOT_APPROVED = 18;
+constexpr uint32 QTREAT_ERR_REVOKE_TIMELOCK = 19;
+constexpr uint32 QTREAT_ERR_BAD_ADMIN_CANDIDATE = 20; // empty, the contract itself, or already a signer
 
 struct QTREAT2 {};
 
@@ -142,6 +179,20 @@ struct QTREAT : public ContractBase
         bool operator!=(const AssetKey& o) const { return issuer != o.issuer || assetName != o.assetName; }
     };
 
+    // A pending admin asset-withdrawal request (see the multisig constants).
+    struct PendingRevoke
+    {
+        Asset asset;
+        id destination;        // must be one of the multisig signers
+        uint64 amount;
+        uint64 proposalId;     // unique per proposal; approvals are bound to it
+        uint64 approvalMask;   // bit i set => signer i approved this proposalId
+        uint64 approvalCount;
+        uint64 active;         // 1 = open
+        DateAndTime proposedAt;
+        DateAndTime approvedAt; // set when approvals reach the threshold; the 72h clock runs from here
+    };
+
     struct StateData
     {
         id adminAddress;
@@ -165,7 +216,7 @@ struct QTREAT : public ContractBase
 
         uint64 qtreatBonusPool;
 
-        Array<id, QTREAT_MAX_EXCLUDE_ADDRESSES> excludeAddresses;
+        Array<id, QTREAT_EXCLUDE_CAPACITY> excludeAddresses; // only the first QTREAT_MAX_EXCLUDE_ADDRESSES slots are used
 
         Array<uint32, QTREAT_MAX_DIVIDEND_NFTS> dividendNftIds;
         uint64 dividendNftIdCount;
@@ -200,6 +251,15 @@ struct QTREAT : public ContractBase
 
         HashMap<AssetKey, uint64, QTREAT_MAX_ASSETS> generalAssetBalances;
         HashMap<id, uint64, QTREAT_MAX_ASSETS> scDividendTracker;
+
+        // ---- Multisig admin asset withdrawal ----
+        Array<id, QTREAT_MULTISIG_CAPACITY> multisigSigners; // slot 0 = admin
+        PendingRevoke pendingRevoke;
+        uint64 multisigNextProposalId;
+
+        // ---- Multisig admin rotation ----
+        // adminApprovals[i] = the wallet signer i currently approves as the new admin (NULL_ID = none).
+        Array<id, QTREAT_MULTISIG_CAPACITY> adminApprovals;
     };
 
     struct DepositDividends_input {}; struct DepositDividends_output { uint32 returnCode; };
@@ -220,9 +280,50 @@ struct QTREAT : public ContractBase
     struct DepositGeneralAsset_output { uint32 returnCode; };
     struct DepositGeneralAsset_locals { sint64 managed; sint64 xfer; AssetKey key; uint64 bal; };
 
-    struct RevokeGeneralAsset_input { Asset asset; uint64 amount; };
-    struct RevokeGeneralAsset_output { uint32 returnCode; };
-    struct RevokeGeneralAsset_locals { AssetKey key; uint64 bal; sint64 xfer; sint64 rel; };
+    struct ProposeRevoke_input { Asset asset; uint64 amount; id destination; };
+    struct ProposeRevoke_output { uint32 returnCode; uint64 proposalId; };
+    struct ProposeRevoke_locals { sint64 i; sint64 signerIdx; sint64 destIdx; AssetKey key; uint64 bal; PendingRevoke p; };
+
+    struct ApproveRevoke_input { uint64 proposalId; };
+    struct ApproveRevoke_output { uint32 returnCode; uint64 approvals; };
+    struct ApproveRevoke_locals { sint64 i; sint64 signerIdx; uint64 bit; DateAndTime now; };
+
+    struct ExecuteRevoke_input { uint64 proposalId; };
+    struct ExecuteRevoke_output { uint32 returnCode; };
+    struct ExecuteRevoke_locals { sint64 i; sint64 signerIdx; DateAndTime now; uint64 elapsed; AssetKey key; uint64 bal; sint64 xfer; sint64 rel; };
+
+    struct CancelRevoke_input { uint64 proposalId; };
+    struct CancelRevoke_output { uint32 returnCode; };
+    struct CancelRevoke_locals { sint64 i; sint64 signerIdx; };
+
+    struct GetPendingRevoke_input {};
+    struct GetPendingRevoke_output
+    {
+        uint64 active; uint64 proposalId; Asset asset; uint64 amount; id destination;
+        uint64 approvalCount; uint64 approvalMask; uint64 threshold; uint64 timelockMicrosec;
+        uint64 elapsedMicrosec; uint64 executable;
+    };
+    struct GetPendingRevoke_locals { DateAndTime now; };
+
+    struct ApproveNewAdmin_input { id newAdmin; };
+    struct ApproveNewAdmin_output { uint32 returnCode; uint64 approvals; uint64 executed; };
+    struct ApproveNewAdmin_locals { sint64 i; sint64 signerIdx; uint64 approvals; };
+
+    struct CancelAdminApproval_input {};
+    struct CancelAdminApproval_output { uint32 returnCode; };
+    struct CancelAdminApproval_locals { sint64 i; sint64 signerIdx; };
+
+    struct GetAdminApprovals_input {};
+    struct GetAdminApprovals_output
+    {
+        id admin;
+        Array<id, QTREAT_MULTISIG_CAPACITY> signers;   // slot 0 = admin; slots >= QTREAT_MULTISIG_SIGNERS are NULL_ID
+        Array<id, QTREAT_MULTISIG_CAPACITY> approvals; // approvals[i] = wallet signer i approves (NULL_ID = none)
+        id leadingCandidate;
+        uint64 leadingApprovals;
+        uint64 threshold;
+    };
+    struct GetAdminApprovals_locals { sint64 i; sint64 j; uint64 n; };
 
     struct ReleaseManagedShares_input { Asset asset; uint64 amount; };
     struct ReleaseManagedShares_output { uint32 returnCode; };
@@ -271,7 +372,7 @@ struct QTREAT : public ContractBase
     struct GetNftInfo_locals { uint64 val; };
 
     struct GetExcludeAddresses_input {};
-    struct GetExcludeAddresses_output { Array<id, QTREAT_MAX_EXCLUDE_ADDRESSES> addresses; };
+    struct GetExcludeAddresses_output { Array<id, QTREAT_EXCLUDE_CAPACITY> addresses; }; // slots >= QTREAT_MAX_EXCLUDE_ADDRESSES are always NULL_ID
     struct GetExcludeAddresses_locals { sint64 i; };
 
     struct GetStakingInfo_input { id staker; };
@@ -809,21 +910,118 @@ struct QTREAT : public ContractBase
         output.returnCode = QTREAT_OK;
     }
 
-    PUBLIC_PROCEDURE_WITH_LOCALS(RevokeGeneralAsset)
+    // ---- Multisig admin asset withdrawal: 3-of-6 signers + 72h timelock ----
+    // Step 1: a signer proposes. Only one proposal can be open at a time; it
+    // records the proposer's approval. The destination must be a signer
+    // wallet. (The 72h clock starts later, when the threshold is reached.)
+    PUBLIC_PROCEDURE_WITH_LOCALS(ProposeRevoke)
     {
-        if (qpi.invocator() != state.get().adminAddress)
+        if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        locals.signerIdx = -1;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
         {
-            if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            output.returnCode = QTREAT_ERR_ACCESS_DENIED; return;
+            if (state.get().multisigSigners.get(locals.i) == qpi.invocator()) locals.signerIdx = locals.i;
         }
+        if (locals.signerIdx < 0) { output.returnCode = QTREAT_ERR_ACCESS_DENIED; return; }
+        if (state.get().pendingRevoke.active != 0) { output.returnCode = QTREAT_ERR_REVOKE_PENDING; return; }
+
+        locals.destIdx = -1;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().multisigSigners.get(locals.i) == input.destination) locals.destIdx = locals.i;
+        }
+        if (locals.destIdx < 0 || input.amount == 0) { output.returnCode = QTREAT_ERR_INVALID_INPUT; return; }
+
         locals.key.issuer = input.asset.issuer;
         locals.key.assetName = input.asset.assetName;
         locals.bal = 0;
         state.get().generalAssetBalances.get(locals.key, locals.bal);
-        if (input.amount == 0 || input.amount > locals.bal)
+        if (input.amount > locals.bal) { output.returnCode = QTREAT_ERR_INVALID_INPUT; return; }
+
+        locals.p.asset = input.asset;
+        locals.p.destination = input.destination;
+        locals.p.amount = input.amount;
+        locals.p.proposalId = state.get().multisigNextProposalId + 1;
+        locals.p.approvalMask = (1ULL << locals.signerIdx);
+        locals.p.approvalCount = 1;
+        locals.p.active = 1;
+        locals.p.proposedAt = qpi.now();
+        if (locals.p.approvalCount >= QTREAT_MULTISIG_THRESHOLD) locals.p.approvedAt = locals.p.proposedAt;
+        state.mut().multisigNextProposalId = locals.p.proposalId;
+        state.mut().pendingRevoke = locals.p;
+        output.proposalId = locals.p.proposalId;
+        output.returnCode = QTREAT_OK;
+    }
+
+    // Step 2: other signers approve the open proposal. Each signer counts once.
+    // The approval that reaches the threshold starts the 72h timelock.
+    PUBLIC_PROCEDURE_WITH_LOCALS(ApproveRevoke)
+    {
+        if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        locals.signerIdx = -1;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().multisigSigners.get(locals.i) == qpi.invocator()) locals.signerIdx = locals.i;
+        }
+        if (locals.signerIdx < 0) { output.returnCode = QTREAT_ERR_ACCESS_DENIED; return; }
+        if (state.get().pendingRevoke.active == 0 || state.get().pendingRevoke.proposalId != input.proposalId)
+        {
+            output.returnCode = QTREAT_ERR_NO_PENDING_REVOKE; return;
+        }
+        locals.bit = (1ULL << locals.signerIdx);
+        if ((state.get().pendingRevoke.approvalMask & locals.bit) == 0)
+        {
+            state.mut().pendingRevoke.approvalMask = state.get().pendingRevoke.approvalMask | locals.bit;
+            state.mut().pendingRevoke.approvalCount = state.get().pendingRevoke.approvalCount + 1;
+            if (state.get().pendingRevoke.approvalCount == QTREAT_MULTISIG_THRESHOLD)
+            {
+                locals.now = qpi.now();
+                state.mut().pendingRevoke.approvedAt = locals.now;
+            }
+        }
+        output.approvals = state.get().pendingRevoke.approvalCount;
+        output.returnCode = QTREAT_OK;
+    }
+
+    // Step 3: once >= threshold approvals AND 72h have elapsed since the
+    // threshold was reached, any signer executes. The asset goes to the proposal's signer-wallet
+    // destination, never to the caller. Causer pays the QX release fee.
+    PUBLIC_PROCEDURE_WITH_LOCALS(ExecuteRevoke)
+    {
+        locals.signerIdx = -1;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().multisigSigners.get(locals.i) == qpi.invocator()) locals.signerIdx = locals.i;
+        }
+        if (locals.signerIdx < 0)
         {
             if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            output.returnCode = QTREAT_ERR_INVALID_INPUT; return;
+            output.returnCode = QTREAT_ERR_ACCESS_DENIED; return;
+        }
+        if (state.get().pendingRevoke.active == 0 || state.get().pendingRevoke.proposalId != input.proposalId)
+        {
+            if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = QTREAT_ERR_NO_PENDING_REVOKE; return;
+        }
+        if (state.get().pendingRevoke.approvalCount < QTREAT_MULTISIG_THRESHOLD)
+        {
+            if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = QTREAT_ERR_REVOKE_NOT_APPROVED; return;
+        }
+        // Timelock, measured from the moment the threshold was reached.
+        // Invalid timestamps fail closed.
+        locals.now = qpi.now();
+        if (!state.get().pendingRevoke.approvedAt.isValid() || !locals.now.isValid()
+            || locals.now < state.get().pendingRevoke.approvedAt)
+        {
+            if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = QTREAT_ERR_REVOKE_TIMELOCK; return;
+        }
+        locals.elapsed = state.get().pendingRevoke.approvedAt.durationMicrosec(locals.now);
+        if (locals.elapsed < QTREAT_REVOKE_TIMELOCK_MICROSEC)
+        {
+            if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = QTREAT_ERR_REVOKE_TIMELOCK; return;
         }
         if (qpi.invocationReward() < QTREAT_QX_TRANSFER_FEE)
         {
@@ -833,24 +1031,173 @@ struct QTREAT : public ContractBase
         if (qpi.invocationReward() > QTREAT_QX_TRANSFER_FEE)
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QTREAT_QX_TRANSFER_FEE);
 
+        locals.key.issuer = state.get().pendingRevoke.asset.issuer;
+        locals.key.assetName = state.get().pendingRevoke.asset.assetName;
+        locals.bal = 0;
+        state.get().generalAssetBalances.get(locals.key, locals.bal);
+        if (state.get().pendingRevoke.amount > locals.bal)
+        {
+            state.mut().pendingRevoke.active = 0;
+            output.returnCode = QTREAT_ERR_INVALID_INPUT; return;
+        }
+
         locals.xfer = qpi.transferShareOwnershipAndPossession(
-            input.asset.assetName, input.asset.issuer,
-            SELF, SELF, (sint64)input.amount, qpi.invocator());
+            state.get().pendingRevoke.asset.assetName, state.get().pendingRevoke.asset.issuer,
+            SELF, SELF, (sint64)state.get().pendingRevoke.amount, state.get().pendingRevoke.destination);
         if (locals.xfer < 0) { output.returnCode = QTREAT_ERR_TRANSFER_FAILED; return; }
-        locals.rel = qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(),
-            (sint64)input.amount, QTREAT_QX_CONTRACT_INDEX, QTREAT_QX_CONTRACT_INDEX,
+        locals.rel = qpi.releaseShares(state.get().pendingRevoke.asset,
+            state.get().pendingRevoke.destination, state.get().pendingRevoke.destination,
+            (sint64)state.get().pendingRevoke.amount, QTREAT_QX_CONTRACT_INDEX, QTREAT_QX_CONTRACT_INDEX,
             QTREAT_QX_TRANSFER_FEE);
         if (locals.rel < 0) { output.returnCode = QTREAT_ERR_TRANSFER_FAILED; return; }
 
-        if (locals.bal - input.amount == 0)
+        if (locals.bal - state.get().pendingRevoke.amount == 0)
         {
             state.mut().generalAssetBalances.removeByKey(locals.key);
         }
         else
         {
-            state.mut().generalAssetBalances.set(locals.key, locals.bal - input.amount);
+            state.mut().generalAssetBalances.set(locals.key, locals.bal - state.get().pendingRevoke.amount);
+        }
+        state.mut().pendingRevoke.active = 0;
+        output.returnCode = QTREAT_OK;
+    }
+
+    // Any signer can cancel the open proposal at any time - the veto that
+    // makes the timelock meaningful against a compromised key.
+    PUBLIC_PROCEDURE_WITH_LOCALS(CancelRevoke)
+    {
+        if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        locals.signerIdx = -1;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().multisigSigners.get(locals.i) == qpi.invocator()) locals.signerIdx = locals.i;
+        }
+        if (locals.signerIdx < 0) { output.returnCode = QTREAT_ERR_ACCESS_DENIED; return; }
+        if (state.get().pendingRevoke.active == 0 || state.get().pendingRevoke.proposalId != input.proposalId)
+        {
+            output.returnCode = QTREAT_ERR_NO_PENDING_REVOKE; return;
+        }
+        state.mut().pendingRevoke.active = 0;
+        output.returnCode = QTREAT_OK;
+    }
+
+    // Public view of the open withdrawal request, so anyone can watch it.
+    PUBLIC_FUNCTION_WITH_LOCALS(GetPendingRevoke)
+    {
+        output.active = state.get().pendingRevoke.active;
+        output.proposalId = state.get().pendingRevoke.proposalId;
+        output.asset = state.get().pendingRevoke.asset;
+        output.amount = state.get().pendingRevoke.amount;
+        output.destination = state.get().pendingRevoke.destination;
+        output.approvalCount = state.get().pendingRevoke.approvalCount;
+        output.approvalMask = state.get().pendingRevoke.approvalMask;
+        output.threshold = QTREAT_MULTISIG_THRESHOLD;
+        output.timelockMicrosec = QTREAT_REVOKE_TIMELOCK_MICROSEC;
+        output.elapsedMicrosec = 0;
+        output.executable = 0;
+        // elapsedMicrosec counts from the moment the threshold was reached
+        // (0 until then); executable once it reaches the timelock.
+        if (state.get().pendingRevoke.active != 0
+            && state.get().pendingRevoke.approvalCount >= QTREAT_MULTISIG_THRESHOLD
+            && state.get().pendingRevoke.approvedAt.isValid())
+        {
+            locals.now = qpi.now();
+            if (locals.now.isValid() && !(locals.now < state.get().pendingRevoke.approvedAt))
+            {
+                output.elapsedMicrosec = state.get().pendingRevoke.approvedAt.durationMicrosec(locals.now);
+                if (output.elapsedMicrosec >= QTREAT_REVOKE_TIMELOCK_MICROSEC) output.executable = 1;
+            }
+        }
+    }
+
+    // ---- Multisig admin rotation (see the multisig constants) ----
+    // A signer approves `newAdmin` as the replacement admin; the first approval
+    // is the proposal. A signer holds one approval at a time, so approving a
+    // different wallet moves it. The approval that brings a wallet to the
+    // threshold executes the rotation in the same call.
+    PUBLIC_PROCEDURE_WITH_LOCALS(ApproveNewAdmin)
+    {
+        if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        locals.signerIdx = -1;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().multisigSigners.get(locals.i) == qpi.invocator()) locals.signerIdx = locals.i;
+        }
+        if (locals.signerIdx < 0) { output.returnCode = QTREAT_ERR_ACCESS_DENIED; return; }
+        // The candidate must be a fresh wallet: not empty, not the contract,
+        // and not already a signer (which includes the current admin). A
+        // duplicate signer would otherwise hold two votes.
+        if (input.newAdmin == NULL_ID || input.newAdmin == SELF) { output.returnCode = QTREAT_ERR_BAD_ADMIN_CANDIDATE; return; }
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().multisigSigners.get(locals.i) == input.newAdmin) { output.returnCode = QTREAT_ERR_BAD_ADMIN_CANDIDATE; return; }
+        }
+
+        state.mut().adminApprovals.set(locals.signerIdx, input.newAdmin);
+        locals.approvals = 0;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().adminApprovals.get(locals.i) == input.newAdmin) locals.approvals++;
+        }
+        output.approvals = locals.approvals;
+        output.executed = 0;
+        if (locals.approvals >= QTREAT_MULTISIG_THRESHOLD)
+        {
+            // Rotate: the new admin takes signer slot 0; the old key loses
+            // both the admin role and its signer seat.
+            state.mut().adminAddress = input.newAdmin;
+            state.mut().multisigSigners.set(0, input.newAdmin);
+            // Reset everything the old key could have touched: all approvals
+            // and any open withdrawal request (it must be re-proposed).
+            state.mut().adminApprovals.setAll(NULL_ID);
+            state.mut().pendingRevoke.active = 0;
+            output.executed = 1;
         }
         output.returnCode = QTREAT_OK;
+    }
+
+    // A signer withdraws their own approval (no effect on other signers).
+    PUBLIC_PROCEDURE_WITH_LOCALS(CancelAdminApproval)
+    {
+        if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        locals.signerIdx = -1;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().multisigSigners.get(locals.i) == qpi.invocator()) locals.signerIdx = locals.i;
+        }
+        if (locals.signerIdx < 0) { output.returnCode = QTREAT_ERR_ACCESS_DENIED; return; }
+        state.mut().adminApprovals.set(locals.signerIdx, NULL_ID);
+        output.returnCode = QTREAT_OK;
+    }
+
+    // Public view: current admin, the signer set, every signer's standing
+    // approval, and the wallet closest to the threshold.
+    PUBLIC_FUNCTION_WITH_LOCALS(GetAdminApprovals)
+    {
+        output.admin = state.get().adminAddress;
+        output.threshold = QTREAT_MULTISIG_THRESHOLD;
+        output.leadingCandidate = NULL_ID;
+        output.leadingApprovals = 0;
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            output.signers.set(locals.i, state.get().multisigSigners.get(locals.i));
+            output.approvals.set(locals.i, state.get().adminApprovals.get(locals.i));
+        }
+        for (locals.i = 0; locals.i < (sint64)QTREAT_MULTISIG_SIGNERS; locals.i++)
+        {
+            if (state.get().adminApprovals.get(locals.i) == NULL_ID) continue;
+            locals.n = 0;
+            for (locals.j = 0; locals.j < (sint64)QTREAT_MULTISIG_SIGNERS; locals.j++)
+            {
+                if (state.get().adminApprovals.get(locals.j) == state.get().adminApprovals.get(locals.i)) locals.n++;
+            }
+            if (locals.n > output.leadingApprovals)
+            {
+                output.leadingApprovals = locals.n;
+                output.leadingCandidate = state.get().adminApprovals.get(locals.i);
+            }
+        }
     }
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -863,6 +1210,8 @@ struct QTREAT : public ContractBase
         REGISTER_USER_FUNCTION(GetNftInfo, 6);
         REGISTER_USER_FUNCTION(GetMinerInfo, 7);
         REGISTER_USER_FUNCTION(GetAsicCatalogInfo, 8);
+        REGISTER_USER_FUNCTION(GetPendingRevoke, 9);
+        REGISTER_USER_FUNCTION(GetAdminApprovals, 10);
 
         REGISTER_USER_PROCEDURE(DepositDividends, 1);
         REGISTER_USER_PROCEDURE(DepositStakingFund, 2);
@@ -872,7 +1221,7 @@ struct QTREAT : public ContractBase
         REGISTER_USER_PROCEDURE(DepositQtreatTokens, 6);
         REGISTER_USER_PROCEDURE(DepositGeneralAsset, 7);
         REGISTER_USER_PROCEDURE(SetExcludeAddress, 8);
-        REGISTER_USER_PROCEDURE(RevokeGeneralAsset, 9);
+        REGISTER_USER_PROCEDURE(ProposeRevoke, 9);
         REGISTER_USER_PROCEDURE(ReleaseManagedShares, 10);
         REGISTER_USER_PROCEDURE(DepositMiningFund, 11);
         REGISTER_USER_PROCEDURE(LoadAsicPart, 12);
@@ -880,6 +1229,11 @@ struct QTREAT : public ContractBase
         REGISTER_USER_PROCEDURE(UnregisterAsic, 14);
         REGISTER_USER_PROCEDURE(DepositDripQdoge, 15);
         REGISTER_USER_PROCEDURE(SetMiningRate, 16);
+        REGISTER_USER_PROCEDURE(ApproveRevoke, 17);
+        REGISTER_USER_PROCEDURE(ExecuteRevoke, 18);
+        REGISTER_USER_PROCEDURE(CancelRevoke, 19);
+        REGISTER_USER_PROCEDURE(ApproveNewAdmin, 20);
+        REGISTER_USER_PROCEDURE(CancelAdminApproval, 21);
     }
 
     INITIALIZE()
@@ -908,6 +1262,62 @@ struct QTREAT : public ContractBase
             _J, _A, _M, _D, _A, _X, _M, _G,
             _T, _B, _K, _Q, _V, _X, _H, _H
         );
+
+        // Multisig signers for admin asset withdrawal (3-of-6). Slot 0 = admin.
+        state.mut().multisigSigners.set(0, state.get().adminAddress);
+        // Signer 1: IPPERNTLFKHNKHJMYXIJTPJYXOACKDRYVRGCYRGQYDFCWPXQQDPMOXTDENCI
+        state.mut().multisigSigners.set(1, ID(
+            _I, _P, _P, _E, _R, _N, _T, _L,
+            _F, _K, _H, _N, _K, _H, _J, _M,
+            _Y, _X, _I, _J, _T, _P, _J, _Y,
+            _X, _O, _A, _C, _K, _D, _R, _Y,
+            _V, _R, _G, _C, _Y, _R, _G, _Q,
+            _Y, _D, _F, _C, _W, _P, _X, _Q,
+            _Q, _D, _P, _M, _O, _X, _T, _D
+        ));
+        // Signer 2: ERYWIUIAXETFWGHVSNFIVUCBIOMCVZWICGJYKQPVIDDOHVIVZLMLJRGGYZYC
+        state.mut().multisigSigners.set(2, ID(
+            _E, _R, _Y, _W, _I, _U, _I, _A,
+            _X, _E, _T, _F, _W, _G, _H, _V,
+            _S, _N, _F, _I, _V, _U, _C, _B,
+            _I, _O, _M, _C, _V, _Z, _W, _I,
+            _C, _G, _J, _Y, _K, _Q, _P, _V,
+            _I, _D, _D, _O, _H, _V, _I, _V,
+            _Z, _L, _M, _L, _J, _R, _G, _G
+        ));
+        // Signer 3: USALFUZBICLZIEMYPSKLYDZJZRFBKYEONUGSWFXOIGRMWSJHLIPMEGZCVCMG
+        state.mut().multisigSigners.set(3, ID(
+            _U, _S, _A, _L, _F, _U, _Z, _B,
+            _I, _C, _L, _Z, _I, _E, _M, _Y,
+            _P, _S, _K, _L, _Y, _D, _Z, _J,
+            _Z, _R, _F, _B, _K, _Y, _E, _O,
+            _N, _U, _G, _S, _W, _F, _X, _O,
+            _I, _G, _R, _M, _W, _S, _J, _H,
+            _L, _I, _P, _M, _E, _G, _Z, _C
+        ));
+        // Signer 4: ILNJXVHAUXDGGBTTUOITOQGPAYUCFTNCPXDKOCPUOCDOTPUWXBIGRVQDLIKC
+        state.mut().multisigSigners.set(4, ID(
+            _I, _L, _N, _J, _X, _V, _H, _A,
+            _U, _X, _D, _G, _G, _B, _T, _T,
+            _U, _O, _I, _T, _O, _Q, _G, _P,
+            _A, _Y, _U, _C, _F, _T, _N, _C,
+            _P, _X, _D, _K, _O, _C, _P, _U,
+            _O, _C, _D, _O, _T, _P, _U, _W,
+            _X, _B, _I, _G, _R, _V, _Q, _D
+        ));
+        // Signer 5: QBIWTGAWUYHWKDBHWVKPBZGWERZAVBBWAVTOWNEVYDJDPZCEBEAVEZQBYTLA
+        state.mut().multisigSigners.set(5, ID(
+            _Q, _B, _I, _W, _T, _G, _A, _W,
+            _U, _Y, _H, _W, _K, _D, _B, _H,
+            _W, _V, _K, _P, _B, _Z, _G, _W,
+            _E, _R, _Z, _A, _V, _B, _B, _W,
+            _A, _V, _T, _O, _W, _N, _E, _V,
+            _Y, _D, _J, _D, _P, _Z, _C, _E,
+            _B, _E, _A, _V, _E, _Z, _Q, _B
+        ));
+        state.mut().multisigNextProposalId = 0;
+        state.mut().pendingRevoke.active = 0;
+        state.mut().adminApprovals.setAll(NULL_ID);
 
         state.mut().dividendNftIds.set(0, 4968);
         state.mut().dividendNftIds.set(1, 4969);
