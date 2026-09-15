@@ -545,8 +545,8 @@ namespace
 
 TEST(TestCoreK12, ParallelLeafPoolMatchesOneShot)
 {
-    // small pool: 2 leaves per task, 4 tasks per round, so a 3 MB state takes ~48 rounds
-    typedef ParallelK12LeafTasksT<2, 4> SmallPool;
+    // small pool: 2 leaves per task and up to 7 helpers, so a 3 MB state is ~190 tasks
+    typedef ParallelK12LeafTasksT<2, 7> SmallPool;
     static SmallPool smallPool;
     const size_t lens[] = {0, 100, 8192, 8193, 16384, 3 * 1024 * 1024 + 17, 3 * 1024 * 1024 + 8192};
     std::vector<unsigned char> buffer(SmallPool::chainingValueBufferSize(4 * 1024 * 1024));
@@ -575,11 +575,12 @@ TEST(TestCoreK12, ParallelLeafPoolMatchesOneShot)
 
 // Lifetime: after digest() returns the caller releases the state's read lock, so no worker may still
 // be reading the input. Helpers keep running while the input buffer is destroyed and replaced right
-// after each digest; a worker still inside a leaf would read freed memory (visible under sanitizers)
-// and, on a live node, contract state that is being written.
+// after each digest; a worker still inside a leaf would read freed memory (visible under
+// AddressSanitizer, run the test with it after changing the pool) and, on a live node, contract
+// state that is being written.
 TEST(TestCoreK12, ParallelLeafPoolNoReaderAfterDigestReturns)
 {
-    typedef ParallelK12LeafTasksT<2, 4> SmallPool;
+    typedef ParallelK12LeafTasksT<2, 7> SmallPool;
     static SmallPool pool;
     const size_t len = 512 * 1024 + 8192 + 7;
     std::vector<unsigned char> cvBuffer(SmallPool::chainingValueBufferSize(len));
@@ -603,9 +604,9 @@ TEST(TestCoreK12, ParallelLeafPoolNoReaderAfterDigestReturns)
         const std::string expected = oneShot(input->data(), len);
         unsigned char out[32];
         pool.digest(input->data(), len, out);
-        const long busyAfterReturn = pool.busy;
+        const long activeAfterReturn = pool.active;
         delete input; // helpers are still running: nothing may read the input from here on
-        EXPECT_EQ(busyAfterReturn, 0) << "round " << round;
+        EXPECT_EQ(activeAfterReturn, 0) << "round " << round;
         EXPECT_EQ(toHex(out, 32), expected) << "round " << round;
     }
     stop = true;
