@@ -121,7 +121,8 @@ struct ParallelK12LeafTasksT
 
     // Tick processor: digest of `size` bytes of state, bit-identical to KangarooTwelve(state, size, out, 32).
     // The first chunk and the trailing partial leaf are fed on this core, all full leaves in between are
-    // hashed by hashLeaves(). Caller holds the state's read lock for the whole call.
+    // hashed by hashLeaves(). Caller holds the state's read lock for the whole call; no worker reads the
+    // state after this returns.
     void digest(const unsigned char* state, unsigned long long size, void* output32)
     {
         ASSERT(size <= maxStateSize);
@@ -208,6 +209,12 @@ struct ParallelK12LeafTasksT
             }
             active = 0;
             taskCount = 0;
+        }
+        // Drain: a worker that lost a race may still be reading the input. The caller releases the
+        // state's read lock right after this returns, so no worker may touch the input any more.
+        while (busy)
+        {
+            _mm_pause();
         }
     }
 

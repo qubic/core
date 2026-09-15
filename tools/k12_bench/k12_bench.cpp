@@ -46,12 +46,6 @@ static long long timeOnce(F fn)
 int main()
 {
     constexpr int repetitions = 7;
-#if defined(__AVX512F__) && !GENERIC_K12
-    initAVX512KangarooTwelveConstants();
-    puts("custom K12: AVX-512 single-state path");
-#else
-    puts("custom K12: scalar path");
-#endif
 
     std::vector<unsigned char> m(256u << 20);
     for (size_t i = 0; i < m.size(); i++)

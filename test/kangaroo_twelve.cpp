@@ -572,3 +572,43 @@ TEST(TestCoreK12, ParallelLeafPoolMatchesOneShot)
     EXPECT_EQ(parallelDigest(parallelK12Leaves, m.data(), len, 0), expected) << "ticker only";
     EXPECT_EQ(parallelDigest(parallelK12Leaves, m.data(), len, 7), expected) << "7 helpers";
 }
+
+// Lifetime: after digest() returns the caller releases the state's read lock, so no worker may still
+// be reading the input. Helpers keep running while the input buffer is destroyed and replaced right
+// after each digest; a worker still inside a leaf would read freed memory (visible under sanitizers)
+// and, on a live node, contract state that is being written.
+TEST(TestCoreK12, ParallelLeafPoolNoReaderAfterDigestReturns)
+{
+    typedef ParallelK12LeafTasksT<2, 4> SmallPool;
+    static SmallPool pool;
+    const size_t len = 512 * 1024 + 8192 + 7;
+    std::vector<unsigned char> cvBuffer(SmallPool::chainingValueBufferSize(len));
+    pool.init(cvBuffer.data(), len);
+
+    volatile bool stop = false;
+    std::vector<std::thread> helpers;
+    for (int i = 0; i < 7; i++)
+    {
+        helpers.emplace_back([&] {
+            while (!stop)
+            {
+                if (!pool.tryProcessOne())
+                    std::this_thread::yield();
+            }
+        });
+    }
+    for (int round = 0; round < 300; round++)
+    {
+        std::vector<unsigned char>* input = new std::vector<unsigned char>(pseudoRandom(len, 1000 + round));
+        const std::string expected = oneShot(input->data(), len);
+        unsigned char out[32];
+        pool.digest(input->data(), len, out);
+        const long busyAfterReturn = pool.busy;
+        delete input; // helpers are still running: nothing may read the input from here on
+        EXPECT_EQ(busyAfterReturn, 0) << "round " << round;
+        EXPECT_EQ(toHex(out, 32), expected) << "round " << round;
+    }
+    stop = true;
+    for (auto& h : helpers)
+        h.join();
+}
