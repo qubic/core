@@ -33,15 +33,12 @@ constexpr uint64 QTREAT_ASIC_CATALOG_CAPACITY = 512;
 constexpr uint64 QTREAT_ASIC_PARTS_TOTAL      = 400;
 constexpr uint64 QTREAT_MAX_ASIC_RIGS         = 128;
 constexpr uint64 QTREAT_MAX_TOTAL_ASICS       = 100;
-// Ownership re-verification / possessor snapshotting is spread across this many epochs
-// (round-robin by slot index) instead of touching every entry every epoch, so a large
-// registered-rig or dividend-NFT set can't force hundreds of external QBAY calls into a
-// single END_EPOCH. Each entry is re-checked exactly once every N epochs, and is only ever
-// paid/credited in the same epoch it's freshly re-checked (payout amount scaled by N to
-// compensate) - a sold/transferred asset can never keep paying its previous owner between
-// checks, and a new owner starts earning as soon as their asset's next check lands.
-constexpr uint64 QTREAT_ASIC_VERIFY_SPREAD_EPOCHS = 8;
-constexpr uint64 QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS = 4;
+// Every registered rig and every dividend NFT is re-checked against QBAY in every END_EPOCH,
+// and rewards/credits are only ever granted in the same pass as that fresh check. This costs
+// one QBAY lookup per rig part (4 per rig) and per dividend id each epoch - the same order of
+// work the QDOGE drip loop below already does unconditionally - and buys exact behaviour: a
+// sold asset stops paying its previous owner in the epoch it is sold, a buyer starts earning
+// immediately, and there is no rotating schedule for an owner to game by re-registering.
 constexpr uint64 QTREAT_MINING_REWARD_DEFAULT = 20000000ULL;
 constexpr uint64 QTREAT_MINING_REWARD_MAX     = 100000000ULL;
 static_assert(QTREAT_MINING_REWARD_DEFAULT <= QTREAT_MINING_REWARD_MAX);
@@ -169,10 +166,6 @@ struct QTREAT : public ContractBase
         uint32 partFan;
         uint64 weight;
         uint64 active;
-        // Epoch this rig was registered in. A rig only becomes payable once a full
-        // QTREAT_ASIC_VERIFY_SPREAD_EPOCHS cycle has passed since then, which is what stops
-        // slot churn from beating the 1-in-N payout schedule (see the END_EPOCH mining loop).
-        uint64 registeredEpoch;
     };
 
     struct AssetKey
@@ -850,7 +843,6 @@ struct QTREAT : public ContractBase
         locals.rig.partFan = input.partFan;
         locals.rig.weight = locals.points;
         locals.rig.active = 1;
-        locals.rig.registeredEpoch = qpi.epoch();
         state.mut().asicRigs.set(locals.freeSlot, locals.rig);
         state.mut().asicUsedParts.set((uint64)input.partMotherboard, (uint64)locals.freeSlot + 1);
         state.mut().asicUsedParts.set((uint64)input.partChip, (uint64)locals.freeSlot + 1);
@@ -1878,11 +1870,12 @@ struct QTREAT : public ContractBase
             state.mut().stakers.set(locals.h, locals.info);
         }
 
-        // Mining budget envelope for this epoch, computed once. The dividend half is cut
-        // unconditionally below (it isn't tied to any individual rig's ownership); the miner
-        // half is only ever paid to a rig in the same pass that freshly re-verifies it (see
-        // the merged loop below) so a sold/transferred part can never keep drawing rewards
-        // for its old owner.
+        // Mining budget envelope for this epoch, computed once. Every active rig is
+        // re-verified and paid every epoch (see the loop below), so the full per-epoch rate
+        // is used: no slice, no scaling. The dividend half is cut unconditionally because it
+        // isn't tied to any individual rig's ownership; the miner half is only ever paid to a
+        // rig in the same pass that freshly re-verifies it, so a sold or transferred part can
+        // never keep drawing rewards for its old owner.
         locals.minerBudget = 0;
         if (state.get().totalMiningWeight > 0 && state.get().miningFund > 0)
         {
@@ -1890,13 +1883,6 @@ struct QTREAT : public ContractBase
             locals.contractBalance = locals.ent.incomingAmount - locals.ent.outgoingAmount;
             locals.miningBudget = state.get().miningRewardRate;
             if (locals.miningBudget > state.get().miningFund) locals.miningBudget = state.get().miningFund;
-            // Only ~1/QTREAT_ASIC_VERIFY_SPREAD_EPOCHS of rigs are due for (scaled-up) payment
-            // in any given epoch, so take this epoch's dividend cut from the same fair 1/N
-            // slice of the budget instead of the full envelope - otherwise the dividend cut
-            // would drain miningFund at full speed every epoch regardless of how many rigs
-            // are actually due, starving the miner side before rigs get their scaled turn
-            // (especially with few registered rigs, where most epochs have nobody due at all).
-            locals.miningBudget = div(locals.miningBudget, QTREAT_ASIC_VERIFY_SPREAD_EPOCHS);
 
             // Split 50/50; odd QU goes to dividends.
             locals.minerBudget = div(locals.miningBudget, 2ULL);
@@ -1913,11 +1899,10 @@ struct QTREAT : public ContractBase
         {
             locals.rig = state.get().asicRigs.get(locals.sidx);
             if (locals.rig.active == 0) continue;
-            // Only re-verify (and potentially pay) a rotating slice of rigs this epoch (see
-            // QTREAT_ASIC_VERIFY_SPREAD_EPOCHS); un-checked rigs keep their current active
-            // state and simply wait for their next scheduled turn - no ownership-dependent
-            // payment happens for them outside their own verification epoch.
-            if (mod((uint64)locals.sidx + qpi.epoch(), QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) != 0) continue;
+            // Every active rig is re-verified every epoch, and paid in the same pass. All four
+            // parts must still be possessed by the registered owner: selling any one of them
+            // deactivates the whole rig that same epoch, and payment below is unreachable
+            // without a successful check here, so a rig can never be paid on stale ownership.
             locals.stillOwned = 1;
             locals.verifyOk = 1;
             for (locals.pIdx = 0; locals.pIdx < 4; locals.pIdx++)
@@ -1934,7 +1919,7 @@ struct QTREAT : public ContractBase
                     locals.stillOwned = 0;
                 }
             }
-            if (locals.verifyOk == 0) continue; // inconclusive this epoch; try again next scheduled turn
+            if (locals.verifyOk == 0) continue; // QBAY unreachable: no pay, no deactivation, retry next epoch
 
             if (locals.stillOwned == 0)
             {
@@ -1949,26 +1934,14 @@ struct QTREAT : public ContractBase
                 continue;
             }
 
-            // A rig's payout turn is decided by its slot index, and RegisterAsic hands out the
-            // lowest free slot deterministically while register/unregister are both free. Left
-            // unchecked, an owner of two or more rigs could unregister and re-register each
-            // epoch to land on a slot that is due, and collect the N-times-scaled reward below
-            // every epoch instead of every Nth - up to N times their fair share, taken out of
-            // miningFund at every honest miner's expense. Requiring a rig to survive a full
-            // verification cycle before it earns removes the incentive: any slot change costs
-            // at least one skipped cycle, so churning can never beat simply holding the rig.
-            // Verification above still runs while the rig is maturing, so a rig whose parts
-            // were sold is still deactivated on schedule.
-            if (qpi.epoch() < locals.rig.registeredEpoch + QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) continue;
-
-            // Freshly verified as still valid this epoch: pay its share now, scaled by the
-            // spread factor to compensate for only being eligible on 1-in-N epochs (so the
-            // rig's total earnings over a full verification cycle match what continuous
-            // per-epoch payment at the same weight ratio would have produced).
+            // Freshly verified as still valid this epoch: pay its weight share of this epoch's
+            // miner budget. Because every rig is verified and paid every epoch, the payout
+            // needs no scaling and there is no slot schedule for an owner to game by
+            // unregistering and re-registering.
             if (locals.minerBudget > 0 && locals.rig.weight > 0 && state.get().totalMiningWeight > 0)
             {
-                locals.minerReward = div((uint128)locals.minerBudget * (uint128)locals.rig.weight
-                    * (uint128)QTREAT_ASIC_VERIFY_SPREAD_EPOCHS, (uint128)state.get().totalMiningWeight).low;
+                locals.minerReward = div((uint128)locals.minerBudget * (uint128)locals.rig.weight,
+                    (uint128)state.get().totalMiningWeight).low;
                 if (locals.minerReward > 0)
                 {
                     if (locals.minerReward > locals.contractBalance) locals.minerReward = locals.contractBalance;
@@ -1987,22 +1960,14 @@ struct QTREAT : public ContractBase
 
         if (state.get().dividendNftIdCount > 0)
         {
-            // Only this epoch's rotating slice of ids (see QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS) is
-            // queried and counted - nftCounts is fully rebuilt from just that fresh slice every
-            // epoch (no carried-forward "last known possessor" state), so a holder only ever
-            // gets dividend credit for an id in the same epoch its current possessor is actually
-            // re-confirmed. A seller can't keep collecting after a sale, and the buyer starts
-            // getting credit as soon as their id's next scheduled check lands - never mid-cycle
-            // stale data either way. Each matched id counts QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS
-            // times (instead of once) to compensate for only ~1/N of the collection being checked
-            // in any given epoch, so the collection's aggregate share of the dividend pool matches
-            // what checking everyone every epoch would produce, in expectation over a full cycle.
+            // Every dividend id is queried and counted every epoch, and nftCounts is rebuilt
+            // from scratch each time (no carried-forward "last known possessor" state), so a
+            // holder is credited for an id only while they actually possess it: a seller stops
+            // collecting the same epoch they sell, and the buyer starts collecting immediately.
             state.mut().nftCounts.reset();
             state.mut().totalNftCount = 0;
             for (locals.sidx = 0; locals.sidx < (sint64)state.get().dividendNftIdCount; locals.sidx++)
             {
-                if (mod((uint64)locals.sidx + qpi.epoch(), QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS) != 0) continue;
-
                 locals.qbayIn.NFTId = state.get().dividendNftIds.get(locals.sidx);
                 CALL_OTHER_CONTRACT_FUNCTION(QBAY, getInfoOfNFTById, locals.qbayIn, locals.qbayOut);
                 if (interContractCallError != NoCallError) continue;
@@ -2020,8 +1985,8 @@ struct QTREAT : public ContractBase
 
                 locals.nftCnt = 0;
                 state.get().nftCounts.get(locals.qbayOut.possessor, locals.nftCnt);
-                state.mut().nftCounts.set(locals.qbayOut.possessor, locals.nftCnt + QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS);
-                state.mut().totalNftCount = state.get().totalNftCount + QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS;
+                state.mut().nftCounts.set(locals.qbayOut.possessor, locals.nftCnt + 1);
+                state.mut().totalNftCount = state.get().totalNftCount + 1;
             }
         }
 

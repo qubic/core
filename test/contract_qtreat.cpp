@@ -1384,38 +1384,26 @@ TEST(ContractQtreat, MiningRewardSplits5050WithDividendFundAndPaysByWeight)
     increaseEnergy(funder, 1000000);
     EXPECT_EQ(t.depositMiningFund(funder, 1000000), QTREAT_OK);
 
-    // Mining rewards are only ever paid to a rig in the same epoch it's freshly re-verified
-    // (see QTREAT_ASIC_VERIFY_SPREAD_EPOCHS); force the clock to land exactly on a due epoch
-    // for this rig (slot 0) so no intervening "nobody due" epoch drains miningFund via the
-    // dividend cut first, keeping the expected amounts exact. Skip a whole extra cycle so the
-    // rig has also matured past its registration epoch, which is what makes it payable at all
-    // (see the AsicRigMustMature... test below).
+    // Every active rig is verified and paid every epoch, so the very next epoch pays out - no
+    // clock manipulation needed and no waiting period before a new rig earns.
     ASSERT_EQ(reg.rigIndex, 0u);
-    system.epoch = system.epoch - (system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) + 2 * QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
-    ASSERT_EQ((uint64)system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS, 0u);
-
     uint64 dividendBefore = t.getFunds().dividendFund;
     long long ownerBefore = getBalance(owner);
     t.advanceEpoch();
 
-    // This epoch's budget slice is rate/SPREAD (see the same reasoning in QTREAT.h), split
-    // 50/50; the sole due rig owns 100% of totalMiningWeight so its scaled-up payment
-    // reconstitutes the full miner half of that slice.
-    uint64 epochSlice = 1000000 / QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
-    uint64 expectedMinerHalf = (epochSlice / 2) * QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
-    uint64 expectedDividendHalf = epochSlice - epochSlice / 2;
+    // The full per-epoch rate is split 50/50 with odd QU going to dividends; the sole rig owns
+    // 100% of totalMiningWeight so it takes the whole miner half.
+    uint64 expectedMinerHalf = 1000000 / 2;
+    uint64 expectedDividendHalf = 1000000 - 1000000 / 2;
     EXPECT_EQ((uint64)(getBalance(owner) - ownerBefore), expectedMinerHalf);
     EXPECT_EQ(t.getFunds().dividendFund - dividendBefore, expectedDividendHalf);
 }
 
-TEST(ContractQtreat, AsicRigMustMatureAFullCycleBeforeItEarns)
+TEST(ContractQtreat, MiningRewardPaidEveryEpochAndSlotChurnGainsNothing)
 {
-    // A rig's payout turn is decided by its slot index, RegisterAsic always hands out the
-    // lowest free slot, and register/unregister both refund the invocation reward - so without
-    // a maturation rule an owner of two or more rigs could re-register every epoch to land on
-    // a due slot and collect the SPREAD-scaled reward every epoch instead of every SPREAD'th.
-    // Requiring a rig to survive a full verification cycle before it earns makes any slot
-    // change cost at least one skipped cycle, so churning can never beat holding.
+    // Per-epoch verification and payout means there is no rotating slot schedule to game:
+    // unregistering and re-registering cannot win a rig more payouts than simply holding it,
+    // because every active rig is paid in every epoch regardless of its slot.
     ContractTestingQtreat t;
     t.activateQbayMarket();
     id owner = getUser(1);
@@ -1423,28 +1411,28 @@ TEST(ContractQtreat, AsicRigMustMatureAFullCycleBeforeItEarns)
     t.loadFullAsicCatalog();
     auto reg = t.registerAsic(owner, m, c, p, f);
     ASSERT_EQ(reg.returnCode, QTREAT_OK);
-    ASSERT_EQ(reg.rigIndex, 0u);
-    ASSERT_NE((uint64)system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS, 0u)
-        << "test assumption violated: slot 0's first due epoch must fall inside the maturation window";
 
     EXPECT_EQ(t.setMiningRate(t.adminAddress, 1000000), QTREAT_OK);
     id funder = getUser(9);
-    increaseEnergy(funder, 1000000);
-    EXPECT_EQ(t.depositMiningFund(funder, 1000000), QTREAT_OK);
+    increaseEnergy(funder, 10000000);
+    EXPECT_EQ(t.depositMiningFund(funder, 10000000), QTREAT_OK);
 
-    // Slot 0's first due epoch after registration arrives before a full cycle has elapsed:
-    // the rig is verified (and stays active) but must not be paid yet.
-    system.epoch = system.epoch - (system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) + QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
-    long long ownerBefore = getBalance(owner);
-    t.advanceEpoch();
-    EXPECT_EQ(getBalance(owner), ownerBefore);
-    EXPECT_EQ(t.getState()->getRig((sint64)reg.rigIndex).active, 1u);
+    // Three consecutive epochs, each paying the same amount - no "nobody is due" epochs.
+    for (uint64 i = 0; i < 3; i++)
+    {
+        long long before = getBalance(owner);
+        t.advanceEpoch();
+        EXPECT_EQ((uint64)(getBalance(owner) - before), 1000000u / 2) << "epoch offset " << i;
+    }
 
-    // One full cycle later it is both due and matured, so now it earns.
-    system.epoch = system.epoch - (system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) + QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
-    ownerBefore = getBalance(owner);
+    // Re-registering resets nothing in the rig's favour: the epoch after still pays exactly
+    // the same, so churn is pure waste rather than an exploit.
+    EXPECT_EQ(t.unregisterAsic(owner, reg.rigIndex), QTREAT_OK);
+    auto again = t.registerAsic(owner, m, c, p, f);
+    ASSERT_EQ(again.returnCode, QTREAT_OK);
+    long long before = getBalance(owner);
     t.advanceEpoch();
-    EXPECT_GT(getBalance(owner), ownerBefore);
+    EXPECT_EQ((uint64)(getBalance(owner) - before), 1000000u / 2);
 }
 
 TEST(ContractQtreat, AsicRigDeactivatedWhenPartOwnershipChanges)
@@ -1459,42 +1447,40 @@ TEST(ContractQtreat, AsicRigDeactivatedWhenPartOwnershipChanges)
     ASSERT_EQ(reg.returnCode, QTREAT_OK);
     ASSERT_EQ(t.getState()->getTotalAsicCount(), 1u);
 
+    // Selling one of the four parts breaks the rig: ownership is re-checked every epoch, so
+    // the deactivation lands on the very next one.
     t.transferNft(owner, m, newOwner); // motherboard no longer owned by the rig's registered owner
-
-    // Ownership re-verification is spread across QTREAT_ASIC_VERIFY_SPREAD_EPOCHS epochs
-    // (round-robin by rig slot) rather than checking every rig every epoch, so the
-    // deactivation isn't guaranteed on the very next epoch - only within that window.
-    for (uint64 i = 0; i < QTREAT_ASIC_VERIFY_SPREAD_EPOCHS; i++)
-        t.advanceEpoch();
+    t.advanceEpoch();
 
     EXPECT_EQ(t.getState()->getTotalAsicCount(), 0u);
+    EXPECT_EQ(t.getState()->getTotalMiningWeight(), 0u);
     EXPECT_EQ(t.getState()->getRig((sint64)reg.rigIndex).active, 0u);
 }
 
-TEST(ContractQtreat, AsicRigStaysActiveUntilItsVerificationSlotComesUp)
+TEST(ContractQtreat, AsicRigDeactivatedWhicheverPartIsSold)
 {
-    // The very first registered rig lands at slot 0. constructionEpoch mod
-    // QTREAT_ASIC_VERIFY_SPREAD_EPOCHS != 0 for this fixture's construction epoch, so slot 0
-    // is *not* re-verified on the first END_EPOCH after registration - only after enough
-    // epochs have passed for (slot + epoch) mod SPREAD to hit 0. This pins down the
-    // "eventually consistent, not immediate" tradeoff explicitly rather than leaving it implicit.
-    ContractTestingQtreat t;
-    t.activateQbayMarket();
-    id owner = getUser(1);
-    id newOwner = getUser(2);
-    uint32 m = t.mintNft(owner), c = t.mintNft(owner), p = t.mintNft(owner), f = t.mintNft(owner);
-    t.loadFullAsicCatalog();
-    auto reg = t.registerAsic(owner, m, c, p, f);
-    ASSERT_EQ(reg.returnCode, QTREAT_OK);
-    ASSERT_EQ(reg.rigIndex, 0u);
-    ASSERT_NE(((uint64)reg.rigIndex + (uint64)system.epoch) % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS, 0u)
-        << "test assumption violated: adjust which epoch this fixture starts at, or the rig slot used";
+    // A rig needs all four parts. Selling any single one of them - not just the motherboard -
+    // deactivates the whole rig on the next epoch; there is no partial credit.
+    for (uint64 sold = 0; sold < 4; sold++)
+    {
+        ContractTestingQtreat t;
+        t.activateQbayMarket();
+        id owner = getUser(1);
+        id newOwner = getUser(2);
+        uint32 part[4];
+        part[0] = t.mintNft(owner); part[1] = t.mintNft(owner);
+        part[2] = t.mintNft(owner); part[3] = t.mintNft(owner);
+        t.loadFullAsicCatalog();
+        auto reg = t.registerAsic(owner, part[0], part[1], part[2], part[3]);
+        ASSERT_EQ(reg.returnCode, QTREAT_OK) << "part index " << sold;
+        ASSERT_EQ(t.getState()->getTotalAsicCount(), 1u);
 
-    t.transferNft(owner, m, newOwner);
-    t.advanceEpoch(); // this epoch's slot isn't due for re-verification yet
+        t.transferNft(owner, part[sold], newOwner);
+        t.advanceEpoch();
 
-    EXPECT_EQ(t.getState()->getTotalAsicCount(), 1u);
-    EXPECT_EQ(t.getState()->getRig((sint64)reg.rigIndex).active, 1u);
+        EXPECT_EQ(t.getState()->getTotalAsicCount(), 0u) << "part index " << sold;
+        EXPECT_EQ(t.getState()->getRig((sint64)reg.rigIndex).active, 0u) << "part index " << sold;
+    }
 }
 
 TEST(ContractQtreat, AsicSoldPartOwnerReceivesNoRewardOnDeactivationEpoch)
@@ -1518,11 +1504,7 @@ TEST(ContractQtreat, AsicSoldPartOwnerReceivesNoRewardOnDeactivationEpoch)
     increaseEnergy(funder, 1000000);
     EXPECT_EQ(t.depositMiningFund(funder, 1000000), QTREAT_OK);
 
-    t.transferNft(owner, m, newOwner); // sell before the rig's part ever gets fresh-verified
-
-    // Advance straight to slot 0's next due epoch, same as the payment test, so no
-    // intervening epoch's dividend cut muddies the miningFund balance.
-    system.epoch = system.epoch - (system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) + QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
+    t.transferNft(owner, m, newOwner); // sell before the rig is ever paid
 
     long long ownerBefore = getBalance(owner);
     t.advanceEpoch();
