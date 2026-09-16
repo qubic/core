@@ -14,9 +14,10 @@ m256i QPI::QpiContextFunctionCall::computeMiningFunction(const m256i miningSeed,
         score_qpi->initMiningData(miningSeed);
     }
     m256i bpp9000Nonce = nonce;
-    // Only the active odd-nonce (bpp9000) slot supports the last output
-    bpp9000Nonce.m256i_u8[0] = (bpp9000Nonce.m256i_u8[0] | 0x01);
-    ASSERT((bpp9000Nonce.m256i_u8[0] & 1) == 1);
+
+    bpp9000Nonce.m256i_u8[0] = (unsigned char)score_engine::AlgoType::Bpp9000;
+    bpp9000Nonce.m256i_u8[1] = 5;
+    bpp9000Nonce.m256i_u8[2] = 0;
     (*score_qpi)(0, publicKey, miningSeed, bpp9000Nonce);
     return score_qpi->getLastOutput(0);
 }

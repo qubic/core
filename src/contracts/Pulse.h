@@ -1330,24 +1330,27 @@ public:
 	 * Deposits QHeart into the contract for automatic ticket purchases.
 	 * @param amount QHeart amount to reserve for auto participation.
 	 * @param desiredTickets Number of tickets to buy per draw.
-	 * @param buyNow When true, tries to buy immediately if selling is open.
+	 * @param buyNow When true, tries to buy immediately if selling is open and uses the invocation reward to pay for random-ticket entropy.
 	 * @return Status code describing the result.
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(DepositAutoParticipation)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-
 		if (state.get().autoParticipants.population() >= state.get().autoParticipants.capacity())
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = EReturnCode::AUTO_PARTICIPANTS_FULL;
 			return;
 		}
 
 		if (input.amount <= 0 || input.desiredTickets <= 0)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = EReturnCode::INVALID_VALUE;
 			return;
 		}
@@ -1364,6 +1367,10 @@ public:
 		locals.totalPrice = smul(state.get().ticketPrice, static_cast<sint64>(input.desiredTickets));
 		if (input.amount < locals.totalPrice)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = EReturnCode::TICKET_INVALID_PRICE;
 			return;
 		}
@@ -1387,6 +1394,10 @@ public:
 				output.returnCode = EReturnCode::SUCCESS;
 				return;
 			}
+		}
+		else if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
 		state.get().autoParticipants.get(qpi.invocator(), locals.entry);

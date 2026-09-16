@@ -10,6 +10,11 @@
 
 #include <lib/platform_efi/uefi.h>
 
+// Miners tracked in the ranking table that feeds computor selection. A hard cap rather than mere
+// sizing: once full, a newcomer is admitted only if it outranks the current worst entry. Lives here
+// rather than in qubic.cpp so mining headers can size per-miner structures against it.
+#define MAX_NUMBER_OF_MINERS 8192
+
 static unsigned int getTickInDogeBroadcastCycle()
 {
 #ifdef NO_UEFI
@@ -353,3 +358,41 @@ struct CustomMiningStats
 };
 
 static CustomMiningStats gDogeMiningStats;
+
+// Ant colony solution transaction
+constexpr int ANT_COLONY_MINING_SOLUTION_INPUT_TYPE = 12;
+struct AntColonyMiningSolutionTransaction : public Transaction
+{
+    static constexpr unsigned char transactionType()
+    {
+        return ANT_COLONY_MINING_SOLUTION_INPUT_TYPE;
+    }
+
+    static constexpr long long minAmount()
+    {
+        return SOLUTION_SECURITY_DEPOSIT;   // same anti-spam deposit as legacy
+    }
+
+    static constexpr unsigned short minInputSize()
+    {
+        return sizeof(parentTick) + sizeof(parentSolutionIndexInTick) + sizeof(anchorTick) + sizeof(claimedScore) + sizeof(nonce);   // 4 + 4 + 4 + 4 + 32 = 48 bytes
+    }
+
+    static bool isSolutionTransaction(const Transaction* tx)
+    {
+        return isZero(tx->destinationPublicKey)
+            && tx->inputType == transactionType()
+            && tx->amount >= minAmount()
+            && tx->inputSize == minInputSize();
+    }
+
+    unsigned int parentTick;                    // ABSOLUTE tick of the parent ref
+    unsigned int parentSolutionIndexInTick;     // dense within-tick index of the parent ref
+    unsigned int anchorTick;                    // ABSOLUTE tick whose digest the solution anchored to (RNG seed + freshness)
+    // The score the submitter claims this solution reaches. The deposit is refunded only when it
+    // matches the score the node computes
+    unsigned int claimedScore;
+    m256i nonce;
+    unsigned char signature[SIGNATURE_SIZE];
+};
+static_assert(sizeof(AntColonyMiningSolutionTransaction) == sizeof(Transaction) + 4 + 4 + 4 + 4 + 32 + SIGNATURE_SIZE, "AntColonyMiningSolutionTransaction unexpected padding");

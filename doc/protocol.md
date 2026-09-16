@@ -29,6 +29,7 @@ The following transaction types (`tx->inputType`) are defined:
 - `ExecutionFeeReportTransactionPrefix`, type 9, defined in `src/network_messages/execution_fees.h`.
 - `OracleUserQueryTransactionPrefix`, type 10, defined in `src/oracle_core/oracle_transactions.h`.
 - `DogeMiningShareTransaction`, type 11, defined in `src/mining/mining.h`.
+- `AntColonyMiningSolutionTransaction`, type 12, defined in `src/mining/mining.h`.
 
 
 ## Peer Sharing

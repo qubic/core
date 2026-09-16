@@ -693,3 +693,28 @@ TEST(TestFourQ, TestVerifyRejectsNetworkForgeries)
             << " FORGERY ACCEPTED for vector " << i << " -- the fix is NOT working";
     }
 }
+
+TEST(TestFourQ, SignTickVoteIncrementalPassesVerify)
+{
+#if defined (__AVX512F__)
+    initAVX512FourQConstants();
+#endif
+
+    initIncrementalSignG();  // build G's eccadd-precomp once (needs FourQ constants above)
+
+    unsigned char subseed[32], privateKey[32], publicKey[32], msg[32];
+    for (int i = 0; i < 32; i++) { subseed[i] = (unsigned char)(0x5A + i); msg[i] = (unsigned char)(0xA5 - i); }
+    getPrivateKey(subseed, privateKey);
+    getPublicKey(privateKey, publicKey);
+
+    constexpr unsigned long long TARGET_TICK_VOTE_SIGNATURE = 0x07FFFFFFU; // around 32 signing operations per ID
+
+    for (int it = 0; it < 100; it++)
+    {
+        unsigned char m2[32], s2[64];
+        for (int i = 0; i < 32; i++) m2[i] = (unsigned char)(msg[i] ^ (unsigned char)(it * 7 + i));
+        signWithRandomK_incremental(subseed, publicKey, m2, s2, TARGET_TICK_VOTE_SIGNATURE);
+        EXPECT_TRUE(verify(publicKey, m2, s2));
+        EXPECT_LE(_byteswap_ulong(((unsigned int*)s2)[0]), TARGET_TICK_VOTE_SIGNATURE);
+    }
+}

@@ -5,6 +5,7 @@
 #define MESSAGE_TYPE_SOLUTION 0
 #define MESSAGE_TYPE_CUSTOM_MINING_TASK 1
 #define MESSAGE_TYPE_CUSTOM_MINING_SOLUTION 2
+#define MESSAGE_TYPE_ANT_SOLUTION 3
 
 // TODO: documentation needed:
 // "A General Message type used to send/receive messages from/to peers." -> right?
