@@ -34,6 +34,8 @@ constexpr uint64 QUOTTERY_ASK_BIT = 0;
 constexpr uint64 QUOTTERY_BID_BIT = 1;
 constexpr uint64 QUOTTERY_EID_MASK = 0x3FFFFFFFFFFFFFFFULL; // (2^62 - 1);
 constexpr uint64 QUOTTERY_MAX_AMOUNT = 2000000000000LL; // 2 trillion;
+constexpr uint64 QUOTTERY_DIRECT_TRANSFER_REFUND_FEE_DIVISOR = 100ULL;
+constexpr sint64 QUOTTERY_MIN_DIRECT_TRANSFER_REFUND_FEE = 100000LL;
 constexpr sint8 QUOTTERY_RESULT_NOT_SET = -1;
 constexpr sint8 QUOTTERY_RESULT_NO = 0;
 constexpr sint8 QUOTTERY_RESULT_YES = 1;
@@ -78,6 +80,7 @@ public:
         sint64 price1;
         sint8 _terminator; // Only data before "_terminator" are logged
     };
+
     /**************************************/
     /********INPUT AND OUTPUT STRUCTS******/
     /**************************************/
@@ -1948,6 +1951,10 @@ public:
         {
             return;
         }
+        if (state.get().mEventFinalFlag.contains(input.eventId))
+        {
+            return;
+        }
 
         if (state.get().mDisputeInfo.contains(input.eventId))
         {
@@ -1955,14 +1962,17 @@ public:
             return;
         }
         // only finalizing after 1000 ticks since result is published
-        state.get().mEventResultPublishTickTime.get(input.eventId, locals.publishResultTick);
+        if (!state.get().mEventResultPublishTickTime.get(input.eventId, locals.publishResultTick))
+        {
+            return;
+        }
         if (locals.publishResultTick + QUOTTERY_DISPUTE_WINDOW > qpi.tick())
         {
             return;
         }
 
-        state.get().mEventResult.get(input.eventId, locals.result);
-        if (locals.result == QUOTTERY_RESULT_NOT_SET)
+        if (!state.get().mEventResult.get(input.eventId, locals.result) ||
+            locals.result == QUOTTERY_RESULT_NOT_SET)
         {
             return;
         }
@@ -1975,10 +1985,16 @@ public:
             locals.winOption = 1;
         }
 
-        // ALL passed, no dispute, return the deposit to GO
-        state.get().mGODepositInfo.get(input.eventId, locals.di);
-        qpi.transfer(locals.di.pubkey, locals.di.amount);
-        state.mut().mGODepositInfo.removeByKey(input.eventId); // clean up
+        // Remove the deposit record only after the transfer succeeds. On
+        // failure, the GO can safely retry TryFinalizeEvent later.
+        if (state.get().mGODepositInfo.get(input.eventId, locals.di))
+        {
+            if (qpi.transfer(locals.di.pubkey, locals.di.amount) < 0)
+            {
+                return;
+            }
+            state.mut().mGODepositInfo.removeByKey(input.eventId);
+        }
 
         locals.fei.eventId = input.eventId;
         locals.fei.winOption = locals.winOption;
@@ -2361,7 +2377,7 @@ public:
         REGISTER_USER_PROCEDURE(GOForceClaimReward, 11);
         REGISTER_USER_PROCEDURE(TransferQUSD, 12);
         REGISTER_USER_PROCEDURE(TransferShareManagementRights, 13);
-        REGISTER_USER_PROCEDURE(CleanMemory, 14);
+        REGISTER_USER_PROCEDURE(CleanMemoryAndDistributeReward, 14);
         REGISTER_USER_PROCEDURE(TransferQTRYGOV, 15);
 
         // operation team proc
@@ -2414,31 +2430,28 @@ public:
         }
     }
 
-    typedef NoData CleanMemory_input;
-    typedef NoData CleanMemory_output;
-    struct CleanMemory_locals
+    typedef NoData CleanMemoryAndDistributeReward_input;
+    typedef NoData CleanMemoryAndDistributeReward_output;
+    struct CleanMemoryAndDistributeReward_locals
     {
         sint64 index;
         uint64 eid;
         id key;
         QtryOrder v;
         sint8 userOption;
-        QtryEventInfo qei;
-        id uid;
         sint8 winOption;
         RewardTransfer_input rti;
         RewardTransfer_output rto;
-        sint32 i;
-        bit flag;
         QuotteryLoggerWithData log;
-        uint32 publishResultTick;
     };
-    PUBLIC_PROCEDURE_WITH_LOCALS(CleanMemory)
+    PUBLIC_PROCEDURE_WITH_LOCALS(CleanMemoryAndDistributeReward)
     {
         // Only the system or GO can call this
         if (qpi.invocator() == NULL_ID || qpi.invocator() == state.get().mQtryGov.mOperationId)
         {
-            // payout all positions that have final result and then clean all finalized events
+            // Only TryFinalizeEvent/ResolveDispute may finalize an event.
+            // CleanMemoryAndDistributeReward ignores non-finalized events and inconsistent legacy
+            // states whose GO deposit is still pending.
             locals.index = NULL_INDEX;
             do {
                 locals.index = state.get().mPositionInfo.nextElementIndex(locals.index);
@@ -2448,40 +2461,25 @@ public:
                     locals.v = state.get().mPositionInfo.value(locals.index);
                     locals.eid = locals.key.u64._3 & QUOTTERY_EID_MASK;
                     locals.userOption = locals.key.u64._3 >> 63;
-                    state.get().mEventResult.get(locals.eid, locals.winOption);
-                    if (locals.winOption != QUOTTERY_RESULT_NOT_SET)
+                    if (state.get().mEventFinalFlag.contains(locals.eid) &&
+                        !state.get().mGODepositInfo.contains(locals.eid) &&
+                        state.get().mEventResult.get(locals.eid, locals.winOption) &&
+                        locals.winOption != QUOTTERY_RESULT_NOT_SET)
                     {
-                        // skip events that are currently under active dispute
-                        if (state.get().mDisputeInfo.contains(locals.eid))
+                        if (locals.userOption == locals.winOption)
                         {
-                            continue;
-                        }
-                        // result is available, now checking if it's still in dispute window
-                        state.get().mEventInfo.get(locals.eid, locals.qei);
-                        // only finalizing after 1000 ticks since result publication
-                        state.get().mEventResultPublishTickTime.get(locals.eid, locals.publishResultTick);
-                        if (locals.publishResultTick + QUOTTERY_DISPUTE_WINDOW < qpi.tick()) // 1000 ticks passed the result publication
-                        {
-                            if (!state.get().mEventFinalFlag.contains(locals.eid))
+                            locals.rti.amount = smul(state.get().wholeSharePrice, locals.v.amount);
+                            locals.rti.eid = locals.eid;
+                            locals.rti.receiver = locals.v.entity;
+                            locals.rti.needChargeFee = 1;
+                            CALL(RewardTransfer, locals.rti, locals.rto);
+                            if (!locals.rto.ok)
                             {
-                                state.mut().mEventFinalFlag.set(locals.eid, true);
+                                state.mut().mEventFinalFlag.set(locals.eid, false);
+                                continue;
                             }
-                            if (locals.userOption == locals.winOption)
-                            {
-                                locals.rti.amount = smul(state.get().wholeSharePrice, locals.v.amount);
-                                locals.rti.eid = locals.eid;
-                                locals.rti.receiver = locals.v.entity;
-                                locals.rti.needChargeFee = 1;
-                                CALL(RewardTransfer, locals.rti, locals.rto);
-                                if (!locals.rto.ok)
-                                {
-                                    state.mut().mEventFinalFlag.set(locals.eid, false); // can't finalize this because failed to give reward to users
-                                    continue;
-                                }
-                            }
-                            // remove the position
-                            state.mut().mPositionInfo.removeByKey(locals.key);
                         }
+                        state.mut().mPositionInfo.removeByKey(locals.key);
                     }
                 }
             } while (locals.index != NULL_INDEX);
@@ -2492,11 +2490,18 @@ public:
                 if (locals.index != NULL_INDEX)
                 {
                     locals.eid = state.get().mEventFinalFlag.key(locals.index);
-                    if (!state.get().mEventFinalFlag.value(locals.index)) // flag as false
+                    if (state.get().mGODepositInfo.contains(locals.eid))
                     {
-                        state.mut().mEventFinalFlag.removeByIndex(locals.index); // clean it for next epoch
                         continue;
                     }
+                    if (!state.get().mEventFinalFlag.value(locals.index)) // flag as false
+                    {
+                        // A user payout failed during this cleanup. Reset the
+                        // retry marker but defer archival until the next pass.
+                        state.mut().mEventFinalFlag.set(locals.eid, true);
+                        continue;
+                    }
+
                     locals.log = QuotteryLoggerWithData{ 0, QUOTTERY_ARCHIVE_EVENT, id(0,0, 0, locals.eid), 0 };
                     LOG_INFO(locals.log);
 
@@ -2534,6 +2539,14 @@ public:
         {
             CALL(Reinit, input, output);
         }
+
+        // One-time recovery of the archived event 277 GO deposit in epoch 232.
+        if (qpi.epoch() == 232)
+        {
+            qpi.transfer(
+                ID(_P, _R, _E, _D, _P, _W, _E, _P, _W, _I, _J, _U, _X, _B, _L, _W, _N, _C, _G, _Q, _S, _H, _L, _R, _U, _G, _V, _C, _D, _A, _N, _P, _O, _H, _C, _Y, _H, _K, _Z, _Y, _A, _E, _V, _I, _B, _E, _A, _O, _R, _R, _A, _O, _W, _F, _A, _H),
+                1000000000LL);
+        }
     }
 
     struct END_EPOCH_locals
@@ -2542,12 +2555,12 @@ public:
         Asset asset;
         uint64 payoutPerShare, payout, total, burn;
 
-        CleanMemory_input cmi;
-        CleanMemory_output cmo;
+        CleanMemoryAndDistributeReward_input cmi;
+        CleanMemoryAndDistributeReward_output cmo;
     };
     END_EPOCH_WITH_LOCALS()
     {
-        CALL(CleanMemory, locals.cmi, locals.cmo);
+        CALL(CleanMemoryAndDistributeReward, locals.cmi, locals.cmo);
         // distribute to QTRY shareholders
         if ((state.get().mShareholdersRevenue - state.get().mDistributedShareholdersRevenue - state.get().mBurnedAmount > 676) && (state.get().mShareholdersRevenue > state.get().mDistributedShareholdersRevenue + state.get().mBurnedAmount))
         {
@@ -3038,6 +3051,46 @@ public:
         if (locals.refundAmount > 0)
         {
             qpi.transfer(qpi.invocator(), locals.refundAmount);
+        }
+    }
+
+    struct POST_INCOMING_TRANSFER_locals
+    {
+        sint64 fee;
+        sint64 refundAmount;
+    };
+
+    POST_INCOMING_TRANSFER_WITH_LOCALS()
+    {
+        // Procedure rewards and transfers initiated by other contracts have
+        // their own accounting. Only protect users from plain QU transfers.
+        if (input.type != TransferType::standardTransaction ||
+            input.amount <= 0 ||
+            input.sourceId == NULL_ID)
+        {
+            return;
+        }
+
+        locals.fee = sint64(div(uint64(input.amount), QUOTTERY_DIRECT_TRANSFER_REFUND_FEE_DIVISOR));
+        if (locals.fee < QUOTTERY_MIN_DIRECT_TRANSFER_REFUND_FEE)
+        {
+            // Small transfers are non-refundable. Burning the full amount puts
+            // it into Quottery's execution-fee reserve instead of leaving QU
+            // stranded on the contract balance.
+            qpi.burn(input.amount);
+            return;
+        }
+
+        // Burn the fee before refunding. The incoming amount guarantees that
+        // the contract can cover both operations without using escrowed funds.
+        if (qpi.burn(locals.fee) < 0)
+        {
+            return;
+        }
+        locals.refundAmount = input.amount - locals.fee;
+        if (locals.refundAmount > 0)
+        {
+            qpi.transfer(input.sourceId, locals.refundAmount);
         }
     }
 
