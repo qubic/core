@@ -301,7 +301,6 @@
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#include "contracts/QTREAT.h"
 #define QPAYHUB_CONTRACT_INDEX 29
 #define CONTRACT_INDEX QPAYHUB_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QPAYHUB
@@ -316,7 +315,7 @@
 #define CONTRACT_INDEX QTREAT_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QTREAT
 #define CONTRACT_STATE2_TYPE QTREAT2
-
+#include "contracts/QTREAT.h"
 
 // new contracts should be added above this line
 
