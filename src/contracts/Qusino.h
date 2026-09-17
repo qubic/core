@@ -15,7 +15,6 @@ constexpr uint32 QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT = 20;
 constexpr uint32 QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT = 30;
 constexpr uint64 QUSINO_INFINITY_PRICE = 1000000000000000000ULL;
 constexpr uint64 QUSINO_QSC_PRICE = 100;    // 1QSC = 100Qubic
-constexpr uint64 QUSINO_DEVELOPER_FEE = 333;             // 33.3%
 constexpr uint64 QUSINO_SUPPLY_OF_QST = 1200000000ULL;    // 1.2 billion
 constexpr uint64 QUSINO_DAILY_CLAIM_BONUS_DURATION = 24 * 60 * 60; // in number of seconds
 constexpr uint64 QUSINO_BONUS_CLAIM_DURATION = 60;   // 60s
@@ -41,6 +40,13 @@ constexpr sint32 QUSINO_ALREADY_CLAIMED_TODAY = 16;
 constexpr sint32 QUSINO_BONUS_CLAIM_TIME_NOT_COME = 17;
 constexpr sint32 QUSINO_INSUFFICIENT_BONUS_AMOUNT = 18;
 constexpr sint32 QUSINO_INVALID_GAME_PROPOSER = 19;
+constexpr sint32 QUSINO_INVALID_INPUT = 20;
+constexpr sint32 QUSINO_RNG_NOT_READY = 21;
+constexpr sint32 QUSINO_RNG_REFILL_TOO_SOON = 22;
+constexpr sint32 QUSINO_RNG_REFILL_FAILED = 23;
+constexpr sint32 QUSINO_EXCEEDS_MAX_BET = 24;
+constexpr sint32 QUSINO_PROPOSER_CANNOT_VOTE = 25;
+constexpr sint32 QUSINO_DUPLICATE_GAME_URI = 26;
 
 constexpr uint8 QUSINO_ASSET_TYPE_QUBIC = 0;
 constexpr uint8 QUSINO_ASSET_TYPE_QSC = 1;
@@ -60,6 +66,69 @@ constexpr uint32 QUSINO_LOG_ALREADY_CLAIMED_TODAY = 9;
 constexpr uint32 QUSINO_LOG_BONUS_CLAIM_TIME_NOT_COME = 10;
 constexpr uint32 QUSINO_LOG_INSUFFICIENT_BONUS_AMOUNT = 11;
 constexpr uint32 QUSINO_LOG_INVALID_GAME_PROPOSER = 12;
+constexpr uint32 QUSINO_LOG_INVALID_INPUT = 13;
+constexpr uint32 QUSINO_LOG_RNG_NOT_READY = 14;
+constexpr uint32 QUSINO_LOG_RNG_REFILL_TOO_SOON = 15;
+constexpr uint32 QUSINO_LOG_RNG_REFILL_FAILED = 16;
+constexpr uint32 QUSINO_LOG_RNG_REFILL_SUCCESS = 17;
+constexpr uint32 QUSINO_LOG_COINFLIP_RESULT = 18;
+constexpr uint32 QUSINO_LOG_EXCEEDS_MAX_BET = 19;
+constexpr uint32 QUSINO_LOG_PROPOSER_CANNOT_VOTE = 20;
+constexpr uint32 QUSINO_LOG_DUPLICATE_GAME_URI = 21;
+
+// ---------------------------------------------------------------------------
+// Coin Flip + shared RNG "Result Bank"
+//
+// Entropy is bought in bulk from RANDOM and cached in a per-game pool backed by a
+// shared overflow reserve, so each coinFlip() draw is instant instead of waiting on
+// a fresh BuyEntropy call. refillRandomBank() is the only procedure that talks to
+// RANDOM -- permissionless but rate-limited. Pool/reserve arrays are sized for
+// QUSINO_RNG_MAX_GAMES so future games (Blackjack, Baccarat, ...) can reuse this
+// plumbing; only Coin Flip is wired up so far. getRandom() itself is deliberately
+// not a public procedure -- only this contract's own game logic can draw from it.
+// ---------------------------------------------------------------------------
+constexpr uint16 QUSINO_RNG_ENTROPY_BITS = 256;                                  // bits bought from RANDOM per refill
+constexpr uint8  QUSINO_RNG_COLLATERAL_TIER = 0;                                 // cheapest / most populated RANDOM tier
+constexpr uint64 QUSINO_RNG_ENTROPY_FEE = RANDOM_BITFEE * QUSINO_RNG_ENTROPY_BITS; // paid from bonusAmount (see QUSINO_GAME_BANKROLL_CAP)
+
+constexpr uint32 QUSINO_RNG_MAX_GAMES = 32;                                      // array capacity for future games (~2KB state per slot)
+constexpr uint32 QUSINO_RNG_ACTIVE_GAMES = 1;                                    // games actually bootstrapped by refillRandomBank --
+                                                                                  // bump as new games launch, never QUSINO_RNG_MAX_GAMES
+constexpr uint32 QUSINO_RNG_POOL_SIZE = 256;                                     // pre-drawn values held per game
+constexpr uint32 QUSINO_RNG_RESERVE_SIZE = 1024;                                 // shared overflow reserve, refilled in one shot
+constexpr uint32 QUSINO_RNG_MIN_REFILL_TICK_GAP = 5;                             // rate-limit for the permissionless refill call
+
+constexpr uint8 QUSINO_GAME_ID_COINFLIP = 0;
+
+// Coin Flip is played with QSC or STAR only, never raw Qu. A QSC bet is redeemed
+// for Qu (QUSINO_QSC_PRICE); a win credits new QSC back to the user -- they redeem
+// it themselves via redemptionQSCToQubic() -- debiting bonusAmount (QUSINO's Qu
+// game bankroll, funded via depositBonus, also what refillRandomBank spends on
+// RANDOM fees). A loss tops bonusAmount back up. STAR bets never touch Qu or
+// bonusAmount: STAR isn't redeemable for Qubic, so a win mints STAR and a loss
+// burns it, like a vote fee.
+constexpr uint64 QUSINO_COINFLIP_MIN_BET = 3ULL;                                // min bet, in QSC or STAR units
+// Max bet, in QSC or STAR units, regardless of asset, balance, or the
+// bonusAmount pool's own affordability cap (QUSINO_INSUFFICIENT_BONUS_AMOUNT
+// below is a separate, additional restriction on QSC specifically -- this
+// ceiling applies on top of it, and to STAR too, where that other check
+// doesn't apply at all). A flat business/UX limit, not something the
+// protocol's own accounting requires -- unlike MIN_BET (avoids degenerate
+// dust bets) or the bonus-pool gate (avoids underflowing bonusAmount), nothing
+// here would go wrong arithmetically without this cap. It exists only so a
+// single bet can never be enormous purely by virtue of a large balance or a
+// large pool. Previously enforced client-side only (qusino-frontend's
+// FIXED_MAX_BET_UNITS) -- moved on-chain after a report that a client
+// bypassing/not using that frontend could place an arbitrarily large bet.
+constexpr uint64 QUSINO_COINFLIP_MAX_BET = 100000ULL;
+constexpr uint64 QUSINO_COINFLIP_PAYOUT_PERCENT = 196ULL;                       // 1.96x on win == ~2% house edge, placeholder
+
+// bonusAmount is shared by the daily-claim-bonus feature and Coin Flip's Qu
+// bankroll, pinned at QUSINO_GAME_BANKROLL_CAP -- anything that would push it past
+// the cap (an oversized depositBonus, or a Coin Flip loss) goes to epochRevenue
+// instead (see addWithCap()).
+constexpr uint64 QUSINO_GAME_BANKROLL_CAP = 2400000000ULL;                      // 2.4B Qu
+
 struct QUSINOLogger
 {
     uint32 _contractIndex;
@@ -137,6 +206,40 @@ public:
         sint32 returnCode;
     };
 
+    struct refillRandomBank_input
+    {
+    };
+    struct refillRandomBank_output
+    {
+        sint32 returnCode;
+        uint32 valuesAdded;
+    };
+
+    struct coinFlip_input
+    {
+        uint8 guess;              // 0 = heads, 1 = tails
+        uint8 assetType;          // QUSINO_ASSET_TYPE_QSC or QUSINO_ASSET_TYPE_STAR -- no other type is valid
+        uint64 amount;            // bet size, in units of assetType; no invocationReward is taken
+    };
+    struct coinFlip_output
+    {
+        sint32 returnCode;
+        uint8 result;              // 0 = heads, 1 = tails
+        bit won;
+        uint64 payout;             // QSC bets: QSC credited (redeem via redemptionQSCToQubic).
+                                   // STAR bets: STAR minted. 0 on a loss.
+    };
+
+    struct getRandomBankStatus_input
+    {
+    };
+    struct getRandomBankStatus_output
+    {
+        bit poolInitialized;
+        uint32 reserveFilled;
+        uint32 lastRefillTick;
+    };
+
     struct getUserAssetVolume_input
     {
         id user;
@@ -145,6 +248,16 @@ public:
     {
         uint64 STARAmount;
         uint64 QSCAmount;
+    };
+
+    struct getDailyClaimStatus_input
+    {
+        id user;
+    };
+    struct getDailyClaimStatus_output
+    {
+        bit canClaimNow;
+        uint32 secondsUntilNextClaim; // 0 when canClaimNow is true
     };
 
     struct GameInfo
@@ -188,6 +301,21 @@ public:
         Array<uint64, 32> gameIndexes;
     };
 
+    // Passed proposals, waiting out QUSINO_REVOTE_DURATION before automatically
+    // returning to gameList for reconfirmation -- see approvedGameList's state doc
+    // comment and END_EPOCH. Each GameInfo's proposedEpoch is whichever epoch it was
+    // (re)confirmed live in, so a frontend can compute both "epochs since approval"
+    // and "epochs until it comes back up for revote" from proposedEpoch alone.
+    struct getApprovedGameList_input
+    {
+        uint32 offset;
+    };
+    struct getApprovedGameList_output
+    {
+        Array<GameInfo, 32> games;
+        Array<uint64, 32> gameIndexes;
+    };
+
     struct TransferShareManagementRights_input
     {
         Asset asset;
@@ -198,29 +326,10 @@ public:
     {
         sint64 transferredNumberOfShares;
     };
-    struct getProposerEarnedQSCInfo_input
-    {
-        id proposer;
-        uint32 epoch;
-    };
-    struct getProposerEarnedQSCInfo_output
-    {
-        uint64 earnedQSC;
-    };
-
     struct STARAndQSC
     {
         uint64 volumeOfSTAR;
         uint64 volumeOfQSC;
-    };
-    struct EarnedQSCInfo
-    {
-        id proposer;
-        uint32 epoch;
-        bool operator==(const EarnedQSCInfo& other) const
-        {
-            return proposer == other.proposer && epoch == other.epoch;
-        }
     };
     struct VoteInfo
     {
@@ -239,9 +348,14 @@ public:
         HashMap<id, STARAndQSC, QUSINO_MAX_USERS> userAssetVolume;
         HashMap<uint64, GameInfo, QUSINO_MAX_NUMBER_OF_GAMES> gameList;
         HashMap<uint64, GameInfo, 1024> failedGameList;
+        // Passed proposals, archived here instead of just vanishing after payout.
+        // Unlike failedGameList, this is NOT reset every epoch in END_EPOCH -- entries
+        // sit here across many epochs until QUSINO_REVOTE_DURATION elapses, at which
+        // point END_EPOCH moves them back into gameList (votes reset to 0/0) for a
+        // fresh reconfirmation vote. See END_EPOCH for the full lifecycle.
+        HashMap<uint64, GameInfo, 1024> approvedGameList;
         HashMap<VoteInfo, uint8, QUSINO_MAX_USERS * QUSINO_MAX_NUMBER_OF_GAMES_FOR_VOTING_PER_USER> voteList;
         HashMap<id, uint32, QUSINO_MAX_USERS> userDailyClaimedBonus;
-        HashMap<EarnedQSCInfo, uint64, QUSINO_MAX_NUMBER_OF_GAMES> userEarnedQSCInfo;
         id LPDividendsAddress;
         id CCFDividendsAddress;
         id treasuryAddress;
@@ -255,6 +369,17 @@ public:
         uint64 bonusAmount;
         sint64 transferRightsFee;
         uint32 lastClaimedTime;
+
+        // RNG "Result Bank" (see comment above QUSINO_RNG_ENTROPY_BITS)
+        Array<uint64, QUSINO_RNG_MAX_GAMES * QUSINO_RNG_POOL_SIZE> rngPools;    // flattened [gameId * QUSINO_RNG_POOL_SIZE + slot]
+        Array<uint32, QUSINO_RNG_MAX_GAMES> rngPoolNonce;                       // per-game nonce, folded into index-selection entropy each draw
+        Array<uint8, QUSINO_RNG_MAX_GAMES> rngPoolInitialized;                  // 1 once a game's pool has been seeded, else 0
+        Array<uint64, QUSINO_RNG_RESERVE_SIZE> rngReserve;
+        uint32 rngReserveHead;                                                  // next reserve slot to hand out (circular)
+        uint32 rngReserveFilled;                                                // number of valid, unconsumed entries left in the reserve
+        uint32 rngLastRefillTick;                                               // for rate-limiting refillRandomBank()
+        bit rngBankEverFilled;                                                  // set once the first refill succeeds; lets the tick-gap
+                                                                                 // check skip the very first refill
     };
 protected:
     /**************************************/
@@ -271,6 +396,29 @@ protected:
     inline static sint32 min(sint32 a, sint32 b)
     {
         return (a < b) ? a : b;
+    }
+    // Adds toAdd to current, clamped at cap; whatever doesn't fit is reported via
+    // overflow instead of wrapping. Used to keep bonusAmount pinned at
+    // QUSINO_GAME_BANKROLL_CAP.
+    inline static void addWithCap(uint64 current, uint64 toAdd, uint64 cap, uint64& newValue, uint64& overflow)
+    {
+        // No stack locals allowed in contract code (see doc/contracts.md) -- every
+        // intermediate value below is recomputed inline rather than named.
+        if (current >= cap)
+        {
+            newValue = cap;
+            overflow = toAdd;
+        }
+        else if (toAdd <= (cap - current))
+        {
+            newValue = current + toAdd;
+            overflow = 0;
+        }
+        else
+        {
+            newValue = cap;
+            overflow = toAdd - (cap - current);
+        }
     }
 
     /**
@@ -494,13 +642,16 @@ public:
     struct submitGame_locals
     {
         GameInfo newGame;
+        GameInfo existingGame;
+        sint64 idx;
+        uint32 i;
         QUSINOLogger log;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(submitGame)
     {
-        if (qpi.invocationReward() < QUSINO_GAME_SUBMIT_FEE) 
+        if (qpi.invocationReward() < QUSINO_GAME_SUBMIT_FEE)
         {
-            if (qpi.invocationReward() > 0) 
+            if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
@@ -509,7 +660,65 @@ public:
             LOG_INFO(locals.log);
             return ;
         }
-        if (qpi.invocationReward() > QUSINO_GAME_SUBMIT_FEE) 
+        // Reject a URI that's already live as a pending proposal (gameList) or
+        // already sitting in approvedGameList (including one waiting out its
+        // QUSINO_REVOTE_DURATION cooldown before resurfacing for
+        // reconfirmation) -- previously nothing stopped the exact same URI
+        // from being submitted as an unlimited number of separate,
+        // independently-votable proposals. A URI that only ever failed is
+        // deliberately NOT checked here: failedGameList is cleared every
+        // epoch specifically so a failed proposal can be tried again (see its
+        // own declaration comment), and blocking resubmission there would
+        // defeat that.
+        locals.idx = state.get().gameList.nextElementIndex(NULL_INDEX);
+        while (locals.idx != NULL_INDEX)
+        {
+            locals.existingGame = state.get().gameList.value(locals.idx);
+            for (locals.i = 0; locals.i < 64; locals.i++)
+            {
+                if (locals.existingGame.URI.get(locals.i) != input.URI.get(locals.i))
+                {
+                    break;
+                }
+            }
+            if (locals.i == 64)
+            {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                output.returnCode = QUSINO_DUPLICATE_GAME_URI;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_DUPLICATE_GAME_URI, 0 };
+                LOG_INFO(locals.log);
+                return ;
+            }
+            locals.idx = state.get().gameList.nextElementIndex(locals.idx);
+        }
+        locals.idx = state.get().approvedGameList.nextElementIndex(NULL_INDEX);
+        while (locals.idx != NULL_INDEX)
+        {
+            locals.existingGame = state.get().approvedGameList.value(locals.idx);
+            for (locals.i = 0; locals.i < 64; locals.i++)
+            {
+                if (locals.existingGame.URI.get(locals.i) != input.URI.get(locals.i))
+                {
+                    break;
+                }
+            }
+            if (locals.i == 64)
+            {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                output.returnCode = QUSINO_DUPLICATE_GAME_URI;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_DUPLICATE_GAME_URI, 0 };
+                LOG_INFO(locals.log);
+                return ;
+            }
+            locals.idx = state.get().approvedGameList.nextElementIndex(locals.idx);
+        }
+        if (qpi.invocationReward() > QUSINO_GAME_SUBMIT_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUSINO_GAME_SUBMIT_FEE);   
         }
@@ -538,9 +747,27 @@ public:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(voteInGameProposal)
     {
-        if (qpi.invocationReward() > 0) 
+        if (qpi.invocationReward() > 0)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        // Must be exactly 1 (yes) or 2 (no) -- anything else used to slip through
+        // silently: a first vote with a bad value incremented neither yesVotes nor
+        // noVotes (but still burned the fee and recorded the caller as "voted", so a
+        // later real vote read it as a truthy prior status), and the vote-switching
+        // branch below unconditionally pairs an increment on one counter with a
+        // decrement on the other -- assuming that prior status really was a 1 or 2.
+        // A bad-then-real vote pair decremented a counter that was never incremented,
+        // underflowing yesVotes/noVotes (both uint32) to ~4.29 billion and permanently
+        // forcing that proposal to read as approved (or rejected) regardless of any
+        // real votes. Rejecting bad values up front, before any state is touched,
+        // closes this off entirely.
+        if (input.yesNo != 1 && input.yesNo != 2)
+        {
+            output.returnCode = QUSINO_INVALID_INPUT;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return ;
         }
         state.get().userAssetVolume.get(qpi.invocator(), locals.userVolume);
         if (locals.userVolume.volumeOfSTAR < QUSINO_VOTE_FEE) 
@@ -551,14 +778,39 @@ public:
             return ;
         }
         state.get().gameList.get(input.gameIndex, locals.game);
-        if (locals.game.proposedEpoch != qpi.epoch() && locals.game.proposedEpoch + QUSINO_REVOTE_DURATION != qpi.epoch()) 
+        // Every entry in gameList -- whether freshly submitted (submitGame sets
+        // proposedEpoch = qpi.epoch()) or just resurrected out of approvedGameList for
+        // reconfirmation (END_EPOCH re-anchors proposedEpoch to the epoch it re-enters
+        // gameList in, same rule) -- is guaranteed to have proposedEpoch == qpi.epoch()
+        // for as long as it's live: END_EPOCH fully drains gameList every single epoch
+        // (see its comment), so nothing can still be sitting here from an earlier one.
+        // A prior version of this check also accepted `proposedEpoch + REVOTE_DURATION
+        // == qpi.epoch()`, on the theory that a proposal could sit untouched in
+        // gameList until its revote epoch arrived N epochs later -- but nothing ever
+        // actually kept it there that long (see the QUSINO_REVOTE_DURATION comment on
+        // approvedGameList), so that branch could never fire and just masked the real
+        // bug: approved/failed proposals had no revote mechanism at all.
+        if (locals.game.proposedEpoch != qpi.epoch())
         {
             output.returnCode = QUSINO_NOT_VOTE_TIME;
             locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_NOT_VOTE_TIME, 0 };
             LOG_INFO(locals.log);
             return ;
         }
-        for (locals.i = 0; locals.i < 64; locals.i++) 
+        // A proposal's own proposer voting on it was previously unguarded --
+        // they could cast a "yes" for their own game like any other voter,
+        // padding yesVotes in their own favor. Every other actor with a stake
+        // in a proposal's outcome (the submit fee, the vote fee) is still free
+        // to participate normally; only the proposer themselves is excluded
+        // from voting on their own submission.
+        if (locals.game.proposer == qpi.invocator())
+        {
+            output.returnCode = QUSINO_PROPOSER_CANNOT_VOTE;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_PROPOSER_CANNOT_VOTE, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+        for (locals.i = 0; locals.i < 64; locals.i++)
         {
             if (locals.game.URI.get(locals.i) != input.URI.get(locals.i)) 
             {
@@ -618,12 +870,20 @@ public:
     struct depositBonus_locals
     {
         QUSINOLogger log;
+        uint64 newBonus;
+        uint64 overflow;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(depositBonus)
     {
         if (qpi.invocationReward() > 0)
         {
-            state.mut().bonusAmount = sadd(state.get().bonusAmount, (uint64)qpi.invocationReward());
+            // bonusAmount is capped at QUSINO_GAME_BANKROLL_CAP; excess goes to epochRevenue.
+            addWithCap(state.get().bonusAmount, (uint64)qpi.invocationReward(), QUSINO_GAME_BANKROLL_CAP, locals.newBonus, locals.overflow);
+            state.mut().bonusAmount = locals.newBonus;
+            if (locals.overflow > 0)
+            {
+                state.mut().epochRevenue = sadd(state.get().epochRevenue, locals.overflow);
+            }
         }
         output.returnCode = QUSINO_SUCCESS;
         locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
@@ -735,6 +995,369 @@ public:
         locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
         LOG_INFO(locals.log);
     }
+    // refillRandomBank
+    // ---------------------------------------------------------------------------
+    // Permissionless call that tops up the RNG reserve by buying entropy from
+    // RANDOM, paid from bonusAmount (refuses if it can't cover the fee). Refuses
+    // while the reserve still has unspent values (would waste the fee); once
+    // drained, rate-limited to one refill per QUSINO_RNG_MIN_REFILL_TICK_GAP ticks
+    // (first-ever refill exempt). Also bootstraps any active game's pool that
+    // hasn't been seeded yet.
+    // Return codes: QUSINO_SUCCESS, QUSINO_RNG_REFILL_TOO_SOON,
+    // QUSINO_INSUFFICIENT_BONUS_AMOUNT, QUSINO_RNG_REFILL_FAILED.
+    // ---------------------------------------------------------------------------
+    struct refillRandomBank_locals
+    {
+        RANDOM::BuyEntropy_input buyEntropyInput;
+        RANDOM::BuyEntropy_output buyEntropyOutput;
+        m256i baseSeed;
+        m256i expanded;
+        uint64 seedIdx;
+        uint32 g;
+        uint32 slot;
+        QUSINOLogger log;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(refillRandomBank)
+    {
+        // Takes no payment from the caller -- QUSINO funds the RANDOM purchase itself.
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
+        // Don't buy while the reserve still has unspent values (would waste the fee).
+        // Once empty, rate-limit successful refills too, except the very first ever.
+        if (state.get().rngReserveFilled > 0
+            || (state.get().rngBankEverFilled && qpi.tick() < state.get().rngLastRefillTick + QUSINO_RNG_MIN_REFILL_TICK_GAP))
+        {
+            output.returnCode = QUSINO_RNG_REFILL_TOO_SOON;
+            output.valuesAdded = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_RNG_REFILL_TOO_SOON, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        // Don't even attempt a purchase the game bankroll can't afford.
+        if (state.get().bonusAmount < QUSINO_RNG_ENTROPY_FEE)
+        {
+            output.returnCode = QUSINO_INSUFFICIENT_BONUS_AMOUNT;
+            output.valuesAdded = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_BONUS_AMOUNT, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        locals.buyEntropyInput.collateralTier = QUSINO_RNG_COLLATERAL_TIER;
+        locals.buyEntropyInput.numberOfBits = QUSINO_RNG_ENTROPY_BITS;
+        locals.buyEntropyInput.trustee = id::zero();
+        INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, QUSINO_RNG_ENTROPY_FEE);
+
+        if (interContractCallError != NoCallError || locals.buyEntropyOutput.entropy == BIT4096_ZERO)
+        {
+            // No entropy available this round -- try again on a later tick.
+            output.returnCode = QUSINO_RNG_REFILL_FAILED;
+            output.valuesAdded = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_RNG_REFILL_FAILED, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        // Collapse entropy into a seed, then derive many values from it by re-hashing
+        // with an incrementing counter (same technique QRaffle uses).
+        locals.baseSeed = qpi.K12(locals.buyEntropyOutput.entropy);
+        for (locals.seedIdx = 0; locals.seedIdx < QUSINO_RNG_RESERVE_SIZE; locals.seedIdx++)
+        {
+            locals.expanded = qpi.K12(m256i(locals.baseSeed.u64._0, locals.baseSeed.u64._1, locals.baseSeed.u64._2, locals.baseSeed.u64._3 ^ (locals.seedIdx + 1ULL)));
+            state.mut().rngReserve.set(locals.seedIdx, locals.expanded.u64._0);
+        }
+        state.mut().rngReserveHead = 0;
+        state.mut().rngReserveFilled = QUSINO_RNG_RESERVE_SIZE;
+        state.mut().rngLastRefillTick = qpi.tick();
+        state.mut().rngBankEverFilled = 1;
+        // Debit the fee actually spent (not done on the failure path -- RANDOM refunds
+        // QUSINO in full when it has no entropy to sell).
+        state.mut().bonusAmount -= QUSINO_RNG_ENTROPY_FEE;
+
+        // Bootstrap any active game's pool that hasn't been seeded yet, straight out of
+        // the reserve just filled. Bounded by ACTIVE_GAMES, not MAX_GAMES, so we don't
+        // burn the reserve priming pools nothing uses yet.
+        for (locals.g = 0; locals.g < QUSINO_RNG_ACTIVE_GAMES; locals.g++)
+        {
+            if (state.get().rngPoolInitialized.get(locals.g) == 0 && state.get().rngReserveFilled >= QUSINO_RNG_POOL_SIZE)
+            {
+                for (locals.slot = 0; locals.slot < QUSINO_RNG_POOL_SIZE; locals.slot++)
+                {
+                    state.mut().rngPools.set((uint64)locals.g * QUSINO_RNG_POOL_SIZE + locals.slot, state.get().rngReserve.get(state.get().rngReserveHead));
+                    state.mut().rngReserveHead = mod<uint32>(state.get().rngReserveHead + 1, QUSINO_RNG_RESERVE_SIZE);
+                    state.mut().rngReserveFilled--;
+                }
+                state.mut().rngPoolInitialized.set(locals.g, 1);
+            }
+        }
+
+        output.returnCode = QUSINO_SUCCESS;
+        output.valuesAdded = QUSINO_RNG_RESERVE_SIZE;
+        locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_RNG_REFILL_SUCCESS, 0 };
+        LOG_INFO(locals.log);
+    }
+
+    // coinFlip
+    // ---------------------------------------------------------------------------
+    // Bets QSC or STAR (input.assetType) on heads/tails (input.guess); never raw
+    // Qu, no invocationReward taken. The wager always leaves the caller's balance
+    // up front. QSC: redeemed for Qu (QUSINO_QSC_PRICE); a win credits new QSC
+    // back to the caller -- redeem via redemptionQSCToQubic() -- debiting
+    // bonusAmount by that QSC's Qu backing; a loss tops bonusAmount back up
+    // (capped, overflow to epochRevenue). Rejected up front unless bonusAmount can
+    // cover the win. STAR: never touches Qu/bonusAmount -- a win mints STAR, a
+    // loss burns it (like a vote fee). Outcome is drawn instantly from the Coin
+    // Flip RNG pool (see Result Bank comment above), then the slot is topped up.
+    // Return codes: QUSINO_SUCCESS, QUSINO_INVALID_INPUT, QUSINO_WRONG_ASSET_TYPE,
+    // QUSINO_INSUFFICIENT_FUNDS, QUSINO_EXCEEDS_MAX_BET, QUSINO_RNG_NOT_READY,
+    // QUSINO_INSUFFICIENT_QSC / QUSINO_INSUFFICIENT_STAR,
+    // QUSINO_INSUFFICIENT_BONUS_AMOUNT.
+    // ---------------------------------------------------------------------------
+    struct CoinFlipSelectContext
+    {
+        m256i prevDigest;
+        id invocator;
+        uint32 tick;
+        uint32 nonce;
+    };
+    struct CoinFlipOutcomeContext
+    {
+        uint64 poolValue;
+        m256i selectHash;
+    };
+    struct coinFlip_locals
+    {
+        CoinFlipSelectContext selectCtx;
+        m256i selectHash;
+        CoinFlipOutcomeContext outcomeCtx;
+        m256i outcomeHash;
+        STARAndQSC userVolume;
+        uint64 index;
+        uint64 poolValue;
+        uint64 qscRedemptionValueQu;
+        uint64 winAmount;
+        uint64 qscPayout;
+        uint64 qscNetDebitQu;
+        uint64 newBonus;
+        uint64 overflow;
+        uint8 outcome;
+        QUSINOLogger log;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(coinFlip)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
+        if (input.guess > 1)
+        {
+            output.returnCode = QUSINO_INVALID_INPUT;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        if (input.assetType != QUSINO_ASSET_TYPE_QSC && input.assetType != QUSINO_ASSET_TYPE_STAR)
+        {
+            output.returnCode = QUSINO_WRONG_ASSET_TYPE;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_WRONG_ASSET_TYPE, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        if (input.amount < QUSINO_COINFLIP_MIN_BET)
+        {
+            output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_FUNDS, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        if (input.amount > QUSINO_COINFLIP_MAX_BET)
+        {
+            output.returnCode = QUSINO_EXCEEDS_MAX_BET;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_EXCEEDS_MAX_BET, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        if (state.get().rngPoolInitialized.get(QUSINO_GAME_ID_COINFLIP) == 0)
+        {
+            // Bank not primed yet -- caller should trigger refillRandomBank() and retry.
+            output.returnCode = QUSINO_RNG_NOT_READY;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_RNG_NOT_READY, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        state.get().userAssetVolume.get(qpi.invocator(), locals.userVolume);
+
+        if (input.assetType == QUSINO_ASSET_TYPE_QSC)
+        {
+            if (locals.userVolume.volumeOfQSC < input.amount)
+            {
+                output.returnCode = QUSINO_INSUFFICIENT_QSC;
+                output.result = 0;
+                output.won = 0;
+                output.payout = 0;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_QSC, 0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+
+            // Gate on the NET liability a win would add (payout backing minus the stake's
+            // own backing, freed by the unconditional burn below) -- not the gross payout,
+            // which would reject bets the pool can actually afford. Precomputed here since
+            // it only depends on `amount`, not the RNG outcome.
+            //
+            // Settle with one direct subtraction (see win branch below), no addWithCap: an
+            // add-then-subtract settlement could underflow if the credit-back gets capped
+            // at QUSINO_GAME_BANKROLL_CAP before the gross payout is debited, even though
+            // this net gate passed. A single subtraction can't underflow (gate guarantees
+            // bonusAmount >= qscNetDebitQu) and can't overflow the cap (it's a decrease).
+            locals.qscRedemptionValueQu = smul(input.amount, QUSINO_QSC_PRICE);
+            locals.winAmount = div(smul(locals.qscRedemptionValueQu, QUSINO_COINFLIP_PAYOUT_PERCENT), 100ULL);
+            locals.qscPayout = div(locals.winAmount, QUSINO_QSC_PRICE);
+            locals.qscNetDebitQu = smul(locals.qscPayout, QUSINO_QSC_PRICE) - locals.qscRedemptionValueQu;
+            if (state.get().bonusAmount < locals.qscNetDebitQu)
+            {
+                output.returnCode = QUSINO_INSUFFICIENT_BONUS_AMOUNT;
+                output.result = 0;
+                output.won = 0;
+                output.payout = 0;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_BONUS_AMOUNT, 0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+        }
+        else // QUSINO_ASSET_TYPE_STAR
+        {
+            if (locals.userVolume.volumeOfSTAR < input.amount)
+            {
+                output.returnCode = QUSINO_INSUFFICIENT_STAR;
+                output.result = 0;
+                output.won = 0;
+                output.payout = 0;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_STAR, 0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+            locals.winAmount = div(smul(input.amount, QUSINO_COINFLIP_PAYOUT_PERCENT), 100ULL);
+        }
+
+        // Pick a pool slot from context unique to this call, so it can't be predicted.
+        locals.selectCtx.prevDigest = qpi.getPrevSpectrumDigest();
+        locals.selectCtx.invocator = qpi.invocator();
+        locals.selectCtx.tick = qpi.tick();
+        locals.selectCtx.nonce = state.get().rngPoolNonce.get(QUSINO_GAME_ID_COINFLIP);
+        locals.selectHash = qpi.K12(locals.selectCtx);
+        locals.index = mod<uint64>(locals.selectHash.u64._0, (uint64)QUSINO_RNG_POOL_SIZE);
+
+        locals.poolValue = state.get().rngPools.get((uint64)QUSINO_GAME_ID_COINFLIP * QUSINO_RNG_POOL_SIZE + locals.index);
+
+        // Consume the slot and refill it from the reserve so it's never handed out twice.
+        if (state.get().rngReserveFilled > 0)
+        {
+            state.mut().rngPools.set((uint64)QUSINO_GAME_ID_COINFLIP * QUSINO_RNG_POOL_SIZE + locals.index, state.get().rngReserve.get(state.get().rngReserveHead));
+            state.mut().rngReserveHead = mod<uint32>(state.get().rngReserveHead + 1, QUSINO_RNG_RESERVE_SIZE);
+            state.mut().rngReserveFilled--;
+        }
+        state.mut().rngPoolNonce.set(QUSINO_GAME_ID_COINFLIP, state.get().rngPoolNonce.get(QUSINO_GAME_ID_COINFLIP) + 1);
+
+        // Re-hash the drawn value with the selection hash so the outcome stays unpredictable.
+        locals.outcomeCtx.poolValue = locals.poolValue;
+        locals.outcomeCtx.selectHash = locals.selectHash;
+        locals.outcomeHash = qpi.K12(locals.outcomeCtx);
+        locals.outcome = (uint8)(locals.outcomeHash.u64._0 & 1);
+
+        output.result = locals.outcome;
+        output.won = (locals.outcome == input.guess) ? 1 : 0;
+
+        if (input.assetType == QUSINO_ASSET_TYPE_QSC)
+        {
+            // The wager always leaves QSC circulation up front, redeemed either way.
+            locals.userVolume.volumeOfQSC -= input.amount;
+            state.mut().QSCCirclatingSupply -= input.amount;
+
+            if (output.won)
+            {
+                // Credit QSC instead of sending Qu -- caller redeems it themselves later.
+                // (locals.qscPayout was already computed above, before the draw, to gate on
+                // locals.qscNetDebitQu.)
+                output.payout = locals.qscPayout;
+                locals.userVolume.volumeOfQSC = sadd(locals.userVolume.volumeOfQSC, locals.qscPayout);
+                state.mut().QSCCirclatingSupply = sadd(state.get().QSCCirclatingSupply, locals.qscPayout);
+
+                // Net of the stake's backing (already freed by the burn above); gated
+                // above, so this direct subtraction is safe (see gate comment).
+                state.mut().bonusAmount -= locals.qscNetDebitQu;
+            }
+            else
+            {
+                // The wager's Qu value tops up the bankroll; overflow goes to epochRevenue.
+                output.payout = 0;
+                addWithCap(state.get().bonusAmount, locals.qscRedemptionValueQu, QUSINO_GAME_BANKROLL_CAP, locals.newBonus, locals.overflow);
+                state.mut().bonusAmount = locals.newBonus;
+                if (locals.overflow > 0)
+                {
+                    state.mut().epochRevenue = sadd(state.get().epochRevenue, locals.overflow);
+                }
+            }
+            state.mut().userAssetVolume.set(qpi.invocator(), locals.userVolume);
+        }
+        else // QUSINO_ASSET_TYPE_STAR
+        {
+            // The wager always leaves the caller's STAR balance up front; a win mints
+            // the payout back on top, a loss is recorded as burnt (like a vote fee).
+            locals.userVolume.volumeOfSTAR -= input.amount;
+            state.mut().STARCirclatingSupply -= input.amount;
+
+            if (output.won)
+            {
+                output.payout = locals.winAmount;
+                locals.userVolume.volumeOfSTAR = sadd(locals.userVolume.volumeOfSTAR, locals.winAmount);
+                state.mut().STARCirclatingSupply = sadd(state.get().STARCirclatingSupply, locals.winAmount);
+            }
+            else
+            {
+                output.payout = 0;
+                state.mut().burntSTAR = sadd(state.get().burntSTAR, input.amount);
+            }
+            state.mut().userAssetVolume.set(qpi.invocator(), locals.userVolume);
+        }
+
+        output.returnCode = QUSINO_SUCCESS;
+        locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_COINFLIP_RESULT, 0 };
+        LOG_INFO(locals.log);
+    }
+
+    PUBLIC_FUNCTION(getRandomBankStatus)
+    {
+        output.poolInitialized = (state.get().rngPoolInitialized.get(QUSINO_GAME_ID_COINFLIP) != 0);
+        output.reserveFilled = state.get().rngReserveFilled;
+        output.lastRefillTick = state.get().rngLastRefillTick;
+    }
+
     struct getUserAssetVolume_locals
     {
         STARAndQSC userAsset;
@@ -744,6 +1367,39 @@ public:
         state.get().userAssetVolume.get(input.user, locals.userAsset);
         output.QSCAmount = locals.userAsset.volumeOfQSC;
         output.STARAmount = locals.userAsset.volumeOfSTAR;
+    }
+
+    // Lets a client show "you can claim again in Xh Ym" instead of the user
+    // having to guess by clicking dailyClaimBonus and reading a rejection.
+    // Mirrors dailyClaimBonus's own per-user gate exactly (see its comment for
+    // the date-packing/diff scheme) but is read-only and doesn't touch state.
+    // Deliberately does NOT factor in the separate global 60-second
+    // cross-player throttle (state.lastClaimedTime/QUSINO_BONUS_CLAIM_DURATION)
+    // -- that's a momentary, constantly-resetting window measured in seconds,
+    // not something worth surfacing as a countdown; the per-user daily gate
+    // (hours) is the number a "next claim available" UI actually needs.
+    struct getDailyClaimStatus_locals
+    {
+        uint32 lastClaimedTime;
+        uint32 curDate;
+        sint32 i;
+        uint64 diffTime, dayA, dayB;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(getDailyClaimStatus)
+    {
+        packQusinoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+        state.get().userDailyClaimedBonus.get(input.user, locals.lastClaimedTime);
+        diffQusinoDateInSecond(locals.lastClaimedTime, locals.curDate, locals.i, locals.dayA, locals.dayB, locals.diffTime);
+        if (!locals.lastClaimedTime || locals.diffTime >= QUSINO_DAILY_CLAIM_BONUS_DURATION)
+        {
+            output.canClaimNow = true;
+            output.secondsUntilNextClaim = 0;
+        }
+        else
+        {
+            output.canClaimNow = false;
+            output.secondsUntilNextClaim = (uint32)(QUSINO_DAILY_CLAIM_BONUS_DURATION - locals.diffTime);
+        }
     }
 
     struct getFailedGameList_locals
@@ -817,6 +1473,37 @@ public:
 		}
     }
 
+    struct getApprovedGameList_locals
+    {
+        GameInfo game;
+        sint64 idx;
+        sint32 cur;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(getApprovedGameList)
+    {
+        if (input.offset > 1024u - 33u)
+        {
+            return ;
+        }
+        locals.cur = 0;
+        locals.idx = state.get().approvedGameList.nextElementIndex(NULL_INDEX);
+		while (locals.idx != NULL_INDEX)
+		{
+            if (locals.cur >= (sint32)input.offset)
+            {
+                if (locals.cur >= (sint32)(input.offset + 32))
+                {
+                    return ;
+                }
+                locals.game = state.get().approvedGameList.value(locals.idx);
+                output.games.set(locals.cur - input.offset, locals.game);
+                output.gameIndexes.set(locals.cur - input.offset, state.get().approvedGameList.key(locals.idx));
+            }
+            locals.cur++;
+            locals.idx = state.get().approvedGameList.nextElementIndex(locals.idx);
+		}
+    }
+
     PUBLIC_PROCEDURE(TransferShareManagementRights)
 	{
 		if (qpi.invocationReward() < state.get().transferRightsFee)
@@ -857,25 +1544,15 @@ public:
 		}
 	}
 
-    struct getProposerEarnedQSCInfo_locals
-    {
-        EarnedQSCInfo earnedQSCInfo;
-    };
-
-    PUBLIC_FUNCTION_WITH_LOCALS(getProposerEarnedQSCInfo)
-    {
-        locals.earnedQSCInfo.proposer = input.proposer;
-        locals.earnedQSCInfo.epoch = input.epoch;
-        state.get().userEarnedQSCInfo.get(locals.earnedQSCInfo, output.earnedQSC);
-    }
-
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
         REGISTER_USER_FUNCTION(getUserAssetVolume, 1);
         REGISTER_USER_FUNCTION(getFailedGameList, 2);
         REGISTER_USER_FUNCTION(getSCInfo, 3);
         REGISTER_USER_FUNCTION(getActiveGameList, 4);
-        REGISTER_USER_FUNCTION(getProposerEarnedQSCInfo, 5);
+        REGISTER_USER_FUNCTION(getDailyClaimStatus, 5);
+        REGISTER_USER_FUNCTION(getRandomBankStatus, 6);
+        REGISTER_USER_FUNCTION(getApprovedGameList, 7);
 
         REGISTER_USER_PROCEDURE(earnSTAR, 1);
         REGISTER_USER_PROCEDURE(transferSTAROrQSC, 2);
@@ -885,6 +1562,8 @@ public:
         REGISTER_USER_PROCEDURE(depositBonus, 6);
         REGISTER_USER_PROCEDURE(dailyClaimBonus, 7);
         REGISTER_USER_PROCEDURE(redemptionQSCToQubic, 8);
+        REGISTER_USER_PROCEDURE(refillRandomBank, 9);
+        REGISTER_USER_PROCEDURE(coinFlip, 10);
 	}
 
 	INITIALIZE()
@@ -906,29 +1585,30 @@ public:
         sint64 idx;
         AssetPossessionIterator iter;
         Asset QSTAsset;
-        EarnedQSCInfo earnedQSCInfo;
         uint64 epochSnapshot;
-        uint64 grossQubicFromQsc;
-        uint64 qscToEpochRevenue;
         uint64 lpShare;
         uint64 ccfShare;
         uint64 treasuryShare;
         uint64 shareholders676Part;
-        uint64 qstPerShareRate;
         sint64 possessionCount;
         uint64 qstPayout;
-        uint64 proposerQubic;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
+        // gameList is fully drained every single epoch -- every proposal gets exactly
+        // one epoch of live voting before being resolved here, whether it's a brand
+        // new submission or a reconfirmation resurrected from approvedGameList below.
+        // That guarantees proposedEpoch == qpi.epoch() for every entry we see (see the
+        // comment on voteInGameProposal's window check), so the simple equality check
+        // below is enough -- no "or it's been sitting here N epochs" branch needed.
         state.mut().failedGameList.reset();
         locals.idx = state.get().gameList.nextElementIndex(NULL_INDEX);
 		while (locals.idx != NULL_INDEX)
         {
             locals.game = state.get().gameList.value(locals.idx);
-            if (locals.game.noVotes >= locals.game.yesVotes) 
+            if (locals.game.noVotes >= locals.game.yesVotes)
             {
-                if (locals.game.proposedEpoch == qpi.epoch() || locals.game.proposedEpoch + QUSINO_REVOTE_DURATION == qpi.epoch()) 
+                if (locals.game.proposedEpoch == qpi.epoch())
                 {
                     state.mut().failedGameList.set(state.get().gameList.key(locals.idx), locals.game);
                     state.mut().gameList.removeByIndex(locals.idx);
@@ -936,30 +1616,23 @@ public:
                     continue;
                 }
             }
-            // distribute QSC to the proposer
-            state.get().userAssetVolume.get(locals.game.proposer, locals.userVolume);
-            locals.grossQubicFromQsc = smul(locals.userVolume.volumeOfQSC, QUSINO_QSC_PRICE);
-            locals.qscToEpochRevenue = div<uint64>(smul(locals.grossQubicFromQsc, (uint64)(1000 - QUSINO_DEVELOPER_FEE)), 1000ULL);
-            state.mut().epochRevenue = sadd(state.get().epochRevenue, locals.qscToEpochRevenue);
-            locals.proposerQubic = 0;
-            if (locals.grossQubicFromQsc >= locals.qscToEpochRevenue)
-            {
-                locals.proposerQubic = locals.grossQubicFromQsc - locals.qscToEpochRevenue;
-            }
-            if (locals.proposerQubic <= (uint64)INT64_MAX)
-            {
-                qpi.transfer(locals.game.proposer, (sint64)locals.proposerQubic);
-            }
-            state.mut().QSCCirclatingSupply -= locals.userVolume.volumeOfQSC;
-
-            // add earned QSC to userEarnedQSCInfo
-            locals.earnedQSCInfo.proposer = locals.game.proposer;
-            locals.earnedQSCInfo.epoch = qpi.epoch();
-            state.mut().userEarnedQSCInfo.set(locals.earnedQSCInfo, locals.userVolume.volumeOfQSC);
-
-            // set userVolume to 0
-            locals.userVolume.volumeOfQSC = 0;
-            state.mut().userAssetVolume.set(locals.game.proposer, locals.userVolume);
+            // Passed (first time, or reconfirmed on a revote) -- archive into
+            // approvedGameList instead of letting it just vanish. Kept under its
+            // existing key/gameIndex so voters and proposers still line up. See
+            // approvedGameList's declaration and the resurrection pass at the bottom
+            // of this procedure for how it eventually comes back for reconfirmation.
+            //
+            // No QSC-to-Qu conversion happens here for the proposer. An earlier
+            // version of this contract forcibly redeemed the proposer's entire QSC
+            // balance at this point (split by a "developer fee"), on the theory that
+            // being a proposer entitled them to an automatic payout. That was
+            // redundant and worse for the proposer than doing nothing: any user --
+            // including a proposer, once their proposal is off gameList -- can
+            // already redeem QSC for Qu themselves via redemptionQSCToQubic(), at a
+            // straight 1:1 rate with no fee taken. Forcibly converting on their
+            // behalf only added an involuntary cut they wouldn't otherwise pay, so
+            // it's been removed; a proposer's QSC is simply left alone here.
+            state.mut().approvedGameList.set(state.get().gameList.key(locals.idx), locals.game);
 
             // remove game from gameList
             state.mut().gameList.removeByIndex(locals.idx);
@@ -967,6 +1640,40 @@ public:
         }
         state.mut().gameList.cleanupIfNeeded();
         state.mut().voteList.reset();
+
+        // Resurrect any approved proposal whose QUSINO_REVOTE_DURATION reconfirmation
+        // window starts next epoch: move it back into gameList with votes reset to
+        // 0/0 (voteList was just wiped above, so no stale per-voter records survive
+        // to interfere) and proposedEpoch re-anchored to the epoch it's about to be
+        // live in (qpi.epoch() + 1, since this END_EPOCH call is still processing the
+        // epoch that's ending). Re-anchoring is what lets this repeat indefinitely --
+        // each reconfirmation gets its own fresh QUSINO_REVOTE_DURATION countdown from
+        // whenever it was (re)approved, rather than only ever firing once relative to
+        // the original submission epoch.
+        //
+        // Done as a separate pass *after* the drain loop above, not interleaved with
+        // it: inserting straight into gameList and letting the same pass immediately
+        // re-scan it would hit proposedEpoch == qpi.epoch() + 1, not qpi.epoch() --
+        // neither resolution branch above would match yet -- and it would incorrectly
+        // fall through to the "already passed" distribution path before anyone had a
+        // chance to vote on the reconfirmation at all.
+        locals.idx = state.get().approvedGameList.nextElementIndex(NULL_INDEX);
+        while (locals.idx != NULL_INDEX)
+        {
+            locals.game = state.get().approvedGameList.value(locals.idx);
+            if (locals.game.proposedEpoch + QUSINO_REVOTE_DURATION == qpi.epoch() + 1)
+            {
+                locals.game.yesVotes = 0;
+                locals.game.noVotes = 0;
+                locals.game.proposedEpoch = (uint32)(qpi.epoch() + 1);
+                state.mut().gameList.set(state.get().approvedGameList.key(locals.idx), locals.game);
+                state.mut().approvedGameList.removeByIndex(locals.idx);
+                locals.idx = state.get().approvedGameList.nextElementIndex(locals.idx);
+                continue;
+            }
+            locals.idx = state.get().approvedGameList.nextElementIndex(locals.idx);
+        }
+        state.mut().approvedGameList.cleanupIfNeeded();
 
         locals.idx = state.get().userAssetVolume.nextElementIndex(NULL_INDEX);
         while (locals.idx != NULL_INDEX)
@@ -988,12 +1695,45 @@ public:
             div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT), 1ULL), 67600ULL),
             676ULL);
 
-        qpi.transfer(state.get().LPDividendsAddress, (sint64)locals.lpShare);
-        qpi.transfer(state.get().CCFDividendsAddress, (sint64)locals.ccfShare);
-        qpi.transfer(state.get().treasuryAddress, (sint64)locals.treasuryShare);
+        // Same INT64_MAX guard qstPayout below already has, for consistency -- a
+        // uint64 share cast straight to sint64 without checking first would come out
+        // negative if it ever exceeded INT64_MAX (astronomically unlikely given real
+        // Qu supply bounds, but the other transfer below already defends against it,
+        // so these should too rather than being the only ones that don't).
+        if (locals.lpShare <= (uint64)INT64_MAX)
+        {
+            qpi.transfer(state.get().LPDividendsAddress, (sint64)locals.lpShare);
+        }
+        if (locals.ccfShare <= (uint64)INT64_MAX)
+        {
+            qpi.transfer(state.get().CCFDividendsAddress, (sint64)locals.ccfShare);
+        }
+        if (locals.treasuryShare <= (uint64)INT64_MAX)
+        {
+            qpi.transfer(state.get().treasuryAddress, (sint64)locals.treasuryShare);
+        }
         qpi.distributeDividends(div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT), 1ULL), 67600ULL));
         locals.QSTDividends = 0;
-        locals.qstPerShareRate = div<uint64>(smul(smul(locals.epochSnapshot, (uint64)QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT), 1ULL), QUSINO_SUPPLY_OF_QST * 1000ULL);
+        // Each possessor's payout is (epochSnapshot * QST_HOLDERS_PERCENT * their share
+        // count) / (100 * QUSINO_SUPPLY_OF_QST) -- computed per possessor, inside this
+        // loop, with every multiplication done before the one division.
+        //
+        // An earlier version of this computed a single shared "per-share rate" ONCE,
+        // outside the loop, by dividing first: (epochSnapshot * percent / 100) /
+        // QUSINO_SUPPLY_OF_QST. That's fatal with real numbers -- the whole dividend
+        // pool (tens of millions of Qu in practice) divided by QUSINO_SUPPLY_OF_QST
+        // (1.2 BILLION shares) is a fraction of a single Qu per share, and integer
+        // division truncates any such fraction straight to 0. That zeroed out every
+        // QST holder's payout entirely, regardless of whether the percent-to-fraction
+        // denominator used *1000 or *100 (a previous fix here changed *1000 to *100,
+        // correctly diagnosing an extra factor of 10 by analogy with lpShare/ccfShare/
+        // etc., but those are flat one-recipient payouts with no per-share division at
+        // all -- the *1000-vs-*100 choice was never the actual bug). Multiplying
+        // epochSnapshot * percent * possessionCount together before dividing once by
+        // QUSINO_SUPPLY_OF_QST * 100 keeps the precision that dividing early throws
+        // away. smul() saturates instead of wrapping if the product ever exceeds
+        // uint64 (astronomically unlikely given real Qu supply bounds, same
+        // extremely-low-risk tradeoff already accepted for the other shares above).
         locals.QSTAsset.assetName = state.get().QSTAssetName;
         locals.QSTAsset.issuer = state.get().QSTIssuer;
         locals.iter.begin(locals.QSTAsset);
@@ -1002,7 +1742,7 @@ public:
             locals.possessionCount = locals.iter.numberOfPossessedShares();
             if (locals.possessionCount > 0)
             {
-                locals.qstPayout = smul(locals.qstPerShareRate, (uint64)locals.possessionCount);
+                locals.qstPayout = div<uint64>(smul(smul(locals.epochSnapshot, (uint64)QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT), (uint64)locals.possessionCount), QUSINO_SUPPLY_OF_QST * 100ULL);
                 locals.QSTDividends = sadd(locals.QSTDividends, locals.qstPayout);
                 if (locals.qstPayout <= (uint64)INT64_MAX)
                 {
