@@ -229,6 +229,15 @@ public:
         return output;
     }
 
+    QUSINO::getApprovedGameList_output getApprovedGameList(uint32 offset)
+    {
+        QUSINO::getApprovedGameList_input input;
+        input.offset = offset;
+        QUSINO::getApprovedGameList_output output;
+        callFunction(QUSINO_CONTRACT_INDEX, 7, input, output);
+        return output;
+    }
+
     QUSINO::getProposerEarnedQSCInfo_output getProposerEarnedQSCInfo(const id& proposer, uint32 epoch)
     {
         QUSINO::getProposerEarnedQSCInfo_input input;
@@ -671,10 +680,20 @@ TEST(ContractQUSINO, END_EPOCH_FailedGameRemoval)
     // End epoch - game should be moved to failed list if no votes >= yes votes
     QUSINO.endEpoch();
     ++system.epoch;
-    
-    // Check failed game list
+
+    // Game should be in the failed list, gone from both the active list and
+    // approvedGameList (a rejected proposal never gets archived as approved).
     QUSINO::getFailedGameList_output failedList = QUSINO.getFailedGameList(0);
-    // Game should be in failed list
+    bool foundInFailedList = false;
+    for (uint32 i = 0; i < 32; i++)
+    {
+        if (failedList.games.get(i).proposer == proposer)
+        {
+            foundInFailedList = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundInFailedList);
 }
 
 TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo)
@@ -716,6 +735,159 @@ TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo)
 
     QUSINO::getProposerEarnedQSCInfo_output info = QUSINO.getProposerEarnedQSCInfo(proposer, epochBeforeEnd);
     EXPECT_EQ(info.earnedQSC, qscAmount);
+}
+
+// A passed proposal used to just vanish after the proposer's payout -- this proves
+// it's archived into approvedGameList instead, and that it's no longer sitting in
+// the active list once resolved.
+TEST(ContractQUSINO, END_EPOCH_PassedGameArchivedToApprovedList)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id qstIssuer = QUSINO_QSTIssuer;
+    uint64 qstAssetName = 5526353;
+    uint64 totalShares = QUSINO_SUPPLY_OF_QST;
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/approved-game");
+
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE).returnCode, QUSINO_SUCCESS);
+
+    QUSINO::getActiveGameList_output activeBefore = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = activeBefore.gameIndexes.get(0);
+
+    increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
+    EXPECT_EQ(QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.voteInGameProposal(voter, URI, gameIndex, 1, 0).returnCode, QUSINO_SUCCESS);
+
+    QUSINO.endEpoch();
+    ++system.epoch;
+
+    // Gone from the active list...
+    QUSINO::getActiveGameList_output activeAfter = QUSINO.getActiveGameList(0);
+    bool stillActive = false;
+    for (uint32 i = 0; i < 32; i++)
+    {
+        if (activeAfter.gameIndexes.get(i) == gameIndex && activeAfter.games.get(i).proposer == proposer)
+        {
+            stillActive = true;
+        }
+    }
+    EXPECT_FALSE(stillActive);
+
+    // ...and archived in approvedGameList under the same gameIndex, not just discarded.
+    QUSINO::getApprovedGameList_output approved = QUSINO.getApprovedGameList(0);
+    bool foundApproved = false;
+    for (uint32 i = 0; i < 32; i++)
+    {
+        if (approved.gameIndexes.get(i) == gameIndex && approved.games.get(i).proposer == proposer)
+        {
+            foundApproved = true;
+            EXPECT_EQ(approved.games.get(i).yesVotes, 1u);
+            EXPECT_EQ(approved.games.get(i).noVotes, 0u);
+        }
+    }
+    EXPECT_TRUE(foundApproved);
+}
+
+// The actual bug fix: an approved proposal should not just sit in approvedGameList
+// forever -- QUSINO_REVOTE_DURATION epochs after it was (re)confirmed, it should come
+// back to gameList for a fresh vote, with the old tally reset (not carried over) so
+// it has to be genuinely reconfirmed, not just coast on a vote count from over a
+// year and a half ago.
+TEST(ContractQUSINO, END_EPOCH_ApprovedGameResurrectsAfterRevoteDuration)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id qstIssuer = QUSINO_QSTIssuer;
+    uint64 qstAssetName = 5526353;
+    uint64 totalShares = QUSINO_SUPPLY_OF_QST;
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/revote-game");
+
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE).returnCode, QUSINO_SUCCESS);
+
+    QUSINO::getActiveGameList_output activeBefore = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = activeBefore.gameIndexes.get(0);
+    uint32 approvalEpoch = system.epoch;
+
+    increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
+    EXPECT_EQ(QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.voteInGameProposal(voter, URI, gameIndex, 1, 0).returnCode, QUSINO_SUCCESS);
+
+    QUSINO.endEpoch();
+    ++system.epoch; // now approvalEpoch + 1; proposal sits in approvedGameList
+
+    // Fast-forward straight to the epoch right before the revote window opens --
+    // no need to actually call endEpoch() for every epoch in between, since nothing
+    // else in this test depends on those epochs' side effects (dividends etc.), only
+    // on qpi.epoch()'s value at the next endEpoch() call.
+    system.epoch = approvalEpoch + QUSINO_REVOTE_DURATION - 1;
+
+    QUSINO.endEpoch();
+    ++system.epoch; // now approvalEpoch + QUSINO_REVOTE_DURATION
+
+    // No longer archived -- it's back in play.
+    QUSINO::getApprovedGameList_output approvedAfter = QUSINO.getApprovedGameList(0);
+    bool stillApproved = false;
+    for (uint32 i = 0; i < 32; i++)
+    {
+        if (approvedAfter.gameIndexes.get(i) == gameIndex)
+        {
+            stillApproved = true;
+        }
+    }
+    EXPECT_FALSE(stillApproved);
+
+    // Back in gameList, same gameIndex, votes reset to zero -- not carrying over
+    // yesVotes=1/noVotes=0 from a year and a half ago.
+    QUSINO::getActiveGameList_output resurrected = QUSINO.getActiveGameList(0);
+    bool found = false;
+    for (uint32 i = 0; i < 32; i++)
+    {
+        if (resurrected.gameIndexes.get(i) == gameIndex)
+        {
+            found = true;
+            EXPECT_EQ(resurrected.games.get(i).proposer, proposer);
+            EXPECT_EQ(resurrected.games.get(i).yesVotes, 0u);
+            EXPECT_EQ(resurrected.games.get(i).noVotes, 0u);
+            EXPECT_EQ(resurrected.games.get(i).proposedEpoch, approvalEpoch + QUSINO_REVOTE_DURATION);
+        }
+    }
+    ASSERT_TRUE(found);
+
+    // And it's genuinely votable again -- proves voteInGameProposal's simplified
+    // proposedEpoch == qpi.epoch() check still recognizes a resurrected entry.
+    id secondVoter = QUSINO_testUser3;
+    increaseEnergy(secondVoter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
+    EXPECT_EQ(QUSINO.earnSTAR(secondVoter, QUSINO_VOTE_FEE, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.voteInGameProposal(secondVoter, URI, gameIndex, 1, 0).returnCode, QUSINO_SUCCESS);
+
+    QUSINO.endEpoch();
+    ++system.epoch;
+
+    // Reconfirmed -- back in approvedGameList, re-anchored to this new epoch, ready
+    // to repeat the same cycle again in another QUSINO_REVOTE_DURATION epochs.
+    QUSINO::getApprovedGameList_output reapproved = QUSINO.getApprovedGameList(0);
+    bool foundReapproved = false;
+    for (uint32 i = 0; i < 32; i++)
+    {
+        if (reapproved.gameIndexes.get(i) == gameIndex)
+        {
+            foundReapproved = true;
+            EXPECT_EQ(reapproved.games.get(i).proposedEpoch, approvalEpoch + QUSINO_REVOTE_DURATION);
+        }
+    }
+    EXPECT_TRUE(foundReapproved);
 }
 
 TEST(ContractQUSINO, depositBonus_Success)

@@ -288,6 +288,21 @@ public:
         Array<uint64, 32> gameIndexes;
     };
 
+    // Passed proposals, waiting out QUSINO_REVOTE_DURATION before automatically
+    // returning to gameList for reconfirmation -- see approvedGameList's state doc
+    // comment and END_EPOCH. Each GameInfo's proposedEpoch is whichever epoch it was
+    // (re)confirmed live in, so a frontend can compute both "epochs since approval"
+    // and "epochs until it comes back up for revote" from proposedEpoch alone.
+    struct getApprovedGameList_input
+    {
+        uint32 offset;
+    };
+    struct getApprovedGameList_output
+    {
+        Array<GameInfo, 32> games;
+        Array<uint64, 32> gameIndexes;
+    };
+
     struct TransferShareManagementRights_input
     {
         Asset asset;
@@ -339,6 +354,12 @@ public:
         HashMap<id, STARAndQSC, QUSINO_MAX_USERS> userAssetVolume;
         HashMap<uint64, GameInfo, QUSINO_MAX_NUMBER_OF_GAMES> gameList;
         HashMap<uint64, GameInfo, 1024> failedGameList;
+        // Passed proposals, archived here instead of just vanishing after payout.
+        // Unlike failedGameList, this is NOT reset every epoch in END_EPOCH -- entries
+        // sit here across many epochs until QUSINO_REVOTE_DURATION elapses, at which
+        // point END_EPOCH moves them back into gameList (votes reset to 0/0) for a
+        // fresh reconfirmation vote. See END_EPOCH for the full lifecycle.
+        HashMap<uint64, GameInfo, 1024> approvedGameList;
         HashMap<VoteInfo, uint8, QUSINO_MAX_USERS * QUSINO_MAX_NUMBER_OF_GAMES_FOR_VOTING_PER_USER> voteList;
         HashMap<id, uint32, QUSINO_MAX_USERS> userDailyClaimedBonus;
         HashMap<EarnedQSCInfo, uint64, QUSINO_MAX_NUMBER_OF_GAMES> userEarnedQSCInfo;
@@ -685,7 +706,19 @@ public:
             return ;
         }
         state.get().gameList.get(input.gameIndex, locals.game);
-        if (locals.game.proposedEpoch != qpi.epoch() && locals.game.proposedEpoch + QUSINO_REVOTE_DURATION != qpi.epoch()) 
+        // Every entry in gameList -- whether freshly submitted (submitGame sets
+        // proposedEpoch = qpi.epoch()) or just resurrected out of approvedGameList for
+        // reconfirmation (END_EPOCH re-anchors proposedEpoch to the epoch it re-enters
+        // gameList in, same rule) -- is guaranteed to have proposedEpoch == qpi.epoch()
+        // for as long as it's live: END_EPOCH fully drains gameList every single epoch
+        // (see its comment), so nothing can still be sitting here from an earlier one.
+        // A prior version of this check also accepted `proposedEpoch + REVOTE_DURATION
+        // == qpi.epoch()`, on the theory that a proposal could sit untouched in
+        // gameList until its revote epoch arrived N epochs later -- but nothing ever
+        // actually kept it there that long (see the QUSINO_REVOTE_DURATION comment on
+        // approvedGameList), so that branch could never fire and just masked the real
+        // bug: approved/failed proposals had no revote mechanism at all.
+        if (locals.game.proposedEpoch != qpi.epoch())
         {
             output.returnCode = QUSINO_NOT_VOTE_TIME;
             locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_NOT_VOTE_TIME, 0 };
@@ -1322,6 +1355,37 @@ public:
 		}
     }
 
+    struct getApprovedGameList_locals
+    {
+        GameInfo game;
+        sint64 idx;
+        sint32 cur;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(getApprovedGameList)
+    {
+        if (input.offset > 1024u - 33u)
+        {
+            return ;
+        }
+        locals.cur = 0;
+        locals.idx = state.get().approvedGameList.nextElementIndex(NULL_INDEX);
+		while (locals.idx != NULL_INDEX)
+		{
+            if (locals.cur >= (sint32)input.offset)
+            {
+                if (locals.cur >= (sint32)(input.offset + 32))
+                {
+                    return ;
+                }
+                locals.game = state.get().approvedGameList.value(locals.idx);
+                output.games.set(locals.cur - input.offset, locals.game);
+                output.gameIndexes.set(locals.cur - input.offset, state.get().approvedGameList.key(locals.idx));
+            }
+            locals.cur++;
+            locals.idx = state.get().approvedGameList.nextElementIndex(locals.idx);
+		}
+    }
+
     PUBLIC_PROCEDURE(TransferShareManagementRights)
 	{
 		if (qpi.invocationReward() < state.get().transferRightsFee)
@@ -1382,6 +1446,7 @@ public:
         REGISTER_USER_FUNCTION(getActiveGameList, 4);
         REGISTER_USER_FUNCTION(getProposerEarnedQSCInfo, 5);
         REGISTER_USER_FUNCTION(getRandomBankStatus, 6);
+        REGISTER_USER_FUNCTION(getApprovedGameList, 7);
 
         REGISTER_USER_PROCEDURE(earnSTAR, 1);
         REGISTER_USER_PROCEDURE(transferSTAROrQSC, 2);
@@ -1429,14 +1494,20 @@ public:
     };
 	END_EPOCH_WITH_LOCALS()
 	{
+        // gameList is fully drained every single epoch -- every proposal gets exactly
+        // one epoch of live voting before being resolved here, whether it's a brand
+        // new submission or a reconfirmation resurrected from approvedGameList below.
+        // That guarantees proposedEpoch == qpi.epoch() for every entry we see (see the
+        // comment on voteInGameProposal's window check), so the simple equality check
+        // below is enough -- no "or it's been sitting here N epochs" branch needed.
         state.mut().failedGameList.reset();
         locals.idx = state.get().gameList.nextElementIndex(NULL_INDEX);
 		while (locals.idx != NULL_INDEX)
         {
             locals.game = state.get().gameList.value(locals.idx);
-            if (locals.game.noVotes >= locals.game.yesVotes) 
+            if (locals.game.noVotes >= locals.game.yesVotes)
             {
-                if (locals.game.proposedEpoch == qpi.epoch() || locals.game.proposedEpoch + QUSINO_REVOTE_DURATION == qpi.epoch()) 
+                if (locals.game.proposedEpoch == qpi.epoch())
                 {
                     state.mut().failedGameList.set(state.get().gameList.key(locals.idx), locals.game);
                     state.mut().gameList.removeByIndex(locals.idx);
@@ -1444,6 +1515,14 @@ public:
                     continue;
                 }
             }
+            // Passed (first time, or reconfirmed on a revote) -- archive into
+            // approvedGameList before the payout below, instead of letting it just
+            // vanish. Kept under its existing key/gameIndex so voters, proposers, and
+            // getProposerEarnedQSCInfo lookups all still line up. See
+            // approvedGameList's declaration and the resurrection pass at the bottom
+            // of this procedure for how it eventually comes back for reconfirmation.
+            state.mut().approvedGameList.set(state.get().gameList.key(locals.idx), locals.game);
+
             // distribute QSC to the proposer
             state.get().userAssetVolume.get(locals.game.proposer, locals.userVolume);
             locals.grossQubicFromQsc = smul(locals.userVolume.volumeOfQSC, QUSINO_QSC_PRICE);
@@ -1475,6 +1554,40 @@ public:
         }
         state.mut().gameList.cleanupIfNeeded();
         state.mut().voteList.reset();
+
+        // Resurrect any approved proposal whose QUSINO_REVOTE_DURATION reconfirmation
+        // window starts next epoch: move it back into gameList with votes reset to
+        // 0/0 (voteList was just wiped above, so no stale per-voter records survive
+        // to interfere) and proposedEpoch re-anchored to the epoch it's about to be
+        // live in (qpi.epoch() + 1, since this END_EPOCH call is still processing the
+        // epoch that's ending). Re-anchoring is what lets this repeat indefinitely --
+        // each reconfirmation gets its own fresh QUSINO_REVOTE_DURATION countdown from
+        // whenever it was (re)approved, rather than only ever firing once relative to
+        // the original submission epoch.
+        //
+        // Done as a separate pass *after* the drain loop above, not interleaved with
+        // it: inserting straight into gameList and letting the same pass immediately
+        // re-scan it would hit proposedEpoch == qpi.epoch() + 1, not qpi.epoch() --
+        // neither resolution branch above would match yet -- and it would incorrectly
+        // fall through to the "already passed" distribution path before anyone had a
+        // chance to vote on the reconfirmation at all.
+        locals.idx = state.get().approvedGameList.nextElementIndex(NULL_INDEX);
+        while (locals.idx != NULL_INDEX)
+        {
+            locals.game = state.get().approvedGameList.value(locals.idx);
+            if (locals.game.proposedEpoch + QUSINO_REVOTE_DURATION == qpi.epoch() + 1)
+            {
+                locals.game.yesVotes = 0;
+                locals.game.noVotes = 0;
+                locals.game.proposedEpoch = (uint32)(qpi.epoch() + 1);
+                state.mut().gameList.set(state.get().approvedGameList.key(locals.idx), locals.game);
+                state.mut().approvedGameList.removeByIndex(locals.idx);
+                locals.idx = state.get().approvedGameList.nextElementIndex(locals.idx);
+                continue;
+            }
+            locals.idx = state.get().approvedGameList.nextElementIndex(locals.idx);
+        }
+        state.mut().approvedGameList.cleanupIfNeeded();
 
         locals.idx = state.get().userAssetVolume.nextElementIndex(NULL_INDEX);
         while (locals.idx != NULL_INDEX)
