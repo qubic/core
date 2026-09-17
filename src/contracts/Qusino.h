@@ -45,6 +45,8 @@ constexpr sint32 QUSINO_RNG_NOT_READY = 21;
 constexpr sint32 QUSINO_RNG_REFILL_TOO_SOON = 22;
 constexpr sint32 QUSINO_RNG_REFILL_FAILED = 23;
 constexpr sint32 QUSINO_EXCEEDS_MAX_BET = 24;
+constexpr sint32 QUSINO_PROPOSER_CANNOT_VOTE = 25;
+constexpr sint32 QUSINO_DUPLICATE_GAME_URI = 26;
 
 constexpr uint8 QUSINO_ASSET_TYPE_QUBIC = 0;
 constexpr uint8 QUSINO_ASSET_TYPE_QSC = 1;
@@ -71,6 +73,8 @@ constexpr uint32 QUSINO_LOG_RNG_REFILL_FAILED = 16;
 constexpr uint32 QUSINO_LOG_RNG_REFILL_SUCCESS = 17;
 constexpr uint32 QUSINO_LOG_COINFLIP_RESULT = 18;
 constexpr uint32 QUSINO_LOG_EXCEEDS_MAX_BET = 19;
+constexpr uint32 QUSINO_LOG_PROPOSER_CANNOT_VOTE = 20;
+constexpr uint32 QUSINO_LOG_DUPLICATE_GAME_URI = 21;
 
 // ---------------------------------------------------------------------------
 // Coin Flip + shared RNG "Result Bank"
@@ -244,6 +248,16 @@ public:
     {
         uint64 STARAmount;
         uint64 QSCAmount;
+    };
+
+    struct getDailyClaimStatus_input
+    {
+        id user;
+    };
+    struct getDailyClaimStatus_output
+    {
+        bit canClaimNow;
+        uint32 secondsUntilNextClaim; // 0 when canClaimNow is true
     };
 
     struct GameInfo
@@ -628,13 +642,16 @@ public:
     struct submitGame_locals
     {
         GameInfo newGame;
+        GameInfo existingGame;
+        sint64 idx;
+        uint32 i;
         QUSINOLogger log;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(submitGame)
     {
-        if (qpi.invocationReward() < QUSINO_GAME_SUBMIT_FEE) 
+        if (qpi.invocationReward() < QUSINO_GAME_SUBMIT_FEE)
         {
-            if (qpi.invocationReward() > 0) 
+            if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
@@ -643,7 +660,65 @@ public:
             LOG_INFO(locals.log);
             return ;
         }
-        if (qpi.invocationReward() > QUSINO_GAME_SUBMIT_FEE) 
+        // Reject a URI that's already live as a pending proposal (gameList) or
+        // already sitting in approvedGameList (including one waiting out its
+        // QUSINO_REVOTE_DURATION cooldown before resurfacing for
+        // reconfirmation) -- previously nothing stopped the exact same URI
+        // from being submitted as an unlimited number of separate,
+        // independently-votable proposals. A URI that only ever failed is
+        // deliberately NOT checked here: failedGameList is cleared every
+        // epoch specifically so a failed proposal can be tried again (see its
+        // own declaration comment), and blocking resubmission there would
+        // defeat that.
+        locals.idx = state.get().gameList.nextElementIndex(NULL_INDEX);
+        while (locals.idx != NULL_INDEX)
+        {
+            locals.existingGame = state.get().gameList.value(locals.idx);
+            for (locals.i = 0; locals.i < 64; locals.i++)
+            {
+                if (locals.existingGame.URI.get(locals.i) != input.URI.get(locals.i))
+                {
+                    break;
+                }
+            }
+            if (locals.i == 64)
+            {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                output.returnCode = QUSINO_DUPLICATE_GAME_URI;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_DUPLICATE_GAME_URI, 0 };
+                LOG_INFO(locals.log);
+                return ;
+            }
+            locals.idx = state.get().gameList.nextElementIndex(locals.idx);
+        }
+        locals.idx = state.get().approvedGameList.nextElementIndex(NULL_INDEX);
+        while (locals.idx != NULL_INDEX)
+        {
+            locals.existingGame = state.get().approvedGameList.value(locals.idx);
+            for (locals.i = 0; locals.i < 64; locals.i++)
+            {
+                if (locals.existingGame.URI.get(locals.i) != input.URI.get(locals.i))
+                {
+                    break;
+                }
+            }
+            if (locals.i == 64)
+            {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                output.returnCode = QUSINO_DUPLICATE_GAME_URI;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_DUPLICATE_GAME_URI, 0 };
+                LOG_INFO(locals.log);
+                return ;
+            }
+            locals.idx = state.get().approvedGameList.nextElementIndex(locals.idx);
+        }
+        if (qpi.invocationReward() > QUSINO_GAME_SUBMIT_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUSINO_GAME_SUBMIT_FEE);   
         }
@@ -722,7 +797,20 @@ public:
             LOG_INFO(locals.log);
             return ;
         }
-        for (locals.i = 0; locals.i < 64; locals.i++) 
+        // A proposal's own proposer voting on it was previously unguarded --
+        // they could cast a "yes" for their own game like any other voter,
+        // padding yesVotes in their own favor. Every other actor with a stake
+        // in a proposal's outcome (the submit fee, the vote fee) is still free
+        // to participate normally; only the proposer themselves is excluded
+        // from voting on their own submission.
+        if (locals.game.proposer == qpi.invocator())
+        {
+            output.returnCode = QUSINO_PROPOSER_CANNOT_VOTE;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_PROPOSER_CANNOT_VOTE, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+        for (locals.i = 0; locals.i < 64; locals.i++)
         {
             if (locals.game.URI.get(locals.i) != input.URI.get(locals.i)) 
             {
@@ -1281,6 +1369,39 @@ public:
         output.STARAmount = locals.userAsset.volumeOfSTAR;
     }
 
+    // Lets a client show "you can claim again in Xh Ym" instead of the user
+    // having to guess by clicking dailyClaimBonus and reading a rejection.
+    // Mirrors dailyClaimBonus's own per-user gate exactly (see its comment for
+    // the date-packing/diff scheme) but is read-only and doesn't touch state.
+    // Deliberately does NOT factor in the separate global 60-second
+    // cross-player throttle (state.lastClaimedTime/QUSINO_BONUS_CLAIM_DURATION)
+    // -- that's a momentary, constantly-resetting window measured in seconds,
+    // not something worth surfacing as a countdown; the per-user daily gate
+    // (hours) is the number a "next claim available" UI actually needs.
+    struct getDailyClaimStatus_locals
+    {
+        uint32 lastClaimedTime;
+        uint32 curDate;
+        sint32 i;
+        uint64 diffTime, dayA, dayB;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(getDailyClaimStatus)
+    {
+        packQusinoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+        state.get().userDailyClaimedBonus.get(input.user, locals.lastClaimedTime);
+        diffQusinoDateInSecond(locals.lastClaimedTime, locals.curDate, locals.i, locals.dayA, locals.dayB, locals.diffTime);
+        if (!locals.lastClaimedTime || locals.diffTime >= QUSINO_DAILY_CLAIM_BONUS_DURATION)
+        {
+            output.canClaimNow = true;
+            output.secondsUntilNextClaim = 0;
+        }
+        else
+        {
+            output.canClaimNow = false;
+            output.secondsUntilNextClaim = (uint32)(QUSINO_DAILY_CLAIM_BONUS_DURATION - locals.diffTime);
+        }
+    }
+
     struct getFailedGameList_locals
     {
         GameInfo game;
@@ -1429,6 +1550,7 @@ public:
         REGISTER_USER_FUNCTION(getFailedGameList, 2);
         REGISTER_USER_FUNCTION(getSCInfo, 3);
         REGISTER_USER_FUNCTION(getActiveGameList, 4);
+        REGISTER_USER_FUNCTION(getDailyClaimStatus, 5);
         REGISTER_USER_FUNCTION(getRandomBankStatus, 6);
         REGISTER_USER_FUNCTION(getApprovedGameList, 7);
 

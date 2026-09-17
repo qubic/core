@@ -203,6 +203,15 @@ public:
         return output;
     }
 
+    QUSINO::getDailyClaimStatus_output getDailyClaimStatus(const id& user)
+    {
+        QUSINO::getDailyClaimStatus_input input;
+        input.user = user;
+        QUSINO::getDailyClaimStatus_output output;
+        callFunction(QUSINO_CONTRACT_INDEX, 5, input, output);
+        return output;
+    }
+
     QUSINO::getFailedGameList_output getFailedGameList(uint32 offset)
     {
         QUSINO::getFailedGameList_input input;
@@ -569,6 +578,159 @@ TEST(ContractQUSINO, voteInGameProposal_WrongGameURI)
     uint64 gameIndex = gameList.gameIndexes.get(0);
     QUSINO::voteInGameProposal_output voteOutput = QUSINO.voteInGameProposal(voter, URI2, gameIndex, 1, 1);
     EXPECT_EQ(voteOutput.returnCode, QUSINO_WRONG_GAME_URI_FOR_VOTE);
+}
+
+// Reported bug: a proposal's own proposer could vote "yes" on it like any
+// other voter, padding their own proposal's yesVotes. See
+// QUSINO_PROPOSER_CANNOT_VOTE's introduction in voteInGameProposal.
+TEST(ContractQUSINO, voteInGameProposal_ProposerCannotVoteOnOwnGame)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id proposer = QUSINO_testUser1;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+
+    sint64 requiredReward = QUSINO_GAME_SUBMIT_FEE;
+    increaseEnergy(proposer, requiredReward);
+    QUSINO::submitGame_output submitOutput = QUSINO.submitGame(proposer, URI, requiredReward);
+    EXPECT_EQ(submitOutput.returnCode, QUSINO_SUCCESS);
+
+    // Give the proposer plenty of STAR too, so a QUSINO_INSUFFICIENT_VOTE_FEE
+    // rejection couldn't be mistaken for the proposer-block actually working.
+    uint64 starAmount = QUSINO_VOTE_FEE;
+    sint64 starReward = starAmount * QUSINO_STAR_PRICE * 100;
+    increaseEnergy(proposer, starReward);
+    QUSINO::earnSTAR_output earnOutput = QUSINO.earnSTAR(proposer, starAmount, starReward);
+    EXPECT_EQ(earnOutput.returnCode, QUSINO_SUCCESS);
+
+    increaseEnergy(proposer, 1);
+    QUSINO::getActiveGameList_output gameList = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = gameList.gameIndexes.get(0);
+    QUSINO::voteInGameProposal_output voteOutput = QUSINO.voteInGameProposal(proposer, URI, gameIndex, 1, 1);
+    EXPECT_EQ(voteOutput.returnCode, QUSINO_PROPOSER_CANNOT_VOTE);
+}
+
+// Reported bug: the same URI could be submitted as an unlimited number of
+// separate, independently-votable proposals. See QUSINO_DUPLICATE_GAME_URI's
+// introduction in submitGame.
+TEST(ContractQUSINO, submitGame_RejectsDuplicateURIStillPending)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id proposer1 = QUSINO_testUser1;
+    id proposer2 = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+
+    increaseEnergy(proposer1, QUSINO_GAME_SUBMIT_FEE);
+    QUSINO::submitGame_output firstSubmit = QUSINO.submitGame(proposer1, URI, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(firstSubmit.returnCode, QUSINO_SUCCESS);
+
+    increaseEnergy(proposer2, QUSINO_GAME_SUBMIT_FEE);
+    // Snapshot right before the call, not before increaseEnergy -- the
+    // rejection should refund the fee the transaction attached, returning
+    // the balance to what it was at the moment of the call, not to some
+    // earlier point before this test even funded the account.
+    long long proposer2QuBefore = getBalance(proposer2);
+    QUSINO::submitGame_output secondSubmit = QUSINO.submitGame(proposer2, URI, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(secondSubmit.returnCode, QUSINO_DUPLICATE_GAME_URI);
+    // The rejected submitter's fee should come back in full, same as every
+    // other early-rejection branch in submitGame.
+    EXPECT_EQ(getBalance(proposer2), proposer2QuBefore);
+
+    // Only the first submission should actually be in gameList.
+    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
+    EXPECT_EQ(scInfo.maxGameIndex, 2);
+}
+
+// Same as above, but the existing entry has already passed a vote and moved
+// into approvedGameList (including its QUSINO_REVOTE_DURATION cooldown
+// window) rather than still sitting in gameList.
+TEST(ContractQUSINO, submitGame_RejectsDuplicateURIAlreadyApproved)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    QUSINO::submitGame_output submitOutput = QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(submitOutput.returnCode, QUSINO_SUCCESS);
+
+    uint64 starAmount = QUSINO_VOTE_FEE;
+    sint64 starReward = starAmount * QUSINO_STAR_PRICE * 100;
+    increaseEnergy(voter, starReward);
+    QUSINO::earnSTAR_output earnOutput = QUSINO.earnSTAR(voter, starAmount, starReward);
+    EXPECT_EQ(earnOutput.returnCode, QUSINO_SUCCESS);
+
+    increaseEnergy(voter, 1);
+    QUSINO::getActiveGameList_output gameList = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = gameList.gameIndexes.get(0);
+    QUSINO::voteInGameProposal_output voteOutput = QUSINO.voteInGameProposal(voter, URI, gameIndex, 1, 1);
+    EXPECT_EQ(voteOutput.returnCode, QUSINO_SUCCESS);
+
+    QUSINO.endEpoch();
+    ++system.epoch;
+
+    // Confirm it actually landed in approvedGameList before relying on that
+    // for the real assertion below.
+    QUSINO::getApprovedGameList_output approvedList = QUSINO.getApprovedGameList(0);
+    EXPECT_EQ(approvedList.gameIndexes.get(0), gameIndex);
+
+    id newProposer = QUSINO_testUser3;
+    increaseEnergy(newProposer, QUSINO_GAME_SUBMIT_FEE);
+    // Snapshot right before the call -- see the same note in
+    // submitGame_RejectsDuplicateURIStillPending above.
+    long long newProposerQuBefore = getBalance(newProposer);
+    QUSINO::submitGame_output duplicateSubmit = QUSINO.submitGame(newProposer, URI, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(duplicateSubmit.returnCode, QUSINO_DUPLICATE_GAME_URI);
+    EXPECT_EQ(getBalance(newProposer), newProposerQuBefore);
+}
+
+TEST(ContractQUSINO, getDailyClaimStatus_CanClaimBeforeFirstEverClaim)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id user = QUSINO_testUser1;
+    QUSINO::getDailyClaimStatus_output status = QUSINO.getDailyClaimStatus(user);
+    EXPECT_TRUE(status.canClaimNow);
+    EXPECT_EQ(status.secondsUntilNextClaim, 0u);
+}
+
+TEST(ContractQUSINO, getDailyClaimStatus_CannotClaimRightAfterClaiming)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id user = QUSINO_testUser1;
+
+    // Same setup as dailyClaimBonus_Success -- a claim needs the bonus pool
+    // funded (bonusAmount starts at 0) and a fixed simulated time (qpi.year()
+    // etc. are otherwise whatever this process's default/real clock reads,
+    // which this test doesn't need to depend on).
+    uint64 bonusFund = QUSINO_BONUS_CLAIM_AMOUNT * 10;
+    increaseEnergy(user, bonusFund);
+    QUSINO::depositBonus_output depOutput = QUSINO.depositBonus(user, bonusFund);
+    EXPECT_EQ(depOutput.returnCode, QUSINO_SUCCESS);
+
+    setMemory(utcTime, 0);
+    utcTime.Year = 2024;
+    utcTime.Month = 1;
+    utcTime.Day = 1;
+    utcTime.Hour = 0;
+    utcTime.Minute = 0;
+    utcTime.Second = 0;
+    updateQpiTime();
+
+    QUSINO::dailyClaimBonus_output claimOutput = QUSINO.dailyClaimBonus(user, 0);
+    EXPECT_EQ(claimOutput.returnCode, QUSINO_SUCCESS);
+
+    QUSINO::getDailyClaimStatus_output status = QUSINO.getDailyClaimStatus(user);
+    EXPECT_FALSE(status.canClaimNow);
+    // Called immediately after a successful claim -- the full 24h window
+    // should still be ahead (allowing a couple of seconds of test-runtime
+    // slack rather than asserting the exact boundary value).
+    EXPECT_GT(status.secondsUntilNextClaim, (uint32)(QUSINO_DAILY_CLAIM_BONUS_DURATION - 5));
+    EXPECT_LE(status.secondsUntilNextClaim, (uint32)QUSINO_DAILY_CLAIM_BONUS_DURATION);
 }
 
 TEST(ContractQUSINO, getUserAssetVolume_Empty)
