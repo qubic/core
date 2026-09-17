@@ -693,9 +693,27 @@ public:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(voteInGameProposal)
     {
-        if (qpi.invocationReward() > 0) 
+        if (qpi.invocationReward() > 0)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        // Must be exactly 1 (yes) or 2 (no) -- anything else used to slip through
+        // silently: a first vote with a bad value incremented neither yesVotes nor
+        // noVotes (but still burned the fee and recorded the caller as "voted", so a
+        // later real vote read it as a truthy prior status), and the vote-switching
+        // branch below unconditionally pairs an increment on one counter with a
+        // decrement on the other -- assuming that prior status really was a 1 or 2.
+        // A bad-then-real vote pair decremented a counter that was never incremented,
+        // underflowing yesVotes/noVotes (both uint32) to ~4.29 billion and permanently
+        // forcing that proposal to read as approved (or rejected) regardless of any
+        // real votes. Rejecting bad values up front, before any state is touched,
+        // closes this off entirely.
+        if (input.yesNo != 1 && input.yesNo != 2)
+        {
+            output.returnCode = QUSINO_INVALID_INPUT;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return ;
         }
         state.get().userAssetVolume.get(qpi.invocator(), locals.userVolume);
         if (locals.userVolume.volumeOfSTAR < QUSINO_VOTE_FEE) 
@@ -1491,6 +1509,7 @@ public:
         sint64 possessionCount;
         uint64 qstPayout;
         uint64 proposerQubic;
+        uint64 priorEarnedQSC;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -1539,10 +1558,20 @@ public:
             }
             state.mut().QSCCirclatingSupply -= locals.userVolume.volumeOfQSC;
 
-            // add earned QSC to userEarnedQSCInfo
+            // Add earned QSC to userEarnedQSCInfo -- accumulate, don't overwrite. This
+            // payout is keyed off the proposer's *entire* current QSC balance, zeroed
+            // right below, so if the same proposer has a second proposal resolve as
+            // passed in this same epoch (increasingly possible now that approved
+            // proposals cycle back for reconfirmation -- see approvedGameList), that
+            // second one pays out from an already-zeroed balance. Overwriting this
+            // record with that lower/zero figure would silently erase the correct
+            // total getProposerEarnedQSCInfo should report for the epoch; summing
+            // instead keeps it accurate regardless of processing order.
             locals.earnedQSCInfo.proposer = locals.game.proposer;
             locals.earnedQSCInfo.epoch = qpi.epoch();
-            state.mut().userEarnedQSCInfo.set(locals.earnedQSCInfo, locals.userVolume.volumeOfQSC);
+            locals.priorEarnedQSC = 0;
+            state.get().userEarnedQSCInfo.get(locals.earnedQSCInfo, locals.priorEarnedQSC);
+            state.mut().userEarnedQSCInfo.set(locals.earnedQSCInfo, sadd(locals.priorEarnedQSC, locals.userVolume.volumeOfQSC));
 
             // set userVolume to 0
             locals.userVolume.volumeOfQSC = 0;

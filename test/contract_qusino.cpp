@@ -890,6 +890,108 @@ TEST(ContractQUSINO, END_EPOCH_ApprovedGameResurrectsAfterRevoteDuration)
     EXPECT_TRUE(foundReapproved);
 }
 
+// Proves the yesVotes/noVotes underflow exploit is closed: a garbage yesNo value
+// (anything but 1 or 2) is rejected outright, before touching STAR balance or
+// voteList -- not silently accepted as a no-op "vote" that still burns the fee and
+// leaves the voter recorded as "already voted" (which previously let a follow-up
+// real vote decrement a counter that was never incremented, underflowing it).
+TEST(ContractQUSINO, voteInGameProposal_InvalidYesNoRejectedWithoutCorruptingCounts)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id qstIssuer = QUSINO_QSTIssuer;
+    uint64 qstAssetName = 5526353;
+    uint64 totalShares = QUSINO_SUPPLY_OF_QST;
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/bad-yesno");
+
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE).returnCode, QUSINO_SUCCESS);
+    uint64 gameIndex = 1; // first submission in a fresh instance always gets index 1
+
+    increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
+    EXPECT_EQ(QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100).returnCode, QUSINO_SUCCESS);
+
+    QUSINO::getUserAssetVolume_output starBefore = QUSINO.getUserAssetVolume(voter);
+
+    QUSINO::voteInGameProposal_output badVoteZero = QUSINO.voteInGameProposal(voter, URI, gameIndex, 0, 0);
+    EXPECT_EQ(badVoteZero.returnCode, QUSINO_INVALID_INPUT);
+
+    QUSINO::voteInGameProposal_output badVoteHigh = QUSINO.voteInGameProposal(voter, URI, gameIndex, 99, 0);
+    EXPECT_EQ(badVoteHigh.returnCode, QUSINO_INVALID_INPUT);
+
+    // Neither rejected call should have burned the fee or touched the tally.
+    QUSINO::getUserAssetVolume_output starAfterRejections = QUSINO.getUserAssetVolume(voter);
+    EXPECT_EQ(starAfterRejections.STARAmount, starBefore.STARAmount);
+
+    QUSINO::getActiveGameList_output stillZero = QUSINO.getActiveGameList(0);
+    EXPECT_EQ(stillZero.games.get(0).yesVotes, 0u);
+    EXPECT_EQ(stillZero.games.get(0).noVotes, 0u);
+
+    // The exploit sequence: garbage vote, then a real one. Before the fix, this
+    // underflowed yesVotes to ~4.29 billion (the garbage call's rejected-now voteList
+    // entry made the real call think it was "switching" an existing yes vote it never
+    // actually cast). Since the garbage calls above were rejected before writing
+    // anything, this real vote is treated as a genuine first vote.
+    QUSINO::voteInGameProposal_output realVote = QUSINO.voteInGameProposal(voter, URI, gameIndex, 2, 0);
+    EXPECT_EQ(realVote.returnCode, QUSINO_SUCCESS);
+
+    QUSINO::getActiveGameList_output afterReal = QUSINO.getActiveGameList(0);
+    EXPECT_EQ(afterReal.games.get(0).yesVotes, 0u);
+    EXPECT_EQ(afterReal.games.get(0).noVotes, 1u);
+}
+
+// Proves userEarnedQSCInfo accumulates rather than overwrites: a proposer with two
+// proposals both resolving as passed in the same epoch should have the FULL amount
+// recorded, not clobbered down to whichever one happened to resolve last (its payout
+// computed from an already-zeroed QSC balance -- see the fix's comment in END_EPOCH).
+TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo_AccumulatesAcrossMultiplePassedProposals)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id qstIssuer = QUSINO_QSTIssuer;
+    uint64 qstAssetName = 5526353;
+    uint64 totalShares = QUSINO_SUPPLY_OF_QST;
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> uriA = createURI("https://example.com/multi-a");
+    Array<uint8, 64> uriB = createURI("https://example.com/multi-b");
+
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE * 2);
+    EXPECT_EQ(QUSINO.submitGame(proposer, uriA, QUSINO_GAME_SUBMIT_FEE).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.submitGame(proposer, uriB, QUSINO_GAME_SUBMIT_FEE).returnCode, QUSINO_SUCCESS);
+    uint64 gameIndexA = 1;
+    uint64 gameIndexB = 2;
+
+    uint64 qscAmount = 500;
+    sint64 starReward = qscAmount * QUSINO_STAR_PRICE * 100;
+    increaseEnergy(proposer, starReward);
+    EXPECT_EQ(QUSINO.earnSTAR(proposer, qscAmount, starReward).returnCode, QUSINO_SUCCESS);
+
+    uint32 epochBeforeEnd = system.epoch;
+
+    increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100 * 2);
+    EXPECT_EQ(QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE * 2, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100 * 2).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.voteInGameProposal(voter, uriA, gameIndexA, 1, 0).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.voteInGameProposal(voter, uriB, gameIndexB, 1, 0).returnCode, QUSINO_SUCCESS);
+
+    QUSINO.endEpoch();
+    ++system.epoch;
+
+    // Whichever of the two resolves first internally zeroes the proposer's QSC
+    // balance; the other's payout is computed from that already-zeroed balance. The
+    // recorded total should still be the full qscAmount, not reset to 0.
+    QUSINO::getProposerEarnedQSCInfo_output info = QUSINO.getProposerEarnedQSCInfo(proposer, epochBeforeEnd);
+    EXPECT_EQ(info.earnedQSC, qscAmount);
+}
+
 TEST(ContractQUSINO, depositBonus_Success)
 {
     ContractTestingQUSINO QUSINO;
