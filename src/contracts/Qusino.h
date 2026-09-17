@@ -15,7 +15,6 @@ constexpr uint32 QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT = 20;
 constexpr uint32 QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT = 30;
 constexpr uint64 QUSINO_INFINITY_PRICE = 1000000000000000000ULL;
 constexpr uint64 QUSINO_QSC_PRICE = 100;    // 1QSC = 100Qubic
-constexpr uint64 QUSINO_DEVELOPER_FEE = 333;             // 33.3%
 constexpr uint64 QUSINO_SUPPLY_OF_QST = 1200000000ULL;    // 1.2 billion
 constexpr uint64 QUSINO_DAILY_CLAIM_BONUS_DURATION = 24 * 60 * 60; // in number of seconds
 constexpr uint64 QUSINO_BONUS_CLAIM_DURATION = 60;   // 60s
@@ -313,29 +312,10 @@ public:
     {
         sint64 transferredNumberOfShares;
     };
-    struct getProposerEarnedQSCInfo_input
-    {
-        id proposer;
-        uint32 epoch;
-    };
-    struct getProposerEarnedQSCInfo_output
-    {
-        uint64 earnedQSC;
-    };
-
     struct STARAndQSC
     {
         uint64 volumeOfSTAR;
         uint64 volumeOfQSC;
-    };
-    struct EarnedQSCInfo
-    {
-        id proposer;
-        uint32 epoch;
-        bool operator==(const EarnedQSCInfo& other) const
-        {
-            return proposer == other.proposer && epoch == other.epoch;
-        }
     };
     struct VoteInfo
     {
@@ -362,7 +342,6 @@ public:
         HashMap<uint64, GameInfo, 1024> approvedGameList;
         HashMap<VoteInfo, uint8, QUSINO_MAX_USERS * QUSINO_MAX_NUMBER_OF_GAMES_FOR_VOTING_PER_USER> voteList;
         HashMap<id, uint32, QUSINO_MAX_USERS> userDailyClaimedBonus;
-        HashMap<EarnedQSCInfo, uint64, QUSINO_MAX_NUMBER_OF_GAMES> userEarnedQSCInfo;
         id LPDividendsAddress;
         id CCFDividendsAddress;
         id treasuryAddress;
@@ -1444,25 +1423,12 @@ public:
 		}
 	}
 
-    struct getProposerEarnedQSCInfo_locals
-    {
-        EarnedQSCInfo earnedQSCInfo;
-    };
-
-    PUBLIC_FUNCTION_WITH_LOCALS(getProposerEarnedQSCInfo)
-    {
-        locals.earnedQSCInfo.proposer = input.proposer;
-        locals.earnedQSCInfo.epoch = input.epoch;
-        state.get().userEarnedQSCInfo.get(locals.earnedQSCInfo, output.earnedQSC);
-    }
-
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
         REGISTER_USER_FUNCTION(getUserAssetVolume, 1);
         REGISTER_USER_FUNCTION(getFailedGameList, 2);
         REGISTER_USER_FUNCTION(getSCInfo, 3);
         REGISTER_USER_FUNCTION(getActiveGameList, 4);
-        REGISTER_USER_FUNCTION(getProposerEarnedQSCInfo, 5);
         REGISTER_USER_FUNCTION(getRandomBankStatus, 6);
         REGISTER_USER_FUNCTION(getApprovedGameList, 7);
 
@@ -1497,19 +1463,13 @@ public:
         sint64 idx;
         AssetPossessionIterator iter;
         Asset QSTAsset;
-        EarnedQSCInfo earnedQSCInfo;
         uint64 epochSnapshot;
-        uint64 grossQubicFromQsc;
-        uint64 qscToEpochRevenue;
         uint64 lpShare;
         uint64 ccfShare;
         uint64 treasuryShare;
         uint64 shareholders676Part;
-        uint64 qstPerShareRate;
         sint64 possessionCount;
         uint64 qstPayout;
-        uint64 proposerQubic;
-        uint64 priorEarnedQSC;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -1535,47 +1495,22 @@ public:
                 }
             }
             // Passed (first time, or reconfirmed on a revote) -- archive into
-            // approvedGameList before the payout below, instead of letting it just
-            // vanish. Kept under its existing key/gameIndex so voters, proposers, and
-            // getProposerEarnedQSCInfo lookups all still line up. See
+            // approvedGameList instead of letting it just vanish. Kept under its
+            // existing key/gameIndex so voters and proposers still line up. See
             // approvedGameList's declaration and the resurrection pass at the bottom
             // of this procedure for how it eventually comes back for reconfirmation.
+            //
+            // No QSC-to-Qu conversion happens here for the proposer. An earlier
+            // version of this contract forcibly redeemed the proposer's entire QSC
+            // balance at this point (split by a "developer fee"), on the theory that
+            // being a proposer entitled them to an automatic payout. That was
+            // redundant and worse for the proposer than doing nothing: any user --
+            // including a proposer, once their proposal is off gameList -- can
+            // already redeem QSC for Qu themselves via redemptionQSCToQubic(), at a
+            // straight 1:1 rate with no fee taken. Forcibly converting on their
+            // behalf only added an involuntary cut they wouldn't otherwise pay, so
+            // it's been removed; a proposer's QSC is simply left alone here.
             state.mut().approvedGameList.set(state.get().gameList.key(locals.idx), locals.game);
-
-            // distribute QSC to the proposer
-            state.get().userAssetVolume.get(locals.game.proposer, locals.userVolume);
-            locals.grossQubicFromQsc = smul(locals.userVolume.volumeOfQSC, QUSINO_QSC_PRICE);
-            locals.qscToEpochRevenue = div<uint64>(smul(locals.grossQubicFromQsc, (uint64)(1000 - QUSINO_DEVELOPER_FEE)), 1000ULL);
-            state.mut().epochRevenue = sadd(state.get().epochRevenue, locals.qscToEpochRevenue);
-            locals.proposerQubic = 0;
-            if (locals.grossQubicFromQsc >= locals.qscToEpochRevenue)
-            {
-                locals.proposerQubic = locals.grossQubicFromQsc - locals.qscToEpochRevenue;
-            }
-            if (locals.proposerQubic <= (uint64)INT64_MAX)
-            {
-                qpi.transfer(locals.game.proposer, (sint64)locals.proposerQubic);
-            }
-            state.mut().QSCCirclatingSupply -= locals.userVolume.volumeOfQSC;
-
-            // Add earned QSC to userEarnedQSCInfo -- accumulate, don't overwrite. This
-            // payout is keyed off the proposer's *entire* current QSC balance, zeroed
-            // right below, so if the same proposer has a second proposal resolve as
-            // passed in this same epoch (increasingly possible now that approved
-            // proposals cycle back for reconfirmation -- see approvedGameList), that
-            // second one pays out from an already-zeroed balance. Overwriting this
-            // record with that lower/zero figure would silently erase the correct
-            // total getProposerEarnedQSCInfo should report for the epoch; summing
-            // instead keeps it accurate regardless of processing order.
-            locals.earnedQSCInfo.proposer = locals.game.proposer;
-            locals.earnedQSCInfo.epoch = qpi.epoch();
-            locals.priorEarnedQSC = 0;
-            state.get().userEarnedQSCInfo.get(locals.earnedQSCInfo, locals.priorEarnedQSC);
-            state.mut().userEarnedQSCInfo.set(locals.earnedQSCInfo, sadd(locals.priorEarnedQSC, locals.userVolume.volumeOfQSC));
-
-            // set userVolume to 0
-            locals.userVolume.volumeOfQSC = 0;
-            state.mut().userAssetVolume.set(locals.game.proposer, locals.userVolume);
 
             // remove game from gameList
             state.mut().gameList.removeByIndex(locals.idx);
@@ -1638,12 +1573,45 @@ public:
             div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT), 1ULL), 67600ULL),
             676ULL);
 
-        qpi.transfer(state.get().LPDividendsAddress, (sint64)locals.lpShare);
-        qpi.transfer(state.get().CCFDividendsAddress, (sint64)locals.ccfShare);
-        qpi.transfer(state.get().treasuryAddress, (sint64)locals.treasuryShare);
+        // Same INT64_MAX guard qstPayout below already has, for consistency -- a
+        // uint64 share cast straight to sint64 without checking first would come out
+        // negative if it ever exceeded INT64_MAX (astronomically unlikely given real
+        // Qu supply bounds, but the other transfer below already defends against it,
+        // so these should too rather than being the only ones that don't).
+        if (locals.lpShare <= (uint64)INT64_MAX)
+        {
+            qpi.transfer(state.get().LPDividendsAddress, (sint64)locals.lpShare);
+        }
+        if (locals.ccfShare <= (uint64)INT64_MAX)
+        {
+            qpi.transfer(state.get().CCFDividendsAddress, (sint64)locals.ccfShare);
+        }
+        if (locals.treasuryShare <= (uint64)INT64_MAX)
+        {
+            qpi.transfer(state.get().treasuryAddress, (sint64)locals.treasuryShare);
+        }
         qpi.distributeDividends(div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT), 1ULL), 67600ULL));
         locals.QSTDividends = 0;
-        locals.qstPerShareRate = div<uint64>(smul(smul(locals.epochSnapshot, (uint64)QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT), 1ULL), QUSINO_SUPPLY_OF_QST * 1000ULL);
+        // Each possessor's payout is (epochSnapshot * QST_HOLDERS_PERCENT * their share
+        // count) / (100 * QUSINO_SUPPLY_OF_QST) -- computed per possessor, inside this
+        // loop, with every multiplication done before the one division.
+        //
+        // An earlier version of this computed a single shared "per-share rate" ONCE,
+        // outside the loop, by dividing first: (epochSnapshot * percent / 100) /
+        // QUSINO_SUPPLY_OF_QST. That's fatal with real numbers -- the whole dividend
+        // pool (tens of millions of Qu in practice) divided by QUSINO_SUPPLY_OF_QST
+        // (1.2 BILLION shares) is a fraction of a single Qu per share, and integer
+        // division truncates any such fraction straight to 0. That zeroed out every
+        // QST holder's payout entirely, regardless of whether the percent-to-fraction
+        // denominator used *1000 or *100 (a previous fix here changed *1000 to *100,
+        // correctly diagnosing an extra factor of 10 by analogy with lpShare/ccfShare/
+        // etc., but those are flat one-recipient payouts with no per-share division at
+        // all -- the *1000-vs-*100 choice was never the actual bug). Multiplying
+        // epochSnapshot * percent * possessionCount together before dividing once by
+        // QUSINO_SUPPLY_OF_QST * 100 keeps the precision that dividing early throws
+        // away. smul() saturates instead of wrapping if the product ever exceeds
+        // uint64 (astronomically unlikely given real Qu supply bounds, same
+        // extremely-low-risk tradeoff already accepted for the other shares above).
         locals.QSTAsset.assetName = state.get().QSTAssetName;
         locals.QSTAsset.issuer = state.get().QSTIssuer;
         locals.iter.begin(locals.QSTAsset);
@@ -1652,7 +1620,7 @@ public:
             locals.possessionCount = locals.iter.numberOfPossessedShares();
             if (locals.possessionCount > 0)
             {
-                locals.qstPayout = smul(locals.qstPerShareRate, (uint64)locals.possessionCount);
+                locals.qstPayout = div<uint64>(smul(smul(locals.epochSnapshot, (uint64)QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT), (uint64)locals.possessionCount), QUSINO_SUPPLY_OF_QST * 100ULL);
                 locals.QSTDividends = sadd(locals.QSTDividends, locals.qstPayout);
                 if (locals.qstPayout <= (uint64)INT64_MAX)
                 {

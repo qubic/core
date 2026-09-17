@@ -238,16 +238,6 @@ public:
         return output;
     }
 
-    QUSINO::getProposerEarnedQSCInfo_output getProposerEarnedQSCInfo(const id& proposer, uint32 epoch)
-    {
-        QUSINO::getProposerEarnedQSCInfo_input input;
-        input.proposer = proposer;
-        input.epoch = epoch;
-        QUSINO::getProposerEarnedQSCInfo_output output;
-        callFunction(QUSINO_CONTRACT_INDEX, 5, input, output);
-        return output;
-    }
-
     QUSINO::refillRandomBank_output refillRandomBank(const id& user, sint64 invocationReward = 0)
     {
         QUSINO::refillRandomBank_input input;
@@ -696,11 +686,17 @@ TEST(ContractQUSINO, END_EPOCH_FailedGameRemoval)
     EXPECT_TRUE(foundInFailedList);
 }
 
-TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo)
+// A passed proposal used to trigger an automatic, involuntary QSC-to-Qu conversion
+// of the proposer's entire balance (split by a "developer fee") right here in
+// END_EPOCH. That's been removed as redundant: this proves a proposer's QSC is left
+// completely untouched by their proposal passing -- balance unchanged, circulating
+// supply unchanged -- and that they can redeem it themselves afterward via
+// redemptionQSCToQubic() at the standard, fee-free 1:1 rate (strictly better than
+// the old automatic conversion ever was).
+TEST(ContractQUSINO, END_EPOCH_ApprovedProposalDoesNotTouchProposerQSC)
 {
     ContractTestingQUSINO QUSINO;
 
-    // issue QST
     id qstIssuer = QUSINO_QSTIssuer;
     uint64 qstAssetName = 5526353;
     uint64 totalShares = QUSINO_SUPPLY_OF_QST;
@@ -721,7 +717,6 @@ TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo)
     QUSINO::earnSTAR_output earnOut = QUSINO.earnSTAR(proposer, qscAmount, starReward);
     EXPECT_EQ(earnOut.returnCode, QUSINO_SUCCESS);
 
-    uint32 epochBeforeEnd = system.epoch;
     increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
     QUSINO::earnSTAR_output voterEarn = QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
     EXPECT_EQ(voterEarn.returnCode, QUSINO_SUCCESS);
@@ -730,11 +725,26 @@ TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo)
     QUSINO::voteInGameProposal_output voteOut = QUSINO.voteInGameProposal(voter, URI, gameIndex, 1, 0);
     EXPECT_EQ(voteOut.returnCode, QUSINO_SUCCESS);
 
+    uint64 qscSupplyBefore = QUSINO.getSCInfo().QSCCirclatingSupply;
+    long long proposerQuBefore = getBalance(proposer);
+
     QUSINO.endEpoch();
     ++system.epoch;
 
-    QUSINO::getProposerEarnedQSCInfo_output info = QUSINO.getProposerEarnedQSCInfo(proposer, epochBeforeEnd);
-    EXPECT_EQ(info.earnedQSC, qscAmount);
+    // Proposal resolving passed didn't touch the proposer's QSC or transfer them
+    // any Qu -- no more automatic conversion.
+    EXPECT_EQ(QUSINO.getUserAssetVolume(proposer).QSCAmount, qscAmount);
+    EXPECT_EQ(QUSINO.getSCInfo().QSCCirclatingSupply, qscSupplyBefore);
+    EXPECT_EQ(getBalance(proposer), proposerQuBefore);
+
+    // The proposer is no longer in gameList (their proposal is in approvedGameList
+    // now), so redemptionQSCToQubic's "you can't redeem while you have a pending
+    // proposal" guard no longer blocks them -- they can cash out the full amount
+    // themselves, at the standard 1:1 rate, whenever they want.
+    QUSINO::redemptionQSCToQubic_output redemption = QUSINO.redemptionQSCToQubic(proposer, qscAmount, 0);
+    EXPECT_EQ(redemption.returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ((uint64)(getBalance(proposer) - proposerQuBefore), qscAmount * QUSINO_QSC_PRICE);
+    EXPECT_EQ(QUSINO.getUserAssetVolume(proposer).QSCAmount, 0u);
 }
 
 // A passed proposal used to just vanish after the proposer's payout -- this proves
@@ -945,11 +955,13 @@ TEST(ContractQUSINO, voteInGameProposal_InvalidYesNoRejectedWithoutCorruptingCou
     EXPECT_EQ(afterReal.games.get(0).noVotes, 1u);
 }
 
-// Proves userEarnedQSCInfo accumulates rather than overwrites: a proposer with two
-// proposals both resolving as passed in the same epoch should have the FULL amount
-// recorded, not clobbered down to whichever one happened to resolve last (its payout
-// computed from an already-zeroed QSC balance -- see the fix's comment in END_EPOCH).
-TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo_AccumulatesAcrossMultiplePassedProposals)
+// A proposer with two proposals both resolving as passed in the same epoch used to
+// have their QSC balance zeroed by whichever one resolved first, with the second
+// paid out (and recorded) from an already-drained balance. With the automatic
+// conversion removed entirely, this just proves both proposals resolve
+// independently without touching the proposer's QSC at all -- no ordering-dependent
+// side effect between them.
+TEST(ContractQUSINO, END_EPOCH_MultiplePassedProposalsFromSameProposerDoNotTouchQSC)
 {
     ContractTestingQUSINO QUSINO;
 
@@ -975,8 +987,6 @@ TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo_AccumulatesAcrossMultiplePa
     increaseEnergy(proposer, starReward);
     EXPECT_EQ(QUSINO.earnSTAR(proposer, qscAmount, starReward).returnCode, QUSINO_SUCCESS);
 
-    uint32 epochBeforeEnd = system.epoch;
-
     increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100 * 2);
     EXPECT_EQ(QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE * 2, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100 * 2).returnCode, QUSINO_SUCCESS);
     EXPECT_EQ(QUSINO.voteInGameProposal(voter, uriA, gameIndexA, 1, 0).returnCode, QUSINO_SUCCESS);
@@ -985,11 +995,71 @@ TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo_AccumulatesAcrossMultiplePa
     QUSINO.endEpoch();
     ++system.epoch;
 
-    // Whichever of the two resolves first internally zeroes the proposer's QSC
-    // balance; the other's payout is computed from that already-zeroed balance. The
-    // recorded total should still be the full qscAmount, not reset to 0.
-    QUSINO::getProposerEarnedQSCInfo_output info = QUSINO.getProposerEarnedQSCInfo(proposer, epochBeforeEnd);
-    EXPECT_EQ(info.earnedQSC, qscAmount);
+    EXPECT_EQ(QUSINO.getUserAssetVolume(proposer).QSCAmount, qscAmount);
+
+    QUSINO::getApprovedGameList_output approved = QUSINO.getApprovedGameList(0);
+    int foundCount = 0;
+    for (uint32 i = 0; i < 32; i++)
+    {
+        if (approved.games.get(i).proposer == proposer)
+        {
+            foundCount++;
+        }
+    }
+    EXPECT_EQ(foundCount, 2);
+}
+
+// Proves the QST dividend rate fix: QST holders should receive
+// QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT (30%) of epochRevenue each epoch. This used
+// to fail two different ways: first an erroneous extra factor of 10 in a
+// now-removed "per-share rate" denominator (QUSINO_SUPPLY_OF_QST * 1000 instead of
+// * 100) capped holders at 3% instead of 30%; fixing that denominator alone still
+// paid out exactly 0, because dividing the (tens-of-millions-of-Qu) dividend pool by
+// QUSINO_SUPPLY_OF_QST (1.2 billion shares) to get a shared per-share rate produces
+// a fraction under 1 Qu, which integer division truncates straight to 0 regardless
+// of the *1000-vs-*100 denominator. The real fix restructured the payout to
+// multiply epochSnapshot * percent * each possessor's own share count together
+// before dividing once, computed per possessor inside the loop instead of as a
+// shared rate outside it -- see END_EPOCH's QST payout comment in Qusino.h.
+TEST(ContractQUSINO, END_EPOCH_QSTDividendRateIsCorrect)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id qstIssuer = QUSINO_QSTIssuer;
+    uint64 qstAssetName = 5526353;
+    uint64 totalShares = QUSINO_SUPPLY_OF_QST;
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+    // qstIssuer now holds 100% of QUSINO_SUPPLY_OF_QST -- the whole QST dividend
+    // pool for the epoch should land on them alone.
+
+    // Get a known, deterministic contribution to epochRevenue via submitGame's fee
+    // split (a passed proposal wouldn't add anything else to epochRevenue either --
+    // approving no longer triggers any QSC conversion, see END_EPOCH -- but failing
+    // it keeps this test's setup obviously isolated to just the QST rate either way).
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/qst-dividend-test");
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE).returnCode, QUSINO_SUCCESS);
+    uint64 gameIndex = 1;
+
+    increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
+    EXPECT_EQ(QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.voteInGameProposal(voter, URI, gameIndex, 2, 0).returnCode, QUSINO_SUCCESS);
+
+    uint64 epochRevenueBeforeSplit = QUSINO.getSCInfo().epochRevenue;
+    ASSERT_GT(epochRevenueBeforeSplit, 0ULL);
+
+    long long qstIssuerQuBefore = getBalance(qstIssuer);
+
+    QUSINO.endEpoch();
+    ++system.epoch;
+
+    long long qstIssuerQuAfter = getBalance(qstIssuer);
+    uint64 expectedQSTDividend = epochRevenueBeforeSplit * (uint64)QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT / 100ULL;
+    ASSERT_GT(expectedQSTDividend, 0ULL);
+    EXPECT_EQ((uint64)(qstIssuerQuAfter - qstIssuerQuBefore), expectedQSTDividend);
 }
 
 TEST(ContractQUSINO, depositBonus_Success)
