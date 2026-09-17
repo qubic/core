@@ -355,6 +355,12 @@
     <ClInclude Include="mining\task_file.h">
       <Filter>mining</Filter>
     </ClInclude>
+    <ClInclude Include="mining\solution_settlement_window.h">
+      <Filter>mining</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\solution_settlement_kinds.h">
+      <Filter>mining</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\qRWA.h">
       <Filter>contracts</Filter>
     </ClInclude>
