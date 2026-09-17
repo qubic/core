@@ -4,6 +4,7 @@
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include <lib/platform_efi/uefi.h>
+#include <lib/platform_common/qintrin.h>
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
 #include "platform/memory_util.h"
@@ -715,32 +716,89 @@ iteration:
 // Should only be called from tick processor to avoid concurrent asset state changes, which may cause race conditions
 static void getUniverseDigest(m256i& digest)
 {
+	// MSVC alternative to __builtin_ctzll() for counting trailing zeros in a 64-bit integer.
+    static auto msvc_ctzll = [](unsigned __int64 mask) -> unsigned int
+    {
+        unsigned long index;
+        if (_BitScanForward64(&index, mask))
+        {
+            return (unsigned int)index;
+        }
+        return 64;
+    }
+
     PROFILE_SCOPE();
 
     unsigned int digestIndex;
-    for (digestIndex = 0; digestIndex < ASSETS_CAPACITY; digestIndex++)
+
+    // Chunked scan over assetChangeFlags. The flags array packs
+    // ASSETS_CAPACITY bits into ASSETS_CAPACITY/64 unsigned-long-long words.
+    // When a chunk is zero, every entry in its 64-asset window is unchanged
+    // — skip it without reading any AssetRecord. Sparse-tick case
+    // (typical) goes from 16M iterations to ~ASSETS_CAPACITY/64 == 256k
+    // word reads (most just `if (!mask) continue;`).
+    constexpr unsigned int kAssetFlagWords = ASSETS_CAPACITY / 64;
+
+    for (unsigned int chunk = 0; chunk < kAssetFlagWords; chunk++)
     {
-        if (assetChangeFlags[digestIndex >> 6] & (1ULL << (digestIndex & 63)))
+        unsigned long long mask = assetChangeFlags[chunk];
+        if (!mask) continue;
+        const unsigned int base = chunk * 64;
+        while (mask)
         {
-            KangarooTwelve(&assets[digestIndex], sizeof(AssetRecord), &assetDigests[digestIndex], 32);
+            const unsigned int bit = msvc_ctzll(mask);
+            const unsigned int idx = base + bit;
+            KangarooTwelve(&assets[idx], sizeof(AssetRecord), &assetDigests[idx], 32);
+            mask &= mask - 1;
         }
     }
+
+    digestIndex = ASSETS_CAPACITY; // merkle climb starts here
     unsigned int previousLevelBeginning = 0;
     unsigned int numberOfLeafs = ASSETS_CAPACITY;
     while (numberOfLeafs > 1)
     {
-        for (unsigned int i = 0; i < numberOfLeafs; i += 2)
-        {
-            if (assetChangeFlags[i >> 6] & (3ULL << (i & 63)))
-            {
-                KangarooTwelve64To32(&assetDigests[previousLevelBeginning + i], &assetDigests[digestIndex]);
-                assetChangeFlags[i >> 6] &= ~(3ULL << (i & 63));
-                assetChangeFlags[i >> 7] |= (1ULL << ((i >> 1) & 63));
-            }
-            digestIndex++;
-        }
-        previousLevelBeginning += numberOfLeafs;
-        numberOfLeafs >>= 1;
+		// Chunked-skip merkle climb. Inner loop walks pairs (i+=2)
+        // so a 64-bit flag word covers 32 pairs — skip step is 32, not 64.
+		if (numberOfLeafs >= 64)
+		{
+			const unsigned int wordsPerLevel = numberOfLeafs >> 6;
+			for (unsigned int chunk = 0; chunk < wordsPerLevel; chunk++)
+			{
+				if (!assetChangeFlags[chunk])
+				{
+					digestIndex += 32; // 32 pairs per 64-bit chunk
+					continue;
+				}
+				const unsigned int base = chunk << 6;
+				for (unsigned int j = 0; j < 64; j += 2)
+				{
+					const unsigned int i = base + j;
+					if (assetChangeFlags[chunk] & (3ULL << j))
+					{
+						KangarooTwelve64To32(&assetDigests[previousLevelBeginning + i], &assetDigests[digestIndex]);
+						assetChangeFlags[chunk] &= ~(3ULL << j);
+						assetChangeFlags[i >> 7] |= (1ULL << ((i >> 1) & 63));
+					}
+					digestIndex++;
+				}
+			}
+		}
+		else
+		{
+			for (unsigned int i = 0; i < numberOfLeafs; i += 2)
+			{
+				if (assetChangeFlags[i >> 6] & (3ULL << (i & 63)))
+				{
+					KangarooTwelve64To32(&assetDigests[previousLevelBeginning + i], &assetDigests[digestIndex]);
+					assetChangeFlags[i >> 6] &= ~(3ULL << (i & 63));
+					assetChangeFlags[i >> 7] |= (1ULL << ((i >> 1) & 63));
+				}
+				digestIndex++;
+			}
+		}
+		previousLevelBeginning += numberOfLeafs;
+		numberOfLeafs >>= 1;
     }
     assetChangeFlags[0] = 0;
 
