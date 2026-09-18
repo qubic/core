@@ -34,6 +34,7 @@ struct K12StateCacheSet
     bool hardwareTracking = false;
 
     // statistics for the health log
+    unsigned long long cacheBytes = 0;        // chaining values + bitmaps over all cached contracts
     unsigned long long collections = 0;
     unsigned long long dirtyPagesCollected = 0;
     unsigned long long cachedDigests = 0;
@@ -60,6 +61,7 @@ struct K12StateCacheSet
         {
             return false;
         }
+        cacheBytes += cvSize + bmSize;
         e.cache.init((unsigned char*)e.chainingValueBuffer, (unsigned long long*)e.dirtyBitmapBuffer, size);
         e.tracked = hardwareTracking && pageTables.splitRange(state, size);
         if (!e.tracked)

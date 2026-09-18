@@ -7536,6 +7536,8 @@ static bool initialize()
         appendNumber(message, contractStateCache.trackingFailures, FALSE);
         appendText(message, L", page tables split: ");
         appendNumber(message, contractStateCache.pageTables.tablesAllocated, FALSE);
+        appendText(message, L", cache bytes: ");
+        appendNumber(message, contractStateCache.cacheBytes, TRUE);
         logToConsole(message);
 #endif
 #if USE_PARALLEL_K12_LEAVES
