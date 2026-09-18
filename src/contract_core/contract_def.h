@@ -485,6 +485,7 @@ enum OtherEntryPointIDs
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3,
     USER_PROCEDURE_NOTIFICATION_CALL = contractSystemProcedureCount + 4,
 	MIGRATE_PROCEDURE_CALL = contractSystemProcedureCount + 5,
+    COLLECT_DIRTY_STATE_PAGES = contractSystemProcedureCount + 6, // contract processor consumes page-table Dirty bits (K12 state cache)
 };
 
 GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];

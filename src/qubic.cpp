@@ -97,6 +97,9 @@
 #if USE_PARALLEL_K12_LEAVES
 #include "optimizations/opt_parallel_k12_leaves.h"
 #endif
+#if USE_K12_STATE_CACHE
+#include "optimizations/opt_k12_state_cache.h"
+#endif
 
 ////////// Qubic \\\\\\\\\\
 
@@ -252,6 +255,12 @@ static int solutionThreshold[MAX_NUMBER_EPOCH][score_engine::AlgoType::MaxAlgoCo
 static unsigned long long solutionTotalExecutionTicks = 0;
 static unsigned long long K12MeasurementsCount = 0;
 static unsigned long long K12MeasurementsSum = 0;
+#if USE_K12_STATE_CACHE
+static K12StateCacheSet contractStateCache;
+static void* contractStatesRawBase[contractCount];          // page allocations behind cached contract states
+static unsigned long long contractStatesRawPages[contractCount];
+static volatile bool contractProcessorReady = false;        // APs are running: contract processor rendezvous possible
+#endif
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCount] =
@@ -811,6 +820,19 @@ static void getComputerDigest(m256i& digest)
 {
     PROFILE_SCOPE();
 
+#if USE_K12_STATE_CACHE
+    // Let the contract processor (the only writer of tracked states) turn the hardware Dirty bits of
+    // changed contracts into dirty leaves before anything is hashed. Not possible before the APs run
+    // (init): the caches are invalid then and get a full rebuild anyway.
+    if (contractProcessorReady)
+    {
+        PROFILE_NAMED_SCOPE("getComputerDigest(): collect dirty pages");
+        contractProcessorPhase = COLLECT_DIRTY_STATE_PAGES;
+        contractProcessorState = 1;
+        WAIT_WHILE(contractProcessorState);
+    }
+#endif
+
     unsigned int digestIndex;
     for (digestIndex = 0; digestIndex < MAX_NUMBER_OF_CONTRACTS; digestIndex++)
     {
@@ -831,13 +853,47 @@ static void getComputerDigest(m256i& digest)
                 contractStateLock[digestIndex].acquireRead();
 
                 const unsigned long long startTime = __rdtsc();
+                bool digested = false;
+#if USE_K12_STATE_CACHE
+                if (contractStateCache.isCached(digestIndex))
+                {
+                    if (system.epoch < contractDescriptions[digestIndex].constructionEpoch)
+                    {
+                        // IPO epoch: the tick processor writes bids into this state, which the contract
+                        // processor's dirty collection cannot see. Rehash in full until construction.
+                        contractStateCache.entries[digestIndex].cache.invalidate();
+                    }
+                    else
+                    {
+                        digested = contractStateCache.digest(parallelK12Leaves, digestIndex, &contractStateDigests[digestIndex]);
+                        if (digested && !contractStateCache.verifySample(digestIndex, 64, system.tick))
+                        {
+                            digested = false; // a write slipped past tracking: redo below on the untracked path
+                        }
+#if K12_STATE_CACHE_FULL_CHECK
+                        if (digested)
+                        {
+                            m256i oneShot;
+                            KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &oneShot, 32);
+                            if (oneShot != contractStateDigests[digestIndex])
+                            {
+                                contractStateCache.fullCheckMismatches++;
+                                contractStateCache.untrack(digestIndex);
+                                contractStateDigests[digestIndex] = oneShot;
+                            }
+                        }
+#endif
+                    }
+                }
+#endif
 #if USE_PARALLEL_K12_LEAVES
-                if (size >= PARALLEL_K12_LEAVES_MIN_STATE_SIZE)
+                if (!digested && size >= PARALLEL_K12_LEAVES_MIN_STATE_SIZE)
                 {
                     parallelK12Leaves.digest(contractStates[digestIndex], size, &contractStateDigests[digestIndex]);
+                    digested = true;
                 }
-                else
 #endif
+                if (!digested)
                 {
                     KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
                 }
@@ -2991,6 +3047,14 @@ static void contractProcessor(void*)
         contractProcessorTransaction = 0;
     }
     break;
+
+#if USE_K12_STATE_CACHE
+    case COLLECT_DIRTY_STATE_PAGES:
+    {
+        contractStateCache.collect(contractStateChangeFlags);
+    }
+    break;
+#endif
 
     case USER_PROCEDURE_NOTIFICATION_CALL:
     {
@@ -6953,6 +7017,11 @@ static void tickProcessor(void*)
                                     computerMustBeSaved = true;
                                     WAIT_WHILE(computerMustBeSaved || universeMustBeSaved || spectrumMustBeSaved);
 
+#if USE_K12_STATE_CACHE
+                                    // Epoch transition writes states outside the contract processor (IPO
+                                    // finalization); start the new epoch from a full rehash.
+                                    contractStateCache.invalidateAll();
+#endif
                                     // update etalon tick
                                     etalonTick.epoch++;
                                     etalonTick.tick++;
@@ -7166,6 +7235,9 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
     }
     
     logToConsole(L"All contract files successfully loaded or initialized.");
+#if USE_K12_STATE_CACHE
+    contractStateCache.invalidateAll(); // states were written on this core, outside dirty tracking
+#endif
 
     return true;
 }
@@ -7418,11 +7490,42 @@ static bool initialize()
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
+#if USE_K12_STATE_CACHE
+            // States that get a chaining-value cache are page-tracked: 2 MiB alignment keeps the
+            // page-table split confined to their own large pages.
+            if (size >= PARALLEL_K12_LEAVES_MIN_STATE_SIZE)
+            {
+                if (!allocPagesWithErrorLog(L"contractStates", size, PageTables::LARGE_PAGE, (void**)&contractStates[contractIndex], &contractStatesRawBase[contractIndex], &contractStatesRawPages[contractIndex], __LINE__))
+                {
+                    return false;
+                }
+                continue;
+            }
+#endif
             if (!allocPoolWithErrorLog(L"contractStates",  size, (void**)&contractStates[contractIndex], __LINE__))
             {
                 return false;
             }
         }
+#if USE_K12_STATE_CACHE
+        contractStateCache.init();
+        for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+        {
+            const unsigned long long size = contractDescriptions[contractIndex].stateSize;
+            if (size >= PARALLEL_K12_LEAVES_MIN_STATE_SIZE
+                && !contractStateCache.add(contractIndex, contractStates[contractIndex], size))
+            {
+                return false;
+            }
+        }
+        setText(message, L"K12 state cache: hardware dirty tracking ");
+        appendText(message, contractStateCache.hardwareTracking ? L"on" : L"off (unsupported paging mode)");
+        appendText(message, L", contracts not trackable: ");
+        appendNumber(message, contractStateCache.trackingFailures, FALSE);
+        appendText(message, L", page tables split: ");
+        appendNumber(message, contractStateCache.pageTables.tablesAllocated, FALSE);
+        logToConsole(message);
+#endif
 #if USE_PARALLEL_K12_LEAVES
         {
             unsigned long long maxStateSize = 0;
@@ -7845,8 +7948,19 @@ static void deinitialize()
     customQubicMiningStorage.deinit();
 
     deinitContractExec();
+#if USE_K12_STATE_CACHE
+    contractStateCache.deinit();
+#endif
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
+#if USE_K12_STATE_CACHE
+        if (contractStatesRawBase[contractIndex])
+        {
+            freePagesWithErrorLog(contractStatesRawBase[contractIndex], contractStatesRawPages[contractIndex]);
+            contractStatesRawBase[contractIndex] = nullptr;
+            contractStates[contractIndex] = nullptr;
+        }
+#endif
         if (contractStates[contractIndex])
         {
             freePool(contractStates[contractIndex]);
@@ -8533,6 +8647,23 @@ static void processKeyPresses()
             appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
             logToConsole(message);
+#if USE_K12_STATE_CACHE
+            setText(message, L"K12 state cache: cached digests ");
+            appendNumber(message, contractStateCache.cachedDigests, FALSE);
+            appendText(message, L", full rebuilds ");
+            appendNumber(message, contractStateCache.fullRebuilds, FALSE);
+            appendText(message, L", collections ");
+            appendNumber(message, contractStateCache.collections, FALSE);
+            appendText(message, L", dirty pages ");
+            appendNumber(message, contractStateCache.dirtyPagesCollected, FALSE);
+            appendText(message, L", tracking failures ");
+            appendNumber(message, contractStateCache.trackingFailures, FALSE);
+            appendText(message, L", sample mismatches ");
+            appendNumber(message, contractStateCache.sampleMismatches, FALSE);
+            appendText(message, L", full-check mismatches ");
+            appendNumber(message, contractStateCache.fullCheckMismatches, FALSE);
+            logToConsole(message);
+#endif
 
 #ifndef NDEBUG
             forceLogToConsoleAsAddDebugMessage = false;
@@ -8959,6 +9090,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             autoResendTickVotes.lastTick = system.initialTick;
             autoResendTickVotes.lastCheck = __rdtsc();
+#if USE_K12_STATE_CACHE
+            contractProcessorReady = true;
+#endif
             logToConsole(L"Init complete! Entering main loop ...");
             while (!shutDownNode)
             {
