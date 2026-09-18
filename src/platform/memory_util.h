@@ -65,4 +65,37 @@ static bool allocPoolWithErrorLog(const CHAR16* name, const unsigned long long s
     return true;
 }
 
+
+// Page-granular allocation aligned to `alignment` (a power of two, >= 4096). *rawBase/*rawPages must be
+// kept for freePagesWithErrorLog(). Zeroes the memory like allocPoolWithErrorLog().
+static bool allocPagesWithErrorLog(const CHAR16* name, const unsigned long long size, const unsigned long long alignment, void** buffer, void** rawBase, unsigned long long* rawPages, const int LINE)
+{
+    const unsigned long long pages = (size + alignment + 4095) / 4096;
+    EFI_PHYSICAL_ADDRESS address = 0;
+    const EFI_STATUS status = bs->AllocatePages(AllocateAnyPages, EfiRuntimeServicesData, pages, &address);
+    if (status != EFI_SUCCESS)
+    {
+        CHAR16 message[512];
+        setText(message, L"EFI_BOOT_SERVICES.AllocatePages() fails for ");
+        appendText(message, name);
+        appendText(message, L" with size ");
+        appendNumber(message, size, TRUE);
+        logStatusAndMemInfoToConsole(message, status, LINE, size);
+        return false;
+    }
+    *rawBase = (void*)address;
+    *rawPages = pages;
+    *buffer = (void*)(((unsigned long long)address + alignment - 1) & ~(alignment - 1));
+    setMem(*buffer, size, 0);
+    return true;
+}
+
+static void freePagesWithErrorLog(void* rawBase, unsigned long long rawPages)
+{
+    if (rawBase)
+    {
+        bs->FreePages((EFI_PHYSICAL_ADDRESS)rawBase, rawPages);
+    }
+}
+
 #endif

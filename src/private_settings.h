@@ -45,6 +45,8 @@ static const unsigned char ocMachineIPs[][4] = {
 
 #define USE_PARALLEL_SIGN_VOTES 1
 #define USE_PARALLEL_K12_LEAVES 1 // hash the leaves of large contract states on the request processors
+#define USE_K12_STATE_CACHE 1 // keep K12 chaining values of large contract states and rehash only pages the hardware marked dirty (needs USE_PARALLEL_K12_LEAVES)
+#define K12_STATE_CACHE_FULL_CHECK 0 // validation only: compare every cached digest against a one-shot K12 and use the latter on mismatch
 
 // Virtual memory settings for logging
 #define LOG_BUFFER_PAGE_SIZE 300000000ULL
@@ -89,4 +91,4 @@ static unsigned long long logReaderPasscodes[4] = {
 // Perform state persisting when your node is misaligned will also make your node misaligned after resuming.
 // Thus, picking various TICK_STORAGE_AUTOSAVE_TICK_PERIOD numbers across AUX nodes is recommended.
 // some suggested prime numbers you can try: 971 977 983 991 997
-#define TICK_STORAGE_AUTOSAVE_TICK_PERIOD 1000
+#define TICK_STORAGE_AUTOSAVE_TICK_PERIOD 1000
