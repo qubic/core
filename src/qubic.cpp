@@ -7860,6 +7860,12 @@ static void deinitialize()
     gAntPendingSolutions.deinit();
     gAntColony.deinit();
 
+#if USE_PARALLEL_K12_LEAVES
+    if (parallelK12Leaves.chainingValueBuffer)
+    {
+        freePool(parallelK12Leaves.chainingValueBuffer);
+    }
+#endif
     if (score)
     {
         freePool(score);
