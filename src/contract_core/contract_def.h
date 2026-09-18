@@ -433,7 +433,7 @@ constexpr struct ContractDescription
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
-    {"QTREAT", 231, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 222
+    {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
