@@ -9,6 +9,8 @@
 // MSVC: cl /O2 /arch:AVX2 /DNDEBUG /DNO_UEFI /I src /I . tools\k12_bench\k12_bench.cpp
 // Run pinned to one idle core, e.g.  taskset -c 2 ./k12_bench_avx2
 // File mode:  ./k12_bench_avx2 <helpers> contract0001.230 ...   (real state files, one-shot vs parallel)
+// Cache modes: ./k12_bench_avx2 selftest            (chaining-value cache vs one-shot, exit code = mismatches)
+//              ./k12_bench_avx2 cache <helpers>     (per-tick digest cost with the cache: clean, sparse, all dirty)
 
 #define NO_UEFI
 #ifndef NDEBUG
@@ -94,8 +96,191 @@ static int fileMode(int argc, char** argv)
     return mismatches ? 1 : 0;
 }
 
+static std::vector<unsigned char> pseudoRandom(size_t n, unsigned long long seed)
+{
+    std::vector<unsigned char> v(n);
+    for (size_t i = 0; i < n; i++)
+    {
+        seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+        v[i] = (unsigned char)(seed >> 56);
+    }
+    return v;
+}
+
+typedef ParallelK12LeafTasksT<ParallelK12LeafTasks::TASK_LEAVES, 64> CachePool;
+static CachePool cachePool;
+
+struct Helpers
+{
+    volatile bool stop = false;
+    std::vector<std::thread> threads;
+    Helpers(int count)
+    {
+        for (int i = 0; i < count; i++)
+            threads.emplace_back([&] { while (!stop) { if (!cachePool.tryProcessOne()) std::this_thread::yield(); } });
+    }
+    ~Helpers()
+    {
+        stop = true;
+        for (auto& h : threads) h.join();
+    }
+};
+
+struct CachedState
+{
+    std::vector<unsigned char> state, cvBuffer, poolScratch;
+    std::vector<unsigned long long> bitmap;
+    K12ChainingValueCache cache;
+    CachedState(size_t size, unsigned long long seed)
+        : state(pseudoRandom(size, seed)),
+          cvBuffer(K12ChainingValueCache::chainingValuesSize(size) + 1),
+          poolScratch(CachePool::chainingValueBufferSize(size)),
+          bitmap(K12ChainingValueCache::wordCountOf(size) + 1)
+    {
+        cachePool.init(poolScratch.data(), size);
+        cache.init(cvBuffer.data(), bitmap.data(), size);
+    }
+    bool digestMatchesOneShot()
+    {
+        unsigned char ref[32], out[32];
+        KangarooTwelve(state.data(), (unsigned int)state.size(), ref, 32);
+        cachePool.digest(state.data(), state.size(), cache, out);
+        return memcmp(ref, out, 32) == 0;
+    }
+    // write one byte at offset and report it
+    void write(size_t offset)
+    {
+        state[offset] ^= 0x5A;
+        cache.markDirtyBytes(offset, 1);
+    }
+};
+
+// Correctness of the chaining-value cache against one-shot K12. Returns the number of failures.
+static int selfTest()
+{
+    int failures = 0;
+    auto check = [&](bool ok, const char* what, size_t size, size_t detail)
+    {
+        if (!ok)
+        {
+            printf("FAIL %s size %zu detail %zu\n", what, size, detail);
+            failures++;
+        }
+    };
+    const size_t sizes[] = {0, 1, 4095, 4096, 4097, 8191, 8192, 8193, 12288, 16383, 16384, 16385, 24576, 24577,
+                            3 * 1024 * 1024 + 17, 3 * 1024 * 1024 + 8192, 40 * 1024 * 1024 + 4321};
+    unsigned long long seed = 7;
+    for (size_t size : sizes)
+    {
+        for (int helperCount : {0, 3})
+        {
+            Helpers helpers(helperCount);
+            CachedState cs(size, 0xC0FFEE + size);
+            check(cs.digestMatchesOneShot(), "initial (invalid cache)", size, helperCount);
+            check(cs.digestMatchesOneShot(), "unchanged", size, helperCount);
+            if (size)
+            {
+                // first chunk, either half of a leaf, tail, and the very last byte
+                const size_t leaves = (size_t)K12ChainingValueCache::leafCountOf(size);
+                std::vector<size_t> offsets = {0, size - 1};
+                if (size > 8192) offsets.push_back(8191);
+                if (leaves) { offsets.push_back(8192); offsets.push_back(8192 + 4096); offsets.push_back(8192 + 8191); }
+                if (leaves > 1) { offsets.push_back(8192 + 8192 * (leaves - 1) + 100); }
+                if (leaves) { offsets.push_back(8192 + 8192 * leaves); } // first tail byte (or last byte)
+                for (size_t off : offsets)
+                {
+                    if (off >= size) continue;
+                    cs.write(off);
+                    check(cs.digestMatchesOneShot(), "single write", size, off);
+                }
+                // two pages of the same leaf in one interval, then random repeated mutations
+                if (leaves) { cs.write(8192 + 10); cs.write(8192 + 4096 + 10); check(cs.digestMatchesOneShot(), "two pages one leaf", size, helperCount); }
+                for (int round = 0; round < 20; round++)
+                {
+                    const int writes = 1 + (int)(seed % 5);
+                    for (int w = 0; w < writes; w++)
+                    {
+                        seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+                        cs.write((size_t)((seed >> 20) % size));
+                    }
+                    check(cs.digestMatchesOneShot(), "random mutations", size, round);
+                }
+                cs.cache.invalidate();
+                check(cs.digestMatchesOneShot(), "forced invalidation", size, helperCount);
+                check(cs.cache.verifySample(cs.state.data(), 64, 1) == 0, "verifySample clean", size, helperCount);
+                // negative: an unreported write to a leaf must break the digest and be caught by a full sample
+                if (leaves)
+                {
+                    cs.state[8192 + 8192 * (leaves / 2) + 5] ^= 1;
+                    check(!cs.digestMatchesOneShot(), "unreported write goes unnoticed by digest", size, helperCount);
+                    check(cs.cache.verifySample(cs.state.data(), leaves * 8, 3) > 0, "verifySample misses unreported write", size, helperCount);
+                    cs.cache.invalidate();
+                    check(cs.digestMatchesOneShot(), "recover after invalidate", size, helperCount);
+                }
+            }
+        }
+    }
+    printf("selftest: %d failures\n", failures);
+    return failures;
+}
+
+// Per-tick cost of the cached digest on a 600 MiB state: no change, N dirty 4 KiB pages, all dirty.
+static int cacheBench(int helperCount)
+{
+    const size_t size = 600u << 20;
+    CachedState cs(size, 42);
+    Helpers helpers(helperCount);
+    unsigned char ref[32], out[32];
+    long long oneShotUs = -1;
+    for (int rep = 0; rep < 3; rep++)
+    {
+        const long long us = timeOnce([&] { KangarooTwelve(cs.state.data(), (unsigned int)size, ref, 32); });
+        if (oneShotUs < 0 || us < oneShotUs) oneShotUs = us;
+    }
+    printf("cache bench: 600 MiB state, %d helpers, one-shot 1 core %lld ms\n", helperCount, oneShotUs / 1000);
+    auto scenario = [&](const char* name, auto mutate)
+    {
+        long long best = -1;
+        bool ok = true;
+        for (int rep = 0; rep < 5; rep++)
+        {
+            mutate(rep);
+            const long long us = timeOnce([&] { cachePool.digest(cs.state.data(), size, cs.cache, out); });
+            KangarooTwelve(cs.state.data(), (unsigned int)size, ref, 32);
+            ok = ok && memcmp(ref, out, 32) == 0;
+            if (best < 0 || us < best) best = us;
+        }
+        printf("  %-28s %9.2f ms  %7.1fx  %s\n", name, best / 1000.0, (double)oneShotUs / (best ? best : 1), ok ? "ok" : "MISMATCH");
+        return ok ? 0 : 1;
+    };
+    unsigned long long seed = 99;
+    auto dirtyPages = [&](int pages)
+    {
+        for (int p = 0; p < pages; p++)
+        {
+            seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+            const size_t page = (size_t)((seed >> 20) % (size / 4096));
+            cs.state[page * 4096 + 7] ^= 0x33;
+            cs.cache.markDirtyBytes(page * 4096, 4096);
+        }
+    };
+    int failures = 0;
+    cs.digestMatchesOneShot(); // warm: cache valid
+    failures += scenario("no change", [&](int) {});
+    failures += scenario("1 dirty page", [&](int) { dirtyPages(1); });
+    failures += scenario("64 dirty pages", [&](int) { dirtyPages(64); });
+    failures += scenario("1024 dirty pages", [&](int) { dirtyPages(1024); });
+    failures += scenario("16384 dirty pages", [&](int) { dirtyPages(16384); });
+    failures += scenario("all dirty (invalidate)", [&](int) { cs.cache.invalidate(); });
+    return failures;
+}
+
 int main(int argc, char** argv)
 {
+    if (argc >= 2 && strcmp(argv[1], "selftest") == 0)
+        return selfTest();
+    if (argc >= 3 && strcmp(argv[1], "cache") == 0)
+        return cacheBench(atoi(argv[2]));
     if (argc >= 3)
         return fileMode(argc, argv);
     constexpr int repetitions = 7;

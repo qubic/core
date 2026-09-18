@@ -28,6 +28,10 @@
 // could stay in the store buffer while the ticker already reads busy == 0, letting a worker slip
 // into a range that is about to be replaced.
 //
+// K12ChainingValueCache keeps the chaining values of one state between digests: with a dirty-leaf
+// bitmap filled by the caller, digest(state, size, cache, out) rehashes only the written leaves and
+// absorbs the cached rest, still bit-identical to the one-shot digest. See the struct for the invariant.
+//
 // Disable via USE_PARALLEL_K12_LEAVES in private_settings.h; getComputerDigest() then hashes on
 // the tick processor as before. PARALLEL_K12_LEAVES_MAX_HELPERS caps the request processors that
 // hash at the same time; the others keep serving requests.
@@ -55,6 +59,129 @@
 #define PARALLEL_K12_LEAVES_MAX_HELPERS 8
 #endif
 
+// Persistent chaining values of one contract state. The K12 tree shape is fixed: after the first
+// K12_chunkSize bytes, every full K12_chunkSize leaf yields a 32-byte chaining value that depends on
+// that leaf alone. Keeping them between ticks turns the digest into "rehash the leaves that were
+// written, then absorb all chaining values", with the first chunk and the trailing partial leaf always
+// re-read from the state. The result stays bit-identical to KangarooTwelve(state, size, out, 32).
+//
+// Invariant the caller must uphold: every byte written since the last digest() has either been reported
+// via markDirtyBytes()/markDirtyLeaf() or the cache has been invalidate()d. Writes to the first chunk
+// or the tail need no report. Dirty bits stay set until a digest() consumes them.
+struct K12ChainingValueCache
+{
+    unsigned char* chainingValues = nullptr;    // leafCount * K12_capacityInBytes
+    unsigned long long* dirtyLeaves = nullptr;  // one bit per leaf, wordCount(size) words
+    unsigned long long leafCount = 0;
+    unsigned long long stateSize = 0;
+    volatile bool valid = false;                // false: every leaf is rehashed by the next digest()
+
+    static unsigned long long leafCountOf(unsigned long long size)
+    {
+        return size > K12_chunkSize ? (size - K12_chunkSize) / K12_chunkSize : 0;
+    }
+    static unsigned long long wordCountOf(unsigned long long size)
+    {
+        return (leafCountOf(size) + 63) / 64;
+    }
+    static unsigned long long chainingValuesSize(unsigned long long size)
+    {
+        return leafCountOf(size) * K12_capacityInBytes;
+    }
+    static unsigned long long dirtyBitmapSize(unsigned long long size)
+    {
+        return wordCountOf(size) * sizeof(unsigned long long);
+    }
+
+    void init(unsigned char* chainingValueBuffer, unsigned long long* dirtyBitmapBuffer, unsigned long long size)
+    {
+        chainingValues = chainingValueBuffer;
+        dirtyLeaves = dirtyBitmapBuffer;
+        leafCount = leafCountOf(size);
+        stateSize = size;
+        invalidate();
+    }
+
+    // Forget everything: the next digest() rehashes all leaves. Use after any write that was not tracked
+    // (state load, migration, snapshot restore, tracking failure, epoch transition).
+    void invalidate()
+    {
+        valid = false;
+    }
+
+    void markDirtyLeaf(unsigned long long leaf)
+    {
+        ASSERT(leaf < leafCount);
+        dirtyLeaves[leaf >> 6] |= (1ULL << (leaf & 63));
+    }
+
+    // Report a written byte range [offset, offset + length). Bytes outside the leaf region (first chunk,
+    // tail) are ignored: they are always re-read.
+    void markDirtyBytes(unsigned long long offset, unsigned long long length)
+    {
+        if (!length || !leafCount)
+        {
+            return;
+        }
+        const unsigned long long end = offset + length; // exclusive
+        const unsigned long long leavesBegin = K12_chunkSize;
+        const unsigned long long leavesEnd = K12_chunkSize + leafCount * K12_chunkSize;
+        if (end <= leavesBegin || offset >= leavesEnd)
+        {
+            return;
+        }
+        const unsigned long long first = (offset > leavesBegin ? offset - leavesBegin : 0) / K12_chunkSize;
+        const unsigned long long last = ((end < leavesEnd ? end : leavesEnd) - leavesBegin - 1) / K12_chunkSize;
+        for (unsigned long long leaf = first; leaf <= last; leaf++)
+        {
+            markDirtyLeaf(leaf);
+        }
+    }
+
+    bool isDirtyLeaf(unsigned long long leaf) const
+    {
+        return (dirtyLeaves[leaf >> 6] >> (leaf & 63)) & 1;
+    }
+
+    void clearDirty()
+    {
+        setMem(dirtyLeaves, dirtyBitmapSize(stateSize), 0);
+    }
+
+    // Debug/validation: recompute `sampleCount` pseudo-randomly chosen leaves that are currently marked
+    // clean and compare against the cached chaining values. Returns the number of mismatches. A mismatch
+    // means a write reached the state without being reported (broken dirty tracking).
+    unsigned long long verifySample(const unsigned char* state, unsigned long long sampleCount, unsigned long long seed) const
+    {
+        if (!valid || !leafCount)
+        {
+            return 0;
+        }
+        unsigned long long mismatches = 0;
+        for (unsigned long long k = 0; k < sampleCount; k++)
+        {
+            seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+            const unsigned long long leaf = (seed >> 17) % leafCount;
+            if (isDirtyLeaf(leaf))
+            {
+                continue;
+            }
+            unsigned char cv[K12_capacityInBytes];
+            KangarooTwelveLeaf(state + K12_chunkSize + leaf * K12_chunkSize, cv);
+            const unsigned char* cached = chainingValues + leaf * K12_capacityInBytes;
+            for (unsigned int i = 0; i < K12_capacityInBytes; i++)
+            {
+                if (cv[i] != cached[i])
+                {
+                    mismatches++;
+                    break;
+                }
+            }
+        }
+        return mismatches;
+    }
+};
+
 template <unsigned int TASK_LEAVES_ = 64, unsigned int MAX_HELPERS_ = PARALLEL_K12_LEAVES_MAX_HELPERS>
 struct ParallelK12LeafTasksT
 {
@@ -64,6 +191,7 @@ struct ParallelK12LeafTasksT
     // the published range: task i covers leaves [i * TASK_LEAVES, (i + 1) * TASK_LEAVES)
     const unsigned char* volatile leaves = nullptr;
     unsigned char* volatile chainingValues = nullptr;
+    const unsigned long long* volatile dirtyLeaves = nullptr;   // null: every leaf of the range is hashed
     volatile long taskCount = 0;
     volatile long lastTaskLeaves = 0;   // leaves in the last task (1..TASK_LEAVES)
 
@@ -86,6 +214,7 @@ struct ParallelK12LeafTasksT
         maxStateSize = maxStateSize_;
         leaves = nullptr;
         chainingValues = nullptr;
+        dirtyLeaves = nullptr;
         taskCount = 0;
         lastTaskLeaves = 0;
         nextTask = 0;
@@ -144,10 +273,44 @@ struct ParallelK12LeafTasksT
         stream.finalize(output32);
     }
 
+    // Tick processor: digest of `size` bytes of state through a persistent cache, bit-identical to
+    // KangarooTwelve(state, size, out, 32). Only leaves marked dirty in the cache (or all of them if the
+    // cache is invalid) are rehashed; the first chunk and the trailing partial leaf are always re-read.
+    // On return the cache is valid and its dirty bits are cleared. Same lock rule as digest() above.
+    void digest(const unsigned char* state, unsigned long long size, K12ChainingValueCache& cache, void* output32)
+    {
+        ASSERT(size <= maxStateSize);
+        ASSERT(cache.stateSize == size);
+        ASSERT(cache.leafCount == K12ChainingValueCache::leafCountOf(size));
+        KangarooTwelveStream stream;
+        stream.init();
+        if (size <= K12_chunkSize)
+        {
+            stream.update(state, size);
+            stream.finalize(output32);
+            cache.valid = true;
+            return;
+        }
+        const unsigned long long leafCount = cache.leafCount;
+        hashLeaves(state + K12_chunkSize, leafCount, cache.chainingValues, cache.valid ? cache.dirtyLeaves : nullptr);
+        cache.clearDirty();
+        cache.valid = true;
+
+        stream.update(state, K12_chunkSize);
+        for (unsigned long long k = 0; k < leafCount; k++)
+        {
+            stream.absorbChainingValue(cache.chainingValues + k * K12_capacityInBytes);
+        }
+        const unsigned long long tail = K12_chunkSize + leafCount * K12_chunkSize;
+        stream.update(state + tail, size - tail);
+        stream.finalize(output32);
+    }
+
     // Tick processor: chaining values of leafCount consecutive full leaves into chainingValues_ (32 bytes
-    // each), using this core plus the request processors that call tryProcessOne(). Returns when all
+    // each), using this core plus the request processors that call tryProcessOne(). With a dirty bitmap
+    // only the leaves whose bit is set are hashed, the other slots are left untouched. Returns when all
     // chaining values are stored and no worker is inside the pool any more.
-    void hashLeaves(const unsigned char* leaves_, unsigned long long leafCount, unsigned char* chainingValues_)
+    void hashLeaves(const unsigned char* leaves_, unsigned long long leafCount, unsigned char* chainingValues_, const unsigned long long* dirtyLeaves_ = nullptr)
     {
         if (!leafCount)
         {
@@ -160,6 +323,7 @@ struct ParallelK12LeafTasksT
         }
         leaves = leaves_;
         chainingValues = chainingValues_;
+        dirtyLeaves = dirtyLeaves_;
         taskCount = (long)((leafCount + TASK_LEAVES - 1) / TASK_LEAVES);
         lastTaskLeaves = (long)(leafCount - (unsigned long long)(taskCount - 1) * TASK_LEAVES);
         nextTask = 0;
@@ -192,8 +356,18 @@ private:
         const unsigned int count = (i == taskCount - 1) ? (unsigned int)lastTaskLeaves : TASK_LEAVES;
         const unsigned char* leaf = leaves + (unsigned long long)i * TASK_LEAVES * K12_chunkSize;
         unsigned char* chainingValue = chainingValues + (unsigned long long)i * TASK_LEAVES * K12_capacityInBytes;
+        const unsigned long long* dirty = dirtyLeaves;
+        const unsigned long long firstLeaf = (unsigned long long)i * TASK_LEAVES;
         for (unsigned int k = 0; k < count; k++)
         {
+            if (dirty)
+            {
+                const unsigned long long l = firstLeaf + k;
+                if (!((dirty[l >> 6] >> (l & 63)) & 1))
+                {
+                    continue;
+                }
+            }
             KangarooTwelveLeaf(leaf + (unsigned long long)k * K12_chunkSize, chainingValue + k * K12_capacityInBytes);
         }
         PK12_ADD32(&completedCount, 1);
