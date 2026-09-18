@@ -98,6 +98,16 @@ public:
 
         LockGuard guard(random2PoolLock);
         copyMem(poolVec, externalPoolVec, score_engine::POOL_VEC_PADDING_SIZE);
+
+        // The control/output neurons are global for the epoch, derived from the digest alone; set them in
+        // every compute buffer now that the digest and pool are established.
+        if (!isZero(randomSeed))
+        {
+            for (unsigned long long i = 0; i < solutionBufferCount; i++)
+            {
+                _computeBuffer[i].deriveControlOutput(currentRandomSeed.m256i_u8, poolVec);
+            }
+        }
     }
 
     // Load the task blocks into every compute buffer; returns false if any leaf rejects them.
@@ -203,8 +213,9 @@ public:
 
     // Ant colony main score function
     // score a child by inheriting its parent's network and walking it with the child's own seeds.
-    // parentAnn == nullptr means the parent is the epoch root, which is derived here from the
-    // epoch-start spectrum digest (currentRandomSeed) and is identical for every identity
+    // parentAnn == nullptr means the parent is the identity's root, derived here from the identity's
+    // public key (the epoch pool from the spectrum digest supplies the random bytes), so each identity's
+    // tree starts from its own root.
     // Returns INVALID_SCORE_VALUE for a non-canonical nonce, in which case outChildAnn is not written
     // bestANN would still hold the previous call's network, and committing that would put one node's
     // stale bytes into childAnnHash.
@@ -223,10 +234,10 @@ public:
         // Derived into this slot's scratch rather than the engine's own buffer: deriveRootANN() uses
         // currentANN as working space
         const score_engine::ScoreBpp9000T::ANN* parent = parentAnn;
-        // Depth 1, the shared epoch root every identity starts from
+        // Depth 1: the identity's own root, derived from its public key
         if (parent == nullptr)
         {
-            engine.deriveAntRootANN(currentRandomSeed.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
+            engine.deriveAntRootANN(publicKey.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
             parent = &_antRootScratch[solutionBufIdx];
         }
 

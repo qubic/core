@@ -28,6 +28,12 @@ struct ScoreEngine
         return _bpp9000Score.loadTaskFromMemory(topoBlock, dataBlock);
     }
 
+    // Derive the epoch's global control/output neurons from the digest; run once per epoch before scoring.
+    void deriveControlOutput(const unsigned char* digest, const unsigned char* randomPool)
+    {
+        _bpp9000Score.deriveControlOutput(digest, randomPool);
+    }
+
     unsigned int computeNeuraxonScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
     {
         // Neuraxon is a reserved placeholder - never executed, never yields a valid score.
@@ -80,8 +86,8 @@ struct ScoreEngine
         }
     }
 
-    // Ant colony: the shared per-epoch network every identity's tree starts from; rootSeed is the
-    // epoch-start spectrum digest
+    // Ant colony: the identity's root network its tree starts from; rootSeed is the identity public key
+    // (the random pool, built from the epoch-start spectrum digest, supplies the bytes)
     void deriveAntRootANN(const unsigned char* rootSeed, const unsigned char* randomPool, AntAnn& out)
     {
         _bpp9000Score.deriveRootANN(rootSeed, randomPool, out);
