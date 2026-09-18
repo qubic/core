@@ -157,6 +157,10 @@ static bool initTcp4(unsigned short local_port)
 
 static void deinitTcp4()
 {
+    if (!peerChildHandle)
+    {
+        return; // initTcp4() did not complete
+    }
     bs->CloseProtocol(peerChildHandle, &tcp4ProtocolGuid, ih, NULL);
     tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peerChildHandle);
 }

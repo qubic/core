@@ -1292,7 +1292,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 peers[i].isOcMachine = FALSE;
                 // randomly select public peer and try to connect if we do not
                 // yet have an outgoing connection to it
-                peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
+                peers[i].address.u32 = numberOfPublicPeers ? publicPeers[random(numberOfPublicPeers)].address.u32 : 0; // random(0) divides by zero
             }
 
             if (peers[i].address.u32 != 0)
