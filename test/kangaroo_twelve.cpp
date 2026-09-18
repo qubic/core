@@ -613,3 +613,122 @@ TEST(TestCoreK12, ParallelLeafPoolNoReaderAfterDigestReturns)
     for (auto& h : helpers)
         h.join();
 }
+
+namespace
+{
+    struct CachedTestState
+    {
+        std::vector<unsigned char> state, cvBuffer;
+        std::vector<unsigned long long> bitmap;
+        K12ChainingValueCache cache;
+        CachedTestState(size_t size, unsigned long long seed)
+            : state(pseudoRandom(size, seed)),
+              cvBuffer(K12ChainingValueCache::chainingValuesSize(size) + 1),
+              bitmap(K12ChainingValueCache::wordCountOf(size) + 1)
+        {
+            cache.init(cvBuffer.data(), bitmap.data(), size);
+        }
+        template <class Pool>
+        std::string cachedDigest(Pool& pool, int helperCount)
+        {
+            volatile bool stop = false;
+            std::vector<std::thread> helpers;
+            for (int i = 0; i < helperCount; i++)
+            {
+                helpers.emplace_back([&] {
+                    while (!stop)
+                    {
+                        if (!pool.tryProcessOne())
+                            std::this_thread::yield();
+                    }
+                });
+            }
+            unsigned char out[32];
+            pool.digest(state.data(), state.size(), cache, out);
+            stop = true;
+            for (auto& h : helpers)
+                h.join();
+            return toHex(out, 32);
+        }
+        void write(size_t offset)
+        {
+            state[offset] ^= 0x5A;
+            cache.markDirtyBytes(offset, 1);
+        }
+    };
+}
+
+// The persistent chaining-value cache must reproduce the one-shot digest after any sequence of reported
+// writes: first chunk, either half of a leaf, tail, the last byte, several pages of one leaf, random
+// mutations, unchanged re-digests and forced invalidation.
+TEST(TestCoreK12, ChainingValueCacheMatchesOneShot)
+{
+    typedef ParallelK12LeafTasksT<2, 7> SmallPool;
+    static SmallPool pool;
+    const size_t sizes[] = {0, 1, 4095, 4096, 4097, 8191, 8192, 8193, 12288, 16383, 16384, 16385, 24576, 24577,
+                            3 * 1024 * 1024 + 17, 3 * 1024 * 1024 + 8192};
+    std::vector<unsigned char> scratch(SmallPool::chainingValueBufferSize(4 * 1024 * 1024));
+    pool.init(scratch.data(), 4 * 1024 * 1024);
+    unsigned long long seed = 11;
+    for (size_t size : sizes)
+    {
+        for (int helperCount : {0, 3})
+        {
+            CachedTestState cs(size, 0xC0FFEE + size);
+            EXPECT_EQ(cs.cachedDigest(pool, helperCount), oneShot(cs.state.data(), size)) << "initial, size " << size;
+            EXPECT_EQ(cs.cachedDigest(pool, helperCount), oneShot(cs.state.data(), size)) << "unchanged, size " << size;
+            if (!size)
+                continue;
+            const size_t leaves = (size_t)K12ChainingValueCache::leafCountOf(size);
+            std::vector<size_t> offsets = {0, size - 1};
+            if (size > 8192) offsets.push_back(8191);
+            if (leaves) { offsets.push_back(8192); offsets.push_back(8192 + 4096); offsets.push_back(8192 + 8191); offsets.push_back(8192 + 8192 * leaves); }
+            if (leaves > 1) offsets.push_back(8192 + 8192 * (leaves - 1) + 100);
+            for (size_t off : offsets)
+            {
+                if (off >= size)
+                    continue;
+                cs.write(off);
+                EXPECT_EQ(cs.cachedDigest(pool, helperCount), oneShot(cs.state.data(), size)) << "write at " << off << ", size " << size;
+            }
+            if (leaves)
+            {
+                cs.write(8192 + 10);
+                cs.write(8192 + 4096 + 10);
+                EXPECT_EQ(cs.cachedDigest(pool, helperCount), oneShot(cs.state.data(), size)) << "two pages of one leaf, size " << size;
+            }
+            for (int round = 0; round < 20; round++)
+            {
+                const int writes = 1 + (int)(seed % 5);
+                for (int w = 0; w < writes; w++)
+                {
+                    seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+                    cs.write((size_t)((seed >> 20) % size));
+                }
+                EXPECT_EQ(cs.cachedDigest(pool, helperCount), oneShot(cs.state.data(), size)) << "random round " << round << ", size " << size;
+            }
+            cs.cache.invalidate();
+            EXPECT_EQ(cs.cachedDigest(pool, helperCount), oneShot(cs.state.data(), size)) << "after invalidate, size " << size;
+            EXPECT_EQ(cs.cache.verifySample(cs.state.data(), 64, 1), 0ULL) << "size " << size;
+        }
+    }
+}
+
+// An unreported write to a leaf silently breaks the cached digest; verifySample() over enough leaves
+// catches it, and invalidate() recovers. This is the failure mode hardware dirty tracking must never cause.
+TEST(TestCoreK12, ChainingValueCacheDetectsUnreportedWrite)
+{
+    typedef ParallelK12LeafTasksT<2, 7> SmallPool;
+    static SmallPool pool;
+    const size_t size = 1024 * 1024 + 8192 + 3;
+    std::vector<unsigned char> scratch(SmallPool::chainingValueBufferSize(size));
+    pool.init(scratch.data(), size);
+    CachedTestState cs(size, 5);
+    EXPECT_EQ(cs.cachedDigest(pool, 3), oneShot(cs.state.data(), size));
+    const size_t leaves = (size_t)K12ChainingValueCache::leafCountOf(size);
+    cs.state[8192 + 8192 * (leaves / 2) + 5] ^= 1; // not reported
+    EXPECT_NE(cs.cachedDigest(pool, 3), oneShot(cs.state.data(), size));
+    EXPECT_GT(cs.cache.verifySample(cs.state.data(), leaves * 8, 3), 0ULL);
+    cs.cache.invalidate();
+    EXPECT_EQ(cs.cachedDigest(pool, 3), oneShot(cs.state.data(), size));
+}
