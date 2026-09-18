@@ -459,6 +459,12 @@
     <ClInclude Include="optimizations\opt_parallel_k12_leaves.h">
       <Filter>optimizations</Filter>
     </ClInclude>
+    <ClInclude Include="optimizations\opt_k12_state_cache.h">
+      <Filter>optimizations</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\page_tables.h">
+      <Filter>platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
