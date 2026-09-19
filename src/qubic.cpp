@@ -7239,13 +7239,20 @@ static bool loadBpp9000Task()
 {
     const unsigned int N = (unsigned int)BPP9000_NUMBER_OF_INPUT_NEURONS;
     const unsigned int M = (unsigned int)BPP9000_NUMBER_OF_OUTPUT_NEURONS;
-    const unsigned int P = (unsigned int)BPP9000_POPULATION_THRESHOLD;
-    const unsigned int K = (unsigned int)BPP9000_NUMBER_OF_NEIGHBORS;
     const unsigned long long T = BPP9000_SEQUENCE_LENGTH;
-
-    const unsigned long long topoBytes = score_task_file::topologyBytes(N, M, P, K);
-    const unsigned long long dataBytes = score_task_file::dataBytes(N, M, T);
     const unsigned long long headerBytes = sizeof(score_task_file::TaskFileHeader);
+
+    // Read the header first: the topology block is sized by the file's own population, which need not match
+    // the configured one (the wiring comes from the pubkey, not the task).
+    score_task_file::TaskFileHeader fileHeader;
+    if (load(SCORE_BPP9000_TASK_FILE_NAME, headerBytes, (unsigned char*)&fileHeader, NULL) != (long long)headerBytes)
+    {
+        logToConsole(L"bpp9000 task file missing or too short - node will not do score verification.");
+        return false;
+    }
+    const unsigned long long topoBytes = score_task_file::topologyBytes(
+        fileHeader.numInputTrits, fileHeader.numOutputTrits, fileHeader.population, fileHeader.numNeighbors);
+    const unsigned long long dataBytes = score_task_file::dataBytes(N, M, T);
     const unsigned long long totalBytes = headerBytes + topoBytes + dataBytes;
 
     if (!allocPoolWithErrorLog(L"bpp9000Task", totalBytes, (void**)&gBpp9000TaskBuffer, __LINE__))
@@ -7265,19 +7272,28 @@ static bool loadBpp9000Task()
         const unsigned char* topoBlock = gBpp9000TaskBuffer + headerBytes;
         const unsigned char* dataBlock = topoBlock + topoBytes;
 
-        unsigned char topoHash[32];
         unsigned char dataHash[32];
-        KangarooTwelve(topoBlock, (unsigned int)topoBytes, topoHash, 32);
         KangarooTwelve(dataBlock, (unsigned int)dataBytes, dataHash, 32);
+#if BPP9000_TASK_HAS_TOPOLOGY
+        unsigned char topoHash[32];
+        KangarooTwelve(topoBlock, (unsigned int)topoBytes, topoHash, 32);
+#endif
 
         if (h->magic != score_task_file::MAGIC || h->version != score_task_file::VERSION
-            || h->numInputTrits != N || h->numOutputTrits != M || h->population != P
-            || h->numNeighbors != K || h->numPairs < T)
+            || h->numInputTrits != N || h->numOutputTrits != M
+#if BPP9000_TASK_HAS_TOPOLOGY
+            || h->population != (unsigned int)BPP9000_POPULATION_THRESHOLD
+            || h->numNeighbors != (unsigned int)BPP9000_NUMBER_OF_NEIGHBORS
+#endif
+            || h->numPairs < T)
         {
             logToConsole(L"bpp9000 task header does not match configured parameters - node will not do score verification.");
         }
-        else if (*(const m256i*)topoHash != *(const m256i*)BPP9000_TOPOLOGY_HASH
-              || *(const m256i*)dataHash != *(const m256i*)BPP9000_DATA_HASH)
+        else if (
+#if BPP9000_TASK_HAS_TOPOLOGY
+                 *(const m256i*)topoHash != *(const m256i*)BPP9000_TOPOLOGY_HASH ||
+#endif
+                 *(const m256i*)dataHash != *(const m256i*)BPP9000_DATA_HASH)
         {
             logToConsole(L"bpp9000 task hash mismatch (not the pinned canonical task) - node will not do score verification.");
         }
@@ -7311,9 +7327,9 @@ static bool applyBpp9000Task()
         return false;
     }
     const unsigned long long headerBytes = sizeof(score_task_file::TaskFileHeader);
+    const score_task_file::TaskFileHeader* h = (const score_task_file::TaskFileHeader*)gBpp9000TaskBuffer;
     const unsigned long long topoBytes = score_task_file::topologyBytes(
-        (unsigned int)BPP9000_NUMBER_OF_INPUT_NEURONS, (unsigned int)BPP9000_NUMBER_OF_OUTPUT_NEURONS,
-        (unsigned int)BPP9000_POPULATION_THRESHOLD, (unsigned int)BPP9000_NUMBER_OF_NEIGHBORS);
+        h->numInputTrits, h->numOutputTrits, h->population, h->numNeighbors);
     const unsigned char* topoBlock = gBpp9000TaskBuffer + headerBytes;
     const unsigned char* dataBlock = topoBlock + topoBytes;
     return score->loadTask(topoBlock, dataBlock);
