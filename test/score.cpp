@@ -245,18 +245,19 @@ struct TaskBlocks
 template<typename Cfg>
 static TaskBlocks taskSubview(const std::vector<unsigned char>& taskBytes)
 {
-    // The subview only offsets by T; the config's N/M/P/K must equal the task file's - P and K are NOT
-    // sub-viewable (the wiring is global). Fail loudly on a mismatch instead of pointing into garbage.
+    // The config's N/M must equal the task file's; the data is offset past the topology, sized by the
+    // file's own header (so a task written at any population subviews correctly).
     const score_task_file::TaskFileHeader* h = (const score_task_file::TaskFileHeader*)taskBytes.data();
-    EXPECT_EQ(h->population, (unsigned int)Cfg::populationThreshold) << "task file P != config P";
     EXPECT_EQ(h->numInputTrits, (unsigned int)Cfg::numberOfInputNeurons) << "task file N != config N";
     EXPECT_EQ(h->numOutputTrits, (unsigned int)Cfg::numberOfOutputNeurons) << "task file M != config M";
-    EXPECT_EQ(h->numNeighbors, (unsigned int)Cfg::numberOfNeighbors) << "task file K != config K";
     EXPECT_GE(h->numPairs, (unsigned long long)Cfg::sequenceLength) << "task file T < config T";
+#if BPP9000_TASK_HAS_TOPOLOGY
+    EXPECT_EQ(h->population, (unsigned int)Cfg::populationThreshold) << "task file P != config P";
+    EXPECT_EQ(h->numNeighbors, (unsigned int)Cfg::numberOfNeighbors) << "task file K != config K";
+#endif
 
     const unsigned long long topoBytes = score_task_file::topologyBytes(
-        (unsigned int)Cfg::numberOfInputNeurons, (unsigned int)Cfg::numberOfOutputNeurons,
-        (unsigned int)Cfg::populationThreshold, (unsigned int)Cfg::numberOfNeighbors);
+        h->numInputTrits, h->numOutputTrits, h->population, h->numNeighbors);
     const unsigned char* topo = taskBytes.data() + sizeof(score_task_file::TaskFileHeader);
     return { topo, topo + topoBytes };
 }
