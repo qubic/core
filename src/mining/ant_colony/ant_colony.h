@@ -31,7 +31,13 @@ static constexpr unsigned int ANT_EXPORT_MAX_SOLUTIONS = NUMBER_OF_COMPUTORS;
 
 // Serial scratch for the save/load header (meta + anchor ring + export set) and the solution export.
 // In case of this grow to large, consider use the one in common buffer
-static constexpr unsigned long long ANT_SNAPSHOT_SCRATCH_BYTES = 2ULL * 1024 * 1024; // 2MB
+// Staging buffer for one export blob: a header plus one full ANN per computor, so it scales with population.
+static constexpr unsigned long long ANT_EXPORT_ANN_BYTES =
+    BPP9000_POPULATION_THRESHOLD * BPP9000_NUMBER_OF_NEIGHBORS * sizeof(unsigned short)   // wiring
+    + BPP9000_POPULATION_THRESHOLD                                                        // start state
+    + BPP9000_POPULATION_THRESHOLD * 27;                                                  // LUTs, 3^3 lines each
+static constexpr unsigned long long ANT_SNAPSHOT_SCRATCH_BYTES =
+    (2ULL * 1024 * 1024) + (unsigned long long)NUMBER_OF_COMPUTORS * (ANT_EXPORT_ANN_BYTES + 64);
 
 static constexpr unsigned int NO_SIBLING = 0xFFFFFFFFU;
 static constexpr unsigned int WORST_SCORE = 0xFFFFFFFFU;

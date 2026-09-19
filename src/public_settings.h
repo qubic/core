@@ -129,8 +129,8 @@ static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
 static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 28;
 static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
 static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
-static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 64;
-static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 1024;
+static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
 // Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
 // better, and a solution passes when score <= threshold.
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
@@ -145,11 +145,11 @@ static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;
 static constexpr unsigned int ANT_MAX_CHILDREN_PER_PARENT = 0;
 
 // Ant colony: tree nodes recorded per epoch; one per accepted solution.
-static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
+static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 19;
 
 // Ant colony: replay-cache entries, scores this node already computed so a restart does not
 // recompute them. Node-local, not consensus; a miss only costs time.
-static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 20;
+static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 19;
 static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
     "ANT_REPLAY_CACHE_SIZE must be a power of two, the slot index masks with it");
 
