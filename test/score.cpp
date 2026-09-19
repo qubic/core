@@ -294,6 +294,8 @@ static void runRegressionConfig(const std::vector<m256i>& seeds, const std::vect
         {
             return;
         }
+        // All samples share one mining seed, so the epoch's control/output is derived once here.
+        engine->deriveControlOutput(seeds[0].m256i_u8, pool.data());
         for (unsigned long long s = threadIdx; s < seeds.size(); s += numThreads)
         {
             const m256i& n = nonces[s];
@@ -326,6 +328,8 @@ static void runRefVsEngineConfig(const std::vector<m256i>& seeds, const std::vec
         {
             return;
         }
+        // The engine needs control/output derived explicitly; the reference folds it into initialize().
+        engine->deriveControlOutput(seeds[0].m256i_u8, enginePool.data());
         auto ref = std::make_unique<score_bpp9000_reference::Miner<Cfg>>();
         ref->initialize(seeds[0].m256i_u8);   // reference's own pool (own generator), once per thread
         if (!ref->loadTaskFromMemory(topo.data(), data.data()))
@@ -440,7 +444,10 @@ TEST(TestQubicScoreFunction, Bpp9000ProductionRegression)
         }
         for (unsigned long long s = threadIdx; s < pubkeys.size(); s += numThreads)
         {
-            const unsigned int score = engine->computeScore(pubkeys[s].m256i_u8, nonces[s].m256i_u8, pools[poolIndex[s]].data());
+            const unsigned char* pool = pools[poolIndex[s]].data();
+            // Control/output come from the mining seed (as the tool's initialize did); derive before scoring.
+            engine->deriveControlOutput(uniqueSeeds[poolIndex[s]].m256i_u8, pool);
+            const unsigned int score = engine->computeScore(pubkeys[s].m256i_u8, nonces[s].m256i_u8, pool);
             EXPECT_EQ(score, golden[s]) << "gt_production row " << s;
         }
     });
@@ -545,8 +552,11 @@ TEST(TestQubicScoreFunction, Bpp9000AntColonyRegression)
             const AntChain& chain = chains[ci];
             const unsigned char* pool = pools[chain.poolIndex].data();
 
+            // Control/output from the mining seed, then the identity's own root from its public key.
+            engine->deriveControlOutput(uniqueSeeds[chain.poolIndex].m256i_u8, pool);
+
             score_engine::ScoreBpp9000<ProductionConfig>::ANN parent;
-            engine->deriveRootANN(uniqueSeeds[chain.poolIndex].m256i_u8, pool, parent);   // depth 0's parent = the shared epoch root
+            engine->deriveRootANN(chain.pubkey.m256i_u8, pool, parent);   // depth 0's parent = this identity's own root
             for (size_t d = 0; d < chain.nodes.size(); ++d)
             {
                 const AntNode& node = chain.nodes[d];
@@ -571,7 +581,7 @@ TEST(TestQubicScoreFunction, Bpp9000EngineVsReference)
     }
 }
 
-static void runBpp9000Profile()
+static void runBpp9000ProfileForMode(unsigned char mode, const char* modeName)
 {
     using Cfg = ProductionConfig;
 
@@ -580,6 +590,12 @@ static void runBpp9000Profile()
     if (seeds.empty())
     {
         return;
+    }
+
+    // Force every sample onto the requested mode, keeping its L, so each mode's cost is timed on the same inputs.
+    for (m256i& n : nonces)
+    {
+        n.m256i_u8[1] = (unsigned char)((n.m256i_u8[1] & 0x0F) | (mode << 4));
     }
 
     std::vector<unsigned char> pool;
@@ -610,6 +626,7 @@ static void runBpp9000Profile()
         {
             return;
         }
+        engine->deriveControlOutput(seeds[0].m256i_u8, pool.data());
         for (unsigned long long s = threadIdx; s < seeds.size(); s += nThreads)
         {
             const m256i& n = nonces[s];
@@ -633,7 +650,7 @@ static void runBpp9000Profile()
     }
     const double avgMs = (totalCount > 0) ? (totalMs / (double)totalCount) : 0.0;
 
-    std::cout << "[bpp9000 profile] config "
+    std::cout << "[bpp9000 profile] mode " << modeName << " config "
               << Cfg::numberOfInputNeurons << "-" << Cfg::numberOfOutputNeurons << "-" << Cfg::sequenceLength
               << "-" << Cfg::windowWidth << "-" << Cfg::maxNumberOfTicks << "-" << Cfg::numberOfNeighbors
               << "-" << Cfg::populationThreshold << "-" << Cfg::numberOfMutations << "-" << Cfg::solutionThreshold
@@ -671,19 +688,21 @@ static void runBpp9000Profile()
         scoreMin = 0;
     }
 
-    std::cout << "[bpp9000 profile] score (valid " << validCount << ", timeout " << timeoutCount << ")"
+    std::cout << "[bpp9000 profile] mode " << modeName << " score (valid " << validCount << ", timeout " << timeoutCount << ")"
               << " : min " << scoreMin << " mean " << scoreMean << " max " << scoreMax << std::endl;
 
     // Dump the PROFILE_NAMED_SCOPE breakdown (per-scope count + avg/min/max microseconds) to profiling.csv.
     gProfilingDataCollector.writeToFile();
-    std::cout << "[bpp9000 profile] wrote profiling.csv (scopes: computeScore/score/initializeANN)" << std::endl;
+    std::cout << "[bpp9000 profile] wrote profiling.csv (scopes: computeScore/score)" << std::endl;
 }
 
 
 #if ENABLE_PROFILING
 TEST(TestQubicScoreFunction, Bpp9000Profile)
 {
-    runBpp9000Profile();
+    runBpp9000ProfileForMode(score_engine::BPP9000_MODE_START, "START");
+    runBpp9000ProfileForMode(score_engine::BPP9000_MODE_WIRING, "WIRING");
+    runBpp9000ProfileForMode(score_engine::BPP9000_MODE_LUT, "LUT");
 }
 #endif
 
@@ -727,7 +746,13 @@ static bool makeAntFixtureT(AntFixtureT<Cfg>& f)
     }
     const TaskBlocks tb = taskSubview<Cfg>(f.taskBytes);
     f.engine = makeEngine<Cfg>(tb.topo, tb.data);
-    return f.engine != nullptr;
+    if (f.engine == nullptr)
+    {
+        return false;
+    }
+    // Global control/output from the sample's mining seed, so score()/computeScore* have a valid clock.
+    f.engine->deriveControlOutput(seeds[0].m256i_u8, f.pool.data());
+    return true;
 }
 
 static bool makeAntFixture(AntFixture& f)
@@ -743,12 +768,13 @@ static m256i makePubkey(unsigned char tag)
     return k;
 }
 
-// Canonical ant nonce: nonce[0] selects bpp9000, nonce[1] = L, nonce[2] = K, rest is the walk seed.
-static m256i makeAntNonce(unsigned char L, unsigned char K, unsigned char tag)
+// Canonical ant nonce: nonce[1] packs L (bits 0-3) + mode (bits 4-5, in [1,3]), nonce[2] = K; mode defaults to LUT.
+static m256i makeAntNonce(unsigned char L, unsigned char K, unsigned char tag,
+                          unsigned char mode = score_engine::BPP9000_MODE_LUT)
 {
     m256i n = m256i::zero();
     n.m256i_u8[0] = (unsigned char)score_engine::AlgoType::Bpp9000;
-    n.m256i_u8[1] = L;
+    n.m256i_u8[1] = (unsigned char)((L & 0x0F) | ((mode & 0x03) << 4));
     n.m256i_u8[2] = K;
     n.m256i_u8[3] = tag;
     n.m256i_u8[17] = (unsigned char)(tag ^ 0x5A);
@@ -786,11 +812,11 @@ TEST(TestQubicScoreAntColony, BestAnnReproducesReturnedScore)
     const m256i nonce = makeAntNonce(3, 0, 11);
 
     const unsigned int best = f.engine->computeScore(pk.m256i_u8, nonce.m256i_u8, f.pool.data());
-    // Re-score the LUT the walk kept, taken out and put back through the public form - this also
+    // Re-score the network the walk kept, taken out and put back through the public form - this also
     // exercises the compact/expand round trip the tree relies on.
-    AntEngine::ANN bestLut;
-    f.engine->getBestANN(bestLut);
-    f.engine->expand(bestLut, f.engine->currentANN);
+    AntEngine::ANN bestAnn;
+    f.engine->getBestANN(bestAnn);
+    f.engine->expand(bestAnn);
     EXPECT_EQ(f.engine->score(), best);
 }
 
@@ -811,22 +837,22 @@ TEST(TestQubicScoreAntColony, BestAnnReproducesScoreFromParent)
     const unsigned int childScore = f.engine->computeScoreFromParent(
         root, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
 
-    // Re-score the LUT the walk kept, taken out and put back through the public form - this also
+    // Re-score the network the walk kept, taken out and put back through the public form - this also
     // exercises the compact/expand round trip the tree relies on.
-    AntEngine::ANN bestLut;
-    f.engine->getBestANN(bestLut);
-    f.engine->expand(bestLut, f.engine->currentANN);
+    AntEngine::ANN bestAnn;
+    f.engine->getBestANN(bestAnn);
+    f.engine->expand(bestAnn);
     EXPECT_EQ(f.engine->score(), childScore);
 }
 
-// An ANN is exactly its LUT: no storage padding escapes the engine, so hashing or shipping one is
-// just sizeof(ANN) and a future change to lutStride cannot alter a digest or the wire format.
-TEST(TestQubicScoreAntColony, AnnCarriesOnlyTheLut)
+// The ANN is exactly wiring + start + LUTs (no padding); a derived root's values are all in range.
+TEST(TestQubicScoreAntColony, RootAnnIsTritValuedAndInRange)
 {
-    static_assert(sizeof(AntEngine::ANN) == AntCfg::populationThreshold * AntEngine::lutSize,
-                  "ANN must be the LUT and nothing else");
-    static_assert(sizeof(AntEngine::ANN) < sizeof(AntEngine::PaddedLut),
-                  "the working layout is the padded one, not the other way round");
+    static_assert(sizeof(AntEngine::ANN)
+                      == AntEngine::numberOfLinks * sizeof(unsigned short)
+                         + AntEngine::maxNumberOfNeurons
+                         + AntEngine::maxNumberOfNeurons * AntEngine::lutSize,
+                  "ANN must be wiring + start + LUT with no padding");
 
     AntFixture f;
     ASSERT_TRUE(makeAntFixture(f));
@@ -835,25 +861,18 @@ TEST(TestQubicScoreAntColony, AnnCarriesOnlyTheLut)
     AntEngine::ANN root;
     f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), root);
 
-    // Every byte handed out is a trit; nothing from the padded rows leaked in.
     for (unsigned long long i = 0; i < sizeof(root.lut); ++i)
     {
-        ASSERT_LT(root.lut[i], 3) << "byte " << i << " of the returned ANN is not a trit";
+        ASSERT_LT(root.lut[i], 3) << "LUT byte " << i << " of the returned ANN is not a trit";
     }
-
-    // Scribbling on the working layout's padding cannot change what comes out of it.
-    AntEngine::PaddedLut working;
-    f.engine->expand(root, working);
-    for (unsigned long long k = 0; k < AntEngine::maxNumberOfNeurons; ++k)
+    for (unsigned long long n = 0; n < AntEngine::maxNumberOfNeurons; ++n)
     {
-        for (unsigned long long b = AntEngine::lutSize; b < AntEngine::lutStride; ++b)
-        {
-            working.lut[k * AntEngine::lutStride + b] = (unsigned char)(0xA5 + k + b);
-        }
+        ASSERT_LT(root.initialNeuronValues[n], 3) << "start byte " << n << " is not a trit";
     }
-    AntEngine::ANN again;
-    f.engine->compact(working, again);
-    EXPECT_EQ(memcmp(&again, &root, sizeof(root)), 0) << "storage padding reached the ANN";
+    for (unsigned long long i = 0; i < AntEngine::numberOfLinks; ++i)
+    {
+        ASSERT_LT(root.neighbor[i], AntCfg::populationThreshold) << "neighbor " << i << " is out of range";
+    }
 }
 
 // expand/compact must be lossless, since every parent read from the tree goes through expand and
@@ -866,41 +885,37 @@ TEST(TestQubicScoreAntColony, AnnSurvivesExpandAndCompact)
     AntEngine::ANN original;
     f.engine->deriveRootANN(makePubkey(44).m256i_u8, f.pool.data(), original);
 
-    AntEngine::PaddedLut working;
-    f.engine->expand(original, working);
+    f.engine->expand(original);
     AntEngine::ANN restored;
-    f.engine->compact(working, restored);
+    f.engine->compact(restored);
 
     EXPECT_EQ(memcmp(&restored, &original, sizeof(original)), 0) << "expand/compact is not lossless";
 }
 
-// The root is shared per epoch: it is a function of the root seed (the epoch-start spectrum digest)
-// alone, so the same seed must give the identical root every time, and a different seed (a different
-// epoch) must give a different root.
-TEST(TestQubicScoreAntColony, RootAnnIsDeterministicAndShared)
+// The root is per identity (pubkey over the epoch pool): same pubkey -> same root, different -> different.
+TEST(TestQubicScoreAntColony, RootAnnIsDeterministicAndPerIdentity)
 {
     AntFixture f;
     ASSERT_TRUE(makeAntFixture(f));
 
-    const m256i seedA = makePubkey(4);
-    const m256i seedB = makePubkey(5);
+    const m256i pkA = makePubkey(4);
+    const m256i pkB = makePubkey(5);
 
     AntEngine::ANN a1;
     AntEngine::ANN a2;
     AntEngine::ANN b1;
 
-    f.engine->deriveRootANN(seedA.m256i_u8, f.pool.data(), a1);
-    // Deriving another epoch's root overwrites initValue.lutInit, which is the state a1 came from.
-    f.engine->deriveRootANN(seedB.m256i_u8, f.pool.data(), b1);
-    f.engine->deriveRootANN(seedA.m256i_u8, f.pool.data(), a2);
+    f.engine->deriveRootANN(pkA.m256i_u8, f.pool.data(), a1);
+    f.engine->deriveRootANN(pkB.m256i_u8, f.pool.data(), b1);
+    f.engine->deriveRootANN(pkA.m256i_u8, f.pool.data(), a2);
 
     EXPECT_EQ(memcmp(&a1, &a2, sizeof(a1)), 0) << "root depends on engine state";
-    EXPECT_NE(memcmp(&a1, &b1, sizeof(a1)), 0) << "two different seeds share a root";
+    EXPECT_NE(memcmp(&a1, &b1, sizeof(a1)), 0) << "two different pubkeys share a root";
 }
 
 // A child is a function of (parent, pubkey, nonce, anchor). Same inputs must give the same score AND
-// the same inherited LUT; a different parent must not give the same child. The root is shared, so
-// the second parent is a mutated child of the root rather than another identity's root.
+// the same inherited network; a different parent must not give the same child. The second parent is a
+// mutated child of the root (built here), not another identity's root.
 TEST(TestQubicScoreAntColony, ChildIsDeterministicAndInheritsParent)
 {
     AntFixture f;
@@ -995,7 +1010,7 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
     static constexpr unsigned int numberOfBadNonces = 4;
     m256i bad[numberOfBadNonces];
     bad[0] = makeAntNonce(0, 0, 64);
-    bad[1] = makeAntNonce((unsigned char)(score_engine::MAX_LUT_ENTRIES_PER_STEP + 1), 0, 65);
+    bad[1] = makeAntNonce((unsigned char)(score_engine::BPP9000_MAX_CHANGES_PER_STEP + 1), 0, 65);
     bad[2] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
     bad[3] = makeAntNonce(3, 0, 67);
     bad[3].m256i_u8[0] = (unsigned char)score_engine::AlgoType::Neuraxon;
@@ -1022,20 +1037,25 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
 }
 
 
-// L and K boundaries of the canonical rule, checked as a pure predicate so no walk is needed.
+// L, mode and K boundaries of the canonical rule, checked as a pure predicate so no walk is needed.
 TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
 {
     using AntScorer = score_engine::ScoreBpp9000<AntCfg>;
-    constexpr unsigned char maxL = (unsigned char)score_engine::MAX_LUT_ENTRIES_PER_STEP;
+    constexpr unsigned char maxL = (unsigned char)score_engine::BPP9000_MAX_CHANGES_PER_STEP;
     constexpr unsigned char maxK = (unsigned char)AntScorer::numberOfMutations;
 
+    // L in [1, maxL], every mode in [1, 3], K in [0, maxK] is canonical.
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(1, 0, 70).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(maxL, 0, 71).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, maxK, 72).m256i_u8));
+    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 73, score_engine::BPP9000_MODE_START).m256i_u8));
+    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 74, score_engine::BPP9000_MODE_WIRING).m256i_u8));
 
-    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(0, 0, 73).m256i_u8));
-    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 74).m256i_u8));
-    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 75).m256i_u8));
+    // L out of range, K over maxK, and mode 0 (the empty mode field) are all rejected.
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(0, 0, 75).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 76).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 77).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 78, 0).m256i_u8));
 }
 
 

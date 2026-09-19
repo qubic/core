@@ -55,23 +55,23 @@ static ValidityResult admit(const ChildCandidate& child, const AntSolutionRecord
     return AntColonyBpp9000T::validateChild(child, parent, childCount, TEST_THRESHOLD);
 }
 
-// The packing itself is generic and tested exhaustively
+// The LUT packing must round-trip the whole LUT at the unpadded stride (wiring/start are copied verbatim).
 TEST(TestAntColonyPackedAnn, CoversAWholeAnnAtTheUnpaddedStride)
 {
     AntColonyBpp9000T::Ann src;
-    for (unsigned long long i = 0; i < sizeof(src); i++)
+    for (unsigned long long i = 0; i < sizeof(src.lut); i++)
     {
         src.lut[i] = (unsigned char)(i % 3);   // mutate() only ever writes 0, 1 or 2
     }
 
     AntColonyBpp9000T::PackedAnn packed;
-    packed.pack(src.lut);
+    packed.lut.pack(src.lut);
 
     AntColonyBpp9000T::Ann back;
     setMem(&back, sizeof(back), 0xFF);
-    packed.unpack(back.lut);
+    packed.lut.unpack(back.lut);
 
-    for (unsigned long long i = 0; i < sizeof(src); i++)
+    for (unsigned long long i = 0; i < sizeof(src.lut); i++)
     {
         ASSERT_EQ(back.lut[i], src.lut[i]) << "entry " << i;
     }

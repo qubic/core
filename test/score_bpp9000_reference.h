@@ -8,10 +8,13 @@
 #include <vector>
 #include <cstring>
 
-// Generic LUT scorer: a recurrent ternary ANN (trits {0,1,2}, 2 = UNKNOWN) predicting a windowed
-// series; only the per-neuron LUTs change under mutation.
+// Independent reference for the bpp9000 autonomous scorer (trits {0,1,2}, 2 = UNKNOWN, no inputs).
 namespace score_bpp9000_reference
 {
+
+static constexpr unsigned char BPP9000_MODE_START = 1;
+static constexpr unsigned char BPP9000_MODE_WIRING = 2;
+static constexpr unsigned char BPP9000_MODE_LUT = 3;
 
 template <typename Params>
 struct Miner
@@ -29,359 +32,271 @@ struct Miner
     static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
     static constexpr unsigned long long numberOfWindows = sequenceLength - windowWidth;
 
-    static constexpr unsigned long long topoBlockSize =
-        (numberOfInputNeurons + numberOfOutputNeurons + 1 + populationThreshold * numberOfNeighbors) * sizeof(uint32_t);
-    static constexpr unsigned long long dataBlockSize =
-        sequenceLength * (((numberOfInputNeurons + score_task_file::TRITS_PER_BYTE - 1) / score_task_file::TRITS_PER_BYTE)
-                          + ((numberOfOutputNeurons + score_task_file::TRITS_PER_BYTE - 1) / score_task_file::TRITS_PER_BYTE));
-
     static constexpr unsigned char TRIT_UNKNOWN = 2;
-
     static constexpr unsigned int INFINITE_ERROR = 0xFFFFFFFFU;
-
+    static constexpr unsigned int INVALID_SCORE_VALUE = 0xFFFFFFFFU;
     static constexpr unsigned long long lutSize = 27;
+    static constexpr unsigned int MAX_CHANGES_PER_STEP = 10;
+    static constexpr unsigned long long numberOfLinks = populationThreshold * numberOfNeighbors;
 
-    static constexpr unsigned int MAX_LUT_ENTRIES_PER_STEP = 10;
+    static_assert(numberOfNeighbors == 3, "the LUT index is hardcoded for 3 neighbors");
+    static_assert(populationThreshold % 16 == 0, "populationThreshold must be a multiple of 16 so sizeof(RootMaterial) stays a multiple of 64 for the random2 draw");
+    static_assert(numberOfOutputNeurons == 1, "score() grades only output neuron 0");
+    static_assert(numberOfWindows >= 1 && numberOfWindows < sequenceLength, "the emit count must be positive and within the target sequence");
+    static_assert(maxNumberOfTicks > numberOfWindows, "maxNumberOfTicks must exceed the emit count so all emits can fit");
+    static_assert(populationThreshold <= 65536, "the transfer index is 16-bit");
 
-    static_assert(
-        numberOfNeighbors == 3,
-        "the LUT index is hardcoded for 3 neighbours");
-    static_assert(
-        populationThreshold > numberOfInputNeurons + numberOfOutputNeurons + 1,
-        "populationThreshold must leave room for the evolution neurons and the signal neuron");
-    static_assert(
-        (populationThreshold & (populationThreshold - 1)) == 0,
-        "populationThreshold must be a power of 2");
-    static_assert(
-        windowWidth >= 2 && windowWidth < sequenceLength,
-        "windowWidth must be at least 2 and leave room for the target after the window");
-    static_assert(
-        numberOfOutputNeurons == 1,
-        "score() grades only output neuron 0");
-    static_assert(
-        maxNumberOfTicks > windowWidth,
-        "maxNumberOfTicks must exceed windowWidth so a window can be fully fed before timing out");
+    // Root material drawn from the pubkey over the epoch pool: trit bytes plus one unsigned long long per link.
+    struct RootMaterial
+    {
+        unsigned char lut[maxNumberOfNeurons * lutSize];
+        unsigned char start[maxNumberOfNeurons];
+        unsigned long long wire[numberOfLinks];
+    };
+    static_assert(sizeof(RootMaterial)
+            == maxNumberOfNeurons * lutSize + maxNumberOfNeurons + numberOfLinks * sizeof(unsigned long long),
+        "RootMaterial must be padding-free");
+    static_assert(sizeof(RootMaterial) % 64 == 0, "root-material draw must be 64-byte aligned for random2");
+
+    static constexpr unsigned long long mutationSeedCount = numberOfMutations * MAX_CHANGES_PER_STEP;
+    static constexpr unsigned long long mutationSeedPaddedCount =
+        ((mutationSeedCount * sizeof(unsigned long long) + 63) / 64) * 64 / sizeof(unsigned long long);
 
     std::vector<unsigned char> poolVec;
 
+    // Global control (self-clock) and graded output neuron: from the digest, shared by every identity.
+    unsigned int controlIndex;
+    unsigned int outputIndex;
+    unsigned char targetOutputs[sequenceLength];
+
+    // Working state the walk mutates and scores.
+    unsigned char curInitial[maxNumberOfNeurons];
+    unsigned int neighborIndices[numberOfLinks];
+    unsigned char curLut[maxNumberOfNeurons * lutSize];
+
+    unsigned char prevInitial[maxNumberOfNeurons];
+    unsigned int prevNeighborIndices[numberOfLinks];
+    unsigned char prevLut[maxNumberOfNeurons * lutSize];
+    unsigned char bestInitial[maxNumberOfNeurons];
+    unsigned int bestNeighborIndices[numberOfLinks];
+    unsigned char bestLut[maxNumberOfNeurons * lutSize];
+
+    unsigned char neuronOut[maxNumberOfNeurons];
+    unsigned char neuronPrev[maxNumberOfNeurons];
+
+    RootMaterial rootMaterial;
+    unsigned long long mutationSeed[mutationSeedPaddedCount];
+
+    // Build the pool and derive the epoch's control/output from the mining seed (once, before scoring).
     void initialize(const unsigned char miningSeed[32])
     {
         poolVec.resize(score_reference::POOL_VEC_PADDING_SIZE);
         score_reference::generateRandom2Pool(miningSeed, poolVec.data());
+        deriveControlOutput(miningSeed);
     }
 
-    // In-memory task load: parse/validate the topology and unpack the data block directly (no file I/O).
+    // The network is derived, so only the target output column of each data row is read here.
     bool loadTaskFromMemory(const unsigned char* topoBlock, const unsigned char* dataBlock)
     {
-        score_task_file::parseTopologyBlock(topoBlock, numberOfInputNeurons, numberOfOutputNeurons, populationThreshold, numberOfNeighbors,
-                                      inputNeuronIndices, outputNeuronIndices, &signalNeuronIndex, neighborIndices);
-        if (!validateTopology())
-        {
-            return false;
-        }
-        if (!score_task_file::unpackDataBlock(numberOfInputNeurons, numberOfOutputNeurons, sequenceLength, dataBlock, &inputs[0][0], &outputs[0][0]))
-        {
-            return false;
-        }
-        deriveNeuronRoles();
-        return true;
-    }
+        (void)topoBlock;
 
-    bool validateTopology()
-    {
-        for (unsigned long long i = 0; i < numberOfInputNeurons; ++i)
+        const unsigned long long inBytes = score_task_file::packedBytes(numberOfInputNeurons);
+        const unsigned long long outBytes = score_task_file::packedBytes(numberOfOutputNeurons);
+        const unsigned long long rowBytes = inBytes + outBytes;
+        for (unsigned long long t = 0; t < sequenceLength; ++t)
         {
-            if (inputNeuronIndices[i] >= populationThreshold)
+            unsigned char outTrit[numberOfOutputNeurons];
+            if (!score_task_file::unpackTrits(dataBlock + t * rowBytes + inBytes, numberOfOutputNeurons, outTrit))
             {
                 return false;
             }
-        }
-        for (unsigned long long i = 0; i < numberOfOutputNeurons; ++i)
-        {
-            if (outputNeuronIndices[i] >= populationThreshold)
-            {
-                return false;
-            }
-        }
-        if (signalNeuronIndex >= populationThreshold)
-        {
-            return false;
-        }
-
-        bool seen[populationThreshold] = {};
-        for (unsigned long long i = 0; i < numberOfInputNeurons; ++i)
-        {
-            if (seen[inputNeuronIndices[i]])
-            {
-                return false;
-            }
-            seen[inputNeuronIndices[i]] = true;
-        }
-        for (unsigned long long i = 0; i < numberOfOutputNeurons; ++i)
-        {
-            if (seen[outputNeuronIndices[i]])
-            {
-                return false;
-            }
-            seen[outputNeuronIndices[i]] = true;
-        }
-        if (seen[signalNeuronIndex])
-        {
-            return false;
-        }
-
-        for (unsigned long long i = 0; i < populationThreshold * numberOfNeighbors; ++i)
-        {
-            if (neighborIndices[i] >= populationThreshold)
-            {
-                return false;
-            }
+            targetOutputs[t] = outTrit[0];
         }
         return true;
     }
 
-    void deriveNeuronRoles()
+    void deriveControlOutput(const unsigned char* digest)
     {
-        for (unsigned long long i = 0; i < populationThreshold; ++i)
+        unsigned char seedHash[32];
+        KangarooTwelve(digest, 32, seedHash, 32);
+        unsigned long long material[8];
+        score_reference::random2(seedHash, poolVec.data(), (unsigned char*)material, sizeof(material));
+        controlIndex = (unsigned int)(material[0] % populationThreshold);
+        unsigned int output = (unsigned int)(material[1] % populationThreshold);
+        if (output == controlIndex)
         {
-            neuronTypes[i] = Neuron::kEvolution;
+            output = (unsigned int)((output + 1) % populationThreshold);
         }
-        for (unsigned long long i = 0; i < numberOfInputNeurons; ++i)
-        {
-            neuronTypes[inputNeuronIndices[i]] = Neuron::kInput;
-        }
-        for (unsigned long long i = 0; i < numberOfOutputNeurons; ++i)
-        {
-            neuronTypes[outputNeuronIndices[i]] = Neuron::kOutput;
-        }
-
-        numberOfUpdatedNeurons = 0;
-        for (unsigned long long i = 0; i < populationThreshold; ++i)
-        {
-            if (neuronTypes[i] != Neuron::kInput)
-            {
-                updatedNeuronIndices[numberOfUpdatedNeurons] = i;
-                numberOfUpdatedNeurons++;
-            }
-        }
+        outputIndex = output;
     }
 
-    unsigned char inputs[sequenceLength][numberOfInputNeurons];
-    unsigned char outputs[sequenceLength][numberOfOutputNeurons];
-
-    struct Neuron
-    {
-        enum Type
-        {
-            kInput,
-            kOutput,
-            kEvolution,
-        };
-        Type type;
-        unsigned char value;
-    };
-
-    struct ANN
-    {
-        Neuron neurons[maxNumberOfNeurons];
-        unsigned char lut[maxNumberOfNeurons * lutSize];
-    };
-    ANN bestANN;
-    ANN currentANN;
-    ANN prevANN;
-
-    struct InitValue
-    {
-        unsigned char lutInit[maxNumberOfNeurons * lutSize];
-        unsigned long long mutationSeed[numberOfMutations * MAX_LUT_ENTRIES_PER_STEP];
-    } initValue;
-
-    unsigned char nextNeuronValue[maxNumberOfNeurons];
-
-    unsigned int neighborIndices[populationThreshold * numberOfNeighbors];
-
-    unsigned int inputNeuronIndices[numberOfInputNeurons];
-    unsigned int outputNeuronIndices[numberOfOutputNeurons];
-
-    unsigned int signalNeuronIndex;
-
-    typename Neuron::Type neuronTypes[maxNumberOfNeurons];
-
-    unsigned long long updatedNeuronIndices[maxNumberOfNeurons];
-    unsigned long long numberOfUpdatedNeurons;
-
-    // One inference tick: each non-input neuron looks up its next trit from its 3 neighbours.
-    void processTick()
-    {
-        const unsigned long long population = populationThreshold;
-        Neuron* neurons = currentANN.neurons;
-
-        for (unsigned long long n = 0; n < population; ++n)
-        {
-            if (Neuron::kInput == neurons[n].type)
-            {
-                nextNeuronValue[n] = neurons[n].value;
-                continue;
-            }
-
-            // Explicit per-neuron neighbours; base-3 LUT index = t0 + 3*t1 + 9*t2.
-            const unsigned long long t0 = neurons[neighborIndices[n * numberOfNeighbors + 0]].value;
-            const unsigned long long t1 = neurons[neighborIndices[n * numberOfNeighbors + 1]].value;
-            const unsigned long long t2 = neurons[neighborIndices[n * numberOfNeighbors + 2]].value;
-            nextNeuronValue[n] = currentANN.lut[n * lutSize + (t0 + 3 * t1 + 9 * t2)];
-        }
-
-        for (unsigned long long n = 0; n < population; ++n)
-        {
-            if (Neuron::kInput != neurons[n].type)
-            {
-                neurons[n].value = nextNeuronValue[n];
-            }
-        }
-    }
-
-    // Sliding-window self-clocked score: feed W samples (signal-paced), settle until the signal is
-    // UNKNOWN again, then grade the output vs outputs[t+W]. A timed-out window fails the whole ANN.
-    // Returns the failure count (lower is better), or INFINITE_ERROR on timeout.
+    // Autonomous rollout from the start state; the control neuron gates a graded emit, timeout at maxNumberOfTicks.
     unsigned int score()
     {
-        unsigned int numberOfFailures = 0;
-
-        Neuron* neurons = currentANN.neurons;
-
-        for (unsigned long long trainingEntryIndex = 0; trainingEntryIndex < numberOfWindows; ++trainingEntryIndex)
+        for (unsigned long long n = 0; n < populationThreshold; ++n)
         {
-            unsigned long long feedCounter = 0;
+            neuronOut[n] = curInitial[n];
+        }
 
-            for (unsigned long long n = 0; n < populationThreshold; ++n)
-            {
-                neurons[n].value = TRIT_UNKNOWN;
-            }
-
-            unsigned long long tick;
-            for (tick = 0; tick < maxNumberOfTicks; tick++)
-            {
-                if (neurons[signalNeuronIndex].value == TRIT_UNKNOWN)
-                {
-                    // Whole window is in and the signal is ready -> output is settled, read it.
-                    if (feedCounter >= windowWidth)
-                    {
-                        break;
-                    }
-                    for (unsigned long long i = 0; i < numberOfInputNeurons; ++i)
-                    {
-                        neurons[inputNeuronIndices[i]].value = inputs[trainingEntryIndex + feedCounter][i];
-                    }
-                    feedCounter++;
-                }
-                else
-                {
-                    for (unsigned long long i = 0; i < numberOfInputNeurons; ++i)
-                    {
-                        neurons[inputNeuronIndices[i]].value = TRIT_UNKNOWN;
-                    }
-                }
-
-                processTick();
-            }
-
-            if (tick == maxNumberOfTicks)
+        unsigned int failures = 0;
+        unsigned long long counter = 0;
+        unsigned long long ticks = 0;
+        while (counter < numberOfWindows)
+        {
+            if (++ticks >= maxNumberOfTicks)
             {
                 return INFINITE_ERROR;
             }
 
-            const unsigned char predicted = neurons[outputNeuronIndices[0]].value;
-            const unsigned char expected = outputs[trainingEntryIndex + feedCounter][0];
-            if (predicted != expected)
+            memcpy(neuronPrev, neuronOut, sizeof(neuronPrev));
+            for (unsigned long long n = 0; n < populationThreshold; ++n)
             {
-                numberOfFailures++;
+                const unsigned long long t0 = neuronPrev[neighborIndices[n * numberOfNeighbors + 0]];
+                const unsigned long long t1 = neuronPrev[neighborIndices[n * numberOfNeighbors + 1]];
+                const unsigned long long t2 = neuronPrev[neighborIndices[n * numberOfNeighbors + 2]];
+                neuronOut[n] = curLut[n * lutSize + (t0 + 3 * t1 + 9 * t2)];
+            }
+
+            if (neuronOut[controlIndex] != TRIT_UNKNOWN)
+            {
+                if (neuronOut[outputIndex] != targetOutputs[counter])
+                {
+                    failures++;
+                }
+                counter++;
             }
         }
-
-        return numberOfFailures;
+        return failures;
     }
 
-    // Flip one LUT entry of one non-input neuron (bit 0 picks the new trit, the rest picks the line).
-    void mutate(unsigned long long mutationSeed)
+    void mutateStartState(unsigned long long seed)
     {
-        const unsigned long long delta = mutationSeed & 1ULL;
-
-        const unsigned long long totalLines = numberOfUpdatedNeurons * lutSize;
-        const unsigned long long flatIdx = (mutationSeed >> 1) % totalLines;
-        const unsigned long long neuronIdx = updatedNeuronIndices[flatIdx / lutSize];
-        const unsigned long long line = flatIdx % lutSize;
-
-        const unsigned char oldTrit = currentANN.lut[neuronIdx * lutSize + line];
-        const unsigned char newTrit = (unsigned char)((oldTrit + 1 + delta) % 3);
-        currentANN.lut[neuronIdx * lutSize + line] = newTrit;
+        const unsigned long long delta = seed & 1ULL;
+        const unsigned long long n = (seed >> 1) % populationThreshold;
+        curInitial[n] = (unsigned char)((curInitial[n] + 1 + delta) % 3);
     }
 
-    // Seed the ANN: root LUT from the pubkey alone (each computor's fixed root); mutation seeds from
-    // pubkey+nonce (nonce[0..2] are the algo/L/K knobs, excluded from the RNG). Returns the start score.
-    unsigned int initializeANN(const unsigned char* publicKey, const unsigned char* nonce)
+    void mutateWiring(unsigned long long seed)
     {
-        const unsigned long long population = populationThreshold;
-        Neuron* neurons = currentANN.neurons;
+        const unsigned long long flatSlot = seed % numberOfLinks;
+        unsigned int target = (unsigned int)((seed / numberOfLinks) % populationThreshold);
+        const unsigned int previous = neighborIndices[flatSlot];
+        while (target == previous)
+        {
+            target = (unsigned int)((target + 1) % populationThreshold);
+        }
+        neighborIndices[flatSlot] = target;
+    }
 
+    void mutateLut(unsigned long long seed)
+    {
+        const unsigned long long delta = seed & 1ULL;
+        const unsigned long long flatIdx = (seed >> 1) % (maxNumberOfNeurons * lutSize);
+        curLut[flatIdx] = (unsigned char)((curLut[flatIdx] + 1 + delta) % 3);
+    }
+
+    void mutate(unsigned char mode, unsigned long long seed)
+    {
+        if (mode == BPP9000_MODE_START)
+        {
+            mutateStartState(seed);
+        }
+        else if (mode == BPP9000_MODE_WIRING)
+        {
+            mutateWiring(seed);
+        }
+        else if (mode == BPP9000_MODE_LUT)
+        {
+            mutateLut(seed);
+        }
+    }
+
+    void deriveRootMaterial(const unsigned char* seed)
+    {
         unsigned char rootHash[32];
-        KangarooTwelve(publicKey, 32, rootHash, 32);
-        score_reference::random2(rootHash, poolVec.data(), (unsigned char*)&initValue.lutInit, sizeof(initValue.lutInit));
+        KangarooTwelve(seed, 32, rootHash, 32);
+        score_reference::random2(rootHash, poolVec.data(), (unsigned char*)&rootMaterial, sizeof(rootMaterial));
+    }
 
+    void deriveMutationSeeds(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* anchorTickDigest)
+    {
         unsigned char searchHash[32];
-        unsigned char combined[64];
+        unsigned char combined[96];
         memcpy(combined, publicKey, 32);
         memcpy(combined + 32, nonce, 32);
         combined[32] = 0;
         combined[33] = 0;
         combined[34] = 0;
-        KangarooTwelve(combined, 64, searchHash, 32);
-        score_reference::random2(searchHash, poolVec.data(), (unsigned char*)&initValue.mutationSeed, sizeof(initValue.mutationSeed));
-
-        for (unsigned long long i = 0; i < population; ++i)
+        unsigned int combinedSize = 64;
+        if (anchorTickDigest != nullptr)
         {
-            neurons[i].type = neuronTypes[i];
-            neurons[i].value = TRIT_UNKNOWN;
+            memcpy(combined + 64, anchorTickDigest, 32);
+            combinedSize = 96;
         }
-
-        for (unsigned long long n = 0; n < population; ++n)
-        {
-            for (unsigned long long line = 0; line < lutSize; ++line)
-            {
-                currentANN.lut[n * lutSize + line] = (unsigned char)(initValue.lutInit[n * lutSize + line] % 3);
-            }
-        }
-
-        return score();
+        KangarooTwelve(combined, combinedSize, searchHash, 32);
+        score_reference::random2(searchHash, poolVec.data(), (unsigned char*)&mutationSeed, sizeof(mutationSeed));
     }
 
-    // Anti-attractor search: L mutations/step; accept worse-or-equal for the first K steps (explore),
-    // then better-or-equal (exploit); one-step rollback; keep and return the best score found.
-    unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce)
+    void applyRootMaterial()
     {
-        unsigned int L = nonce[1];
-        if (L < 1)
+        for (unsigned long long i = 0; i < maxNumberOfNeurons * lutSize; ++i)
         {
-            L = 1;
+            curLut[i] = (unsigned char)(rootMaterial.lut[i] % 3);
         }
-        if (L > MAX_LUT_ENTRIES_PER_STEP)
+        for (unsigned long long n = 0; n < populationThreshold; ++n)
         {
-            L = MAX_LUT_ENTRIES_PER_STEP;
+            curInitial[n] = (unsigned char)(rootMaterial.start[n] % 3);
         }
-        // Pre-ant-colony phase, the anti-attractor (explore) is disabled to match the production scorer and
-        // Qiner. nonce[2] is temporarily unused here; restore K = nonce[2] (clamped) when ants return.
-        const unsigned long long K = 0;
+        for (unsigned long long i = 0; i < numberOfLinks; ++i)
+        {
+            neighborIndices[i] = (unsigned int)(rootMaterial.wire[i] % populationThreshold);
+        }
+    }
 
-        unsigned int cur = initializeANN(publicKey, nonce);
-        memcpy(&bestANN, &currentANN, sizeof(bestANN));
+    void snapshotPrev()
+    {
+        memcpy(prevInitial, curInitial, sizeof(prevInitial));
+        memcpy(prevNeighborIndices, neighborIndices, sizeof(prevNeighborIndices));
+        memcpy(prevLut, curLut, sizeof(prevLut));
+    }
+
+    void rollbackPrev()
+    {
+        memcpy(curInitial, prevInitial, sizeof(curInitial));
+        memcpy(neighborIndices, prevNeighborIndices, sizeof(neighborIndices));
+        memcpy(curLut, prevLut, sizeof(curLut));
+    }
+
+    void snapshotBest()
+    {
+        memcpy(bestInitial, curInitial, sizeof(bestInitial));
+        memcpy(bestNeighborIndices, neighborIndices, sizeof(bestNeighborIndices));
+        memcpy(bestLut, curLut, sizeof(bestLut));
+    }
+
+    static unsigned int changesPerStep(const unsigned char* nonce)
+    {
+        return nonce[1] & 0x0F;
+    }
+
+    static unsigned char modeOf(const unsigned char* nonce)
+    {
+        return (unsigned char)((nonce[1] >> 4) & 0x03);
+    }
+
+    unsigned int computeScoreFromCurrent(unsigned int L, unsigned long long K, unsigned char mode, unsigned int startScore)
+    {
+        unsigned int cur = startScore;
         unsigned int best = cur;
+        snapshotBest();
 
         for (unsigned long long s = 0; s < numberOfMutations; ++s)
         {
-            memcpy(&prevANN, &currentANN, sizeof(prevANN));
+            snapshotPrev();
 
             for (unsigned int i = 0; i < L; ++i)
             {
-                mutate(initValue.mutationSeed[s * MAX_LUT_ENTRIES_PER_STEP + i]);
+                mutate(mode, mutationSeed[s * MAX_CHANGES_PER_STEP + i]);
             }
 
             const unsigned int r = score();
@@ -402,16 +317,30 @@ struct Miner
             }
             else
             {
-                memcpy(&currentANN, &prevANN, sizeof(currentANN));
+                rollbackPrev();
             }
 
             if (cur < best)
             {
                 best = cur;
-                memcpy(&bestANN, &currentANN, sizeof(bestANN));
+                snapshotBest();
             }
         }
         return best;
+    }
+
+    // Standalone: root from the pubkey, walk with K = 0 (no explore). control/output already set by initialize.
+    unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce)
+    {
+        const unsigned int L = changesPerStep(nonce);
+        const unsigned char mode = modeOf(nonce);
+
+        deriveRootMaterial(publicKey);
+        deriveMutationSeeds(publicKey, nonce, nullptr);
+        applyRootMaterial();
+
+        const unsigned int cur = score();
+        return computeScoreFromCurrent(L, 0, mode, cur);
     }
 };
 
