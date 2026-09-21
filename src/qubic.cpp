@@ -173,8 +173,6 @@ static unsigned int resourceTestingDigest = 0;
 
 static unsigned int numberOfTransactions = 0;
 
-static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
-
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
 static volatile unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
@@ -4498,40 +4496,7 @@ static void processTick(unsigned long long processorNumber)
     WAIT_WHILE(contractProcessorState);
     PROFILE_SCOPE_END();
 
-    PROFILE_NAMED_SCOPE_BEGIN("processTick(): get spectrum digest");
-    unsigned int digestIndex;
-    ACQUIRE(spectrumLock);
-    for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
-    {
-        if (spectrum[digestIndex].latestIncomingTransferTick == system.tick || spectrum[digestIndex].latestOutgoingTransferTick == system.tick)
-        {
-            KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
-            spectrumChangeFlags[digestIndex >> 6] |= (1ULL << (digestIndex & 63));
-        }
-    }
-    unsigned int previousLevelBeginning = 0;
-    unsigned int numberOfLeafs = SPECTRUM_CAPACITY;
-    while (numberOfLeafs > 1)
-    {
-        for (unsigned int i = 0; i < numberOfLeafs; i += 2)
-        {
-            if (spectrumChangeFlags[i >> 6] & (3ULL << (i & 63)))
-            {
-                KangarooTwelve64To32(&spectrumDigests[previousLevelBeginning + i], &spectrumDigests[digestIndex]);
-                spectrumChangeFlags[i >> 6] &= ~(3ULL << (i & 63));
-                spectrumChangeFlags[i >> 7] |= (1ULL << ((i >> 1) & 63));
-            }
-            digestIndex++;
-        }
-        previousLevelBeginning += numberOfLeafs;
-        numberOfLeafs >>= 1;
-    }
-    spectrumChangeFlags[0] = 0;
-
-    etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-    RELEASE(spectrumLock);
-    PROFILE_SCOPE_END();
-
+    getSpectrumDigest(etalonTick.saltedSpectrumDigest);
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
 
