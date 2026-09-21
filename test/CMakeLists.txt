@@ -41,6 +41,7 @@ add_executable(
   m256.cpp
   math_lib.cpp
   network_messages.cpp
+  contract_qpump.cpp
   # oc_engine.cpp
   # platform.cpp
   # qpi_collection.cpp
