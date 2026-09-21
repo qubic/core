@@ -1,5 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
+// #define NO_QTREAT
+
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
 
