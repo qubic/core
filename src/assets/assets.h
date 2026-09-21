@@ -718,14 +718,14 @@ static void getUniverseDigest(m256i& digest)
 {
 	// MSVC alternative to __builtin_ctzll() for counting trailing zeros in a 64-bit integer.
     static auto msvc_ctzll = [](unsigned __int64 mask) -> unsigned int
-    {
-        unsigned long index;
-        if (_BitScanForward64(&index, mask))
         {
-            return (unsigned int)index;
-        }
-        return 64;
-    }
+            unsigned long index;
+            if (_BitScanForward64(&index, mask))
+            {
+                return (unsigned int)index;
+            }
+            return 64;
+        };
 
     PROFILE_SCOPE();
 
