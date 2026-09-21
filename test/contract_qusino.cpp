@@ -81,6 +81,16 @@ public:
         callSystemProcedure(QUSINO_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
+    // Anchors betaStartEpoch on its first call (see Qusino.h's BEGIN_EPOCH) -- the
+    // constructor above only runs INITIALIZE, so tests exercising the beta gate or
+    // getUserAssetVolume's beta fields must call this explicitly before/after
+    // advancing system.epoch, mirroring how a real node calls BEGIN_EPOCH at each
+    // epoch transition.
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QUSINO_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
     sint64 issueAsset(const id& issuer, uint64 assetName, uint64 numberOfShares)
     {
         QX::IssueAsset_input input;
@@ -1171,19 +1181,14 @@ TEST(ContractQUSINO, END_EPOCH_MultiplePassedProposalsFromSameProposerDoNotTouch
     EXPECT_EQ(foundCount, 2);
 }
 
-// Proves the QST dividend rate fix: QST holders should receive
-// QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT (30%) of epochRevenue each epoch. This used
-// to fail two different ways: first an erroneous extra factor of 10 in a
-// now-removed "per-share rate" denominator (QUSINO_SUPPLY_OF_QST * 1000 instead of
-// * 100) capped holders at 3% instead of 30%; fixing that denominator alone still
-// paid out exactly 0, because dividing the (tens-of-millions-of-Qu) dividend pool by
-// QUSINO_SUPPLY_OF_QST (1.2 billion shares) to get a shared per-share rate produces
-// a fraction under 1 Qu, which integer division truncates straight to 0 regardless
-// of the *1000-vs-*100 denominator. The real fix restructured the payout to
-// multiply epochSnapshot * percent * each possessor's own share count together
-// before dividing once, computed per possessor inside the loop instead of as a
-// shared rate outside it -- see END_EPOCH's QST payout comment in Qusino.h.
-TEST(ContractQUSINO, END_EPOCH_QSTDividendRateIsCorrect)
+// Proves the QST-holder dividend was fully removed (Sept 2026 client feedback:
+// "remove the revenue for the QST holders"). The old AssetPossessionIterator loop
+// in END_EPOCH used to pay QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT of epochRevenue
+// directly to every QST possessor via qpi.transfer -- that whole pass is gone now,
+// so a 100%-QST-holding issuer's Qu balance must be completely unaffected by
+// endEpoch(). QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT itself was removed from
+// Qusino.h too, so there's no old constant left to even reference here.
+TEST(ContractQUSINO, END_EPOCH_NoLongerPaysQSTDividend)
 {
     ContractTestingQUSINO QUSINO;
 
@@ -1192,16 +1197,13 @@ TEST(ContractQUSINO, END_EPOCH_QSTDividendRateIsCorrect)
     uint64 totalShares = QUSINO_SUPPLY_OF_QST;
     increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
     EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
-    // qstIssuer now holds 100% of QUSINO_SUPPLY_OF_QST -- the whole QST dividend
-    // pool for the epoch should land on them alone.
+    // qstIssuer now holds 100% of QUSINO_SUPPLY_OF_QST. If any QST dividend logic
+    // still existed, the whole pool would land on them alone -- so a zero delta here
+    // is a strong signal the removal was complete, not just rate-limited to ~0.
 
-    // Get a known, deterministic contribution to epochRevenue via submitGame's fee
-    // split (a passed proposal wouldn't add anything else to epochRevenue either --
-    // approving no longer triggers any QSC conversion, see END_EPOCH -- but failing
-    // it keeps this test's setup obviously isolated to just the QST rate either way).
     id proposer = QUSINO_testUser1;
     id voter = QUSINO_testUser2;
-    Array<uint8, 64> URI = createURI("https://example.com/qst-dividend-test");
+    Array<uint8, 64> URI = createURI("https://example.com/qst-dividend-removed-test");
     increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
     EXPECT_EQ(QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE).returnCode, QUSINO_SUCCESS);
     uint64 gameIndex = 1;
@@ -1219,9 +1221,47 @@ TEST(ContractQUSINO, END_EPOCH_QSTDividendRateIsCorrect)
     ++system.epoch;
 
     long long qstIssuerQuAfter = getBalance(qstIssuer);
-    uint64 expectedQSTDividend = epochRevenueBeforeSplit * (uint64)QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT / 100ULL;
-    ASSERT_GT(expectedQSTDividend, 0ULL);
-    EXPECT_EQ((uint64)(qstIssuerQuAfter - qstIssuerQuBefore), expectedQSTDividend);
+    EXPECT_EQ(qstIssuerQuAfter, qstIssuerQuBefore);
+}
+
+// Proves the 30 points that used to go to QST holders were folded into the
+// shareholder split: QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT is now 50 (was 20), and
+// epochRevenue should be drawn down by exactly lpShare + ccfShare + treasuryShare +
+// shareholders676Part with no separate QST term subtracted anymore. Exercised via
+// the same lp/ccf/treasury/shareholders arithmetic END_EPOCH itself uses (mirroring
+// Qusino.h's formulas) rather than inspecting individual shareholder payouts, since
+// qpi.distributeDividends requires a full 676-shareholder cap-table fixture the rest
+// of this file doesn't set up.
+TEST(ContractQUSINO, END_EPOCH_ShareholdersReceiveFiftyPercentNotTwenty)
+{
+    ASSERT_EQ(QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT, 50u);
+
+    ContractTestingQUSINO QUSINO;
+
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/shareholder-split-test");
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE).returnCode, QUSINO_SUCCESS);
+    uint64 gameIndex = 1;
+
+    increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
+    EXPECT_EQ(QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(QUSINO.voteInGameProposal(voter, URI, gameIndex, 2, 0).returnCode, QUSINO_SUCCESS);
+
+    uint64 epochRevenueBeforeSplit = QUSINO.getSCInfo().epochRevenue;
+    ASSERT_GT(epochRevenueBeforeSplit, 0ULL);
+
+    uint64 lpShare = epochRevenueBeforeSplit * (uint64)QUSINO_LP_DIVIDENDS_PERCENT / 100ULL;
+    uint64 ccfShare = epochRevenueBeforeSplit * (uint64)QUSINO_CCF_DIVIDENDS_PERCENT / 100ULL;
+    uint64 treasuryShare = epochRevenueBeforeSplit * (uint64)QUSINO_TREASURY_DIVIDENDS_PERCENT / 100ULL;
+    uint64 shareholdersPart = (epochRevenueBeforeSplit * (uint64)QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT / 67600ULL) * 676ULL;
+    uint64 expectedRemaining = epochRevenueBeforeSplit - (lpShare + ccfShare + treasuryShare + shareholdersPart);
+
+    QUSINO.endEpoch();
+    ++system.epoch;
+
+    EXPECT_EQ(QUSINO.getSCInfo().epochRevenue, expectedRemaining);
 }
 
 TEST(ContractQUSINO, depositBonus_Success)
@@ -1846,6 +1886,153 @@ TEST(ContractQUSINO, coinFlip_StarBetMintsOrBurnsDirectlyNoBonusAmount)
         EXPECT_EQ(QUSINO.getSCInfo().STARCirclatingSupply, starSupplyBefore - bet);
         EXPECT_EQ(QUSINO.getSCInfo().burntSTAR, burntBefore + bet);
     }
+}
+
+// coinFlip beta gate (Sept 2026 client feedback): for QUSINO_BETA_DURATION_EPOCHS
+// epochs after betaStartEpoch is anchored, only callers holding at least
+// QUSINO_BETA_MIN_QST_HOLDING QST may play; everyone else is rejected with
+// QUSINO_INSUFFICIENT_QST_FOR_BETA before any RNG-pool or balance checks run (the
+// gate sits first in coinFlip), so a blocked call must leave the bank/balances
+// completely untouched.
+TEST(ContractQUSINO, coinFlip_BetaGateBlocksCallerWithoutSufficientQST)
+{
+    ContractTestingQUSINO QUSINO;
+    QUSINO.beginEpoch(); // anchors betaStartEpoch to the current (construction) epoch
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+    uint32 reserveBefore = QUSINO.getRandomBankStatus().reserveFilled;
+
+    id user = QUSINO_testUser2;
+    uint64 bet = QUSINO_COINFLIP_MIN_BET;
+    QUSINO.giveUserQSC(user, bet); // plenty of QSC, but zero QST
+    uint64 qscBefore = QUSINO.getUserAssetVolume(user).QSCAmount;
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, bet);
+    EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_QST_FOR_BETA);
+    EXPECT_EQ(output.result, 0u);
+    EXPECT_EQ(output.won, 0u);
+    EXPECT_EQ(output.payout, 0u);
+
+    // Gated calls never reach the RNG pool or touch the caller's QSC.
+    EXPECT_EQ(QUSINO.getRandomBankStatus().reserveFilled, reserveBefore);
+    EXPECT_EQ(QUSINO.getUserAssetVolume(user).QSCAmount, qscBefore);
+}
+
+TEST(ContractQUSINO, coinFlip_BetaGateAllowsCallerWithSufficientQST)
+{
+    ContractTestingQUSINO QUSINO;
+    QUSINO.beginEpoch();
+
+    id qstIssuer = QUSINO_QSTIssuer;
+    uint64 qstAssetName = 5526353;
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, QUSINO_SUPPLY_OF_QST), QUSINO_SUPPLY_OF_QST);
+
+    id user = QUSINO_testUser2;
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
+    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, user, qstAssetName, qstIssuer, QUSINO_BETA_MIN_QST_HOLDING), (sint64)QUSINO_BETA_MIN_QST_HOLDING);
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    uint64 bet = QUSINO_COINFLIP_MIN_BET;
+    QUSINO.giveUserQSC(user, bet);
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, bet);
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+}
+
+TEST(ContractQUSINO, coinFlip_BetaGateInactiveBeforeAnchor)
+{
+    ContractTestingQUSINO QUSINO;
+    // Deliberately no beginEpoch() call -- betaStartEpoch is still the 0 sentinel,
+    // exactly like a freshly-constructed pre-upgrade contract before its first
+    // post-deploy epoch boundary. The gate must be skipped entirely in this state.
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    uint64 bet = QUSINO_COINFLIP_MIN_BET;
+    QUSINO.giveUserQSC(user, bet); // zero QST
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, bet);
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+}
+
+TEST(ContractQUSINO, coinFlip_BetaGateInactiveAfterDurationElapses)
+{
+    ContractTestingQUSINO QUSINO;
+    QUSINO.beginEpoch();
+    uint32 anchorEpoch = system.epoch;
+
+    // Jump straight to the epoch the beta window ends at -- no QST required from here on.
+    system.epoch = anchorEpoch + QUSINO_BETA_DURATION_EPOCHS;
+
+    QUSINO.fundBonusAmount(1000000000ULL);
+    increaseEnergy(QUSINO_testUser1, 1);
+    QUSINO.seedRandomEntropy(0xA11CE);
+    ASSERT_EQ(QUSINO.refillRandomBank(QUSINO_testUser1).returnCode, QUSINO_SUCCESS);
+
+    id user = QUSINO_testUser2;
+    uint64 bet = QUSINO_COINFLIP_MIN_BET;
+    QUSINO.giveUserQSC(user, bet); // zero QST
+
+    QUSINO::coinFlip_output output = QUSINO.coinFlip(user, 0, QUSINO_ASSET_TYPE_QSC, bet);
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+}
+
+// getUserAssetVolume's new QST balance + beta-status fields, mirroring coinFlip's
+// gate exactly (see its comment in Qusino.h) so the frontend can show an accurate
+// notification without duplicating the gate logic itself.
+TEST(ContractQUSINO, getUserAssetVolume_ReportsQSTBalanceAndBetaStatus)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id qstIssuer = QUSINO_QSTIssuer;
+    uint64 qstAssetName = 5526353;
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, QUSINO_SUPPLY_OF_QST), QUSINO_SUPPLY_OF_QST);
+
+    id belowThresholdUser = QUSINO_testUser1;
+    id eligibleUser = QUSINO_testUser2;
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE * 2);
+    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, belowThresholdUser, qstAssetName, qstIssuer, QUSINO_BETA_MIN_QST_HOLDING - 1), (sint64)(QUSINO_BETA_MIN_QST_HOLDING - 1));
+    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, eligibleUser, qstAssetName, qstIssuer, QUSINO_BETA_MIN_QST_HOLDING), (sint64)QUSINO_BETA_MIN_QST_HOLDING);
+
+    // Before the beta window is anchored: reported inactive, everyone eligible.
+    QUSINO::getUserAssetVolume_output preAnchor = QUSINO.getUserAssetVolume(belowThresholdUser);
+    EXPECT_EQ(preAnchor.QSTAmount, QUSINO_BETA_MIN_QST_HOLDING - 1);
+    EXPECT_EQ(preAnchor.betaActive, 0);
+    EXPECT_EQ(preAnchor.betaEligible, 1);
+    EXPECT_EQ(preAnchor.betaEpochsRemaining, 0u);
+
+    QUSINO.beginEpoch();
+    uint32 anchorEpoch = system.epoch;
+
+    QUSINO::getUserAssetVolume_output belowDuringBeta = QUSINO.getUserAssetVolume(belowThresholdUser);
+    EXPECT_EQ(belowDuringBeta.betaActive, 1);
+    EXPECT_EQ(belowDuringBeta.betaEligible, 0);
+    EXPECT_EQ(belowDuringBeta.betaEpochsRemaining, QUSINO_BETA_DURATION_EPOCHS);
+
+    QUSINO::getUserAssetVolume_output eligibleDuringBeta = QUSINO.getUserAssetVolume(eligibleUser);
+    EXPECT_EQ(eligibleDuringBeta.QSTAmount, QUSINO_BETA_MIN_QST_HOLDING);
+    EXPECT_EQ(eligibleDuringBeta.betaActive, 1);
+    EXPECT_EQ(eligibleDuringBeta.betaEligible, 1);
+
+    // Past the beta window: inactive again, everyone eligible regardless of QST.
+    system.epoch = anchorEpoch + QUSINO_BETA_DURATION_EPOCHS;
+    QUSINO::getUserAssetVolume_output afterBeta = QUSINO.getUserAssetVolume(belowThresholdUser);
+    EXPECT_EQ(afterBeta.betaActive, 0);
+    EXPECT_EQ(afterBeta.betaEligible, 1);
+    EXPECT_EQ(afterBeta.betaEpochsRemaining, 0u);
 }
 
 TEST(ContractQUSINO, depositBonus_CapsAtGameBankrollAndRoutesOverflowToEpochRevenue)

@@ -11,11 +11,12 @@ constexpr uint32 QUSINO_VOTE_FEE = 1000;
 constexpr uint32 QUSINO_LP_DIVIDENDS_PERCENT = 20;
 constexpr uint32 QUSINO_CCF_DIVIDENDS_PERCENT = 5;
 constexpr uint32 QUSINO_TREASURY_DIVIDENDS_PERCENT = 25;
-constexpr uint32 QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT = 20;
-constexpr uint32 QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT = 30;
+constexpr uint32 QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT = 50;
 constexpr uint64 QUSINO_INFINITY_PRICE = 1000000000000000000ULL;
 constexpr uint64 QUSINO_QSC_PRICE = 100;    // 1QSC = 100Qubic
 constexpr uint64 QUSINO_SUPPLY_OF_QST = 1200000000ULL;    // 1.2 billion
+constexpr uint32 QUSINO_BETA_DURATION_EPOCHS = 14;
+constexpr uint64 QUSINO_BETA_MIN_QST_HOLDING = 100000ULL;
 constexpr uint64 QUSINO_DAILY_CLAIM_BONUS_DURATION = 24 * 60 * 60; // in number of seconds
 constexpr uint64 QUSINO_BONUS_CLAIM_DURATION = 60;   // 60s
 constexpr uint64 QUSINO_BONUS_CLAIM_AMOUNT = 100;    // 100STAR + 1QSC = 100Qubic,  STAR isnt redeemable for qubic.
@@ -47,6 +48,7 @@ constexpr sint32 QUSINO_RNG_REFILL_FAILED = 23;
 constexpr sint32 QUSINO_EXCEEDS_MAX_BET = 24;
 constexpr sint32 QUSINO_PROPOSER_CANNOT_VOTE = 25;
 constexpr sint32 QUSINO_DUPLICATE_GAME_URI = 26;
+constexpr sint32 QUSINO_INSUFFICIENT_QST_FOR_BETA = 27;
 
 constexpr uint8 QUSINO_ASSET_TYPE_QUBIC = 0;
 constexpr uint8 QUSINO_ASSET_TYPE_QSC = 1;
@@ -75,6 +77,7 @@ constexpr uint32 QUSINO_LOG_COINFLIP_RESULT = 18;
 constexpr uint32 QUSINO_LOG_EXCEEDS_MAX_BET = 19;
 constexpr uint32 QUSINO_LOG_PROPOSER_CANNOT_VOTE = 20;
 constexpr uint32 QUSINO_LOG_DUPLICATE_GAME_URI = 21;
+constexpr uint32 QUSINO_LOG_INSUFFICIENT_QST_FOR_BETA = 22;
 
 // ---------------------------------------------------------------------------
 // Coin Flip + shared RNG "Result Bank"
@@ -248,6 +251,12 @@ public:
     {
         uint64 STARAmount;
         uint64 QSCAmount;
+        uint64 QSTAmount;
+        // Beta-gate status for this user, mirroring the check in coinFlip -- lets the
+        // frontend show a notification without having to duplicate the gate logic.
+        bit betaActive;       // true while the beta window is anchored and still running
+        bit betaEligible;     // true if this user could play right now (always true once !betaActive)
+        uint32 betaEpochsRemaining; // 0 when betaActive is false
     };
 
     struct getDailyClaimStatus_input
@@ -369,6 +378,7 @@ public:
         uint64 bonusAmount;
         sint64 transferRightsFee;
         uint32 lastClaimedTime;
+        uint32 betaStartEpoch;
 
         // RNG "Result Bank" (see comment above QUSINO_RNG_ENTROPY_BITS)
         Array<uint64, QUSINO_RNG_MAX_GAMES * QUSINO_RNG_POOL_SIZE> rngPools;    // flattened [gameId * QUSINO_RNG_POOL_SIZE + slot]
@@ -1154,6 +1164,30 @@ public:
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
 
+        // Beta gate: for the first QUSINO_BETA_DURATION_EPOCHS epochs after betaStartEpoch is
+        // anchored (see BEGIN_EPOCH), only identities holding at least QUSINO_BETA_MIN_QST_HOLDING
+        // QST may play. betaStartEpoch == 0 is the "not yet anchored" sentinel (BEGIN_EPOCH sets it
+        // on its first run after this code goes live), so the gate is skipped until then. Once the
+        // beta window elapses, anyone can play regardless of QST holdings.
+        // QST is a plain QX-issued asset -- nobody transfers its share management
+        // rights to QUSINO, so it's still managed by QX (ownership AND possession),
+        // not SELF_INDEX. Querying with SELF_INDEX here would only ever see shares
+        // QUSINO itself manages (none), silently reading 0 for every real holder --
+        // caught by coinFlip_BetaGateAllowsCallerWithSufficientQST and
+        // getUserAssetVolume_ReportsQSTBalanceAndBetaStatus in contract_qusino.cpp.
+        if (state.get().betaStartEpoch != 0
+            && qpi.epoch() < state.get().betaStartEpoch + QUSINO_BETA_DURATION_EPOCHS
+            && qpi.numberOfPossessedShares(state.get().QSTAssetName, state.get().QSTIssuer, qpi.invocator(), qpi.invocator(), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) < (sint64)QUSINO_BETA_MIN_QST_HOLDING)
+        {
+            output.returnCode = QUSINO_INSUFFICIENT_QST_FOR_BETA;
+            output.result = 0;
+            output.won = 0;
+            output.payout = 0;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_QST_FOR_BETA, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
         if (input.guess > 1)
         {
             output.returnCode = QUSINO_INVALID_INPUT;
@@ -1361,12 +1395,21 @@ public:
     struct getUserAssetVolume_locals
     {
         STARAndQSC userAsset;
+        sint64 qstBalance;
     };
     PUBLIC_FUNCTION_WITH_LOCALS(getUserAssetVolume)
     {
         state.get().userAssetVolume.get(input.user, locals.userAsset);
         output.QSCAmount = locals.userAsset.volumeOfQSC;
         output.STARAmount = locals.userAsset.volumeOfSTAR;
+        locals.qstBalance = qpi.numberOfPossessedShares(state.get().QSTAssetName, state.get().QSTIssuer, input.user, input.user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+        output.QSTAmount = (locals.qstBalance > 0) ? (uint64)locals.qstBalance : 0;
+
+        // Mirrors the coinFlip beta gate exactly so the frontend can show an accurate
+        // notification without duplicating (and risking drifting from) the gate logic.
+        output.betaActive = (state.get().betaStartEpoch != 0 && qpi.epoch() < state.get().betaStartEpoch + QUSINO_BETA_DURATION_EPOCHS);
+        output.betaEpochsRemaining = output.betaActive ? (uint32)(state.get().betaStartEpoch + QUSINO_BETA_DURATION_EPOCHS - qpi.epoch()) : 0;
+        output.betaEligible = (!output.betaActive) || (locals.qstBalance >= (sint64)QUSINO_BETA_MIN_QST_HOLDING);
     }
 
     // Lets a client show "you can claim again in Xh Ym" instead of the user
@@ -1577,21 +1620,24 @@ public:
         state.mut().QSTIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
     }
 
+    BEGIN_EPOCH()
+    {
+        if (state.get().betaStartEpoch == 0)
+        {
+            state.mut().betaStartEpoch = qpi.epoch();
+        }
+    }
+
     struct END_EPOCH_locals
     {
         STARAndQSC userVolume;
         GameInfo game;
-        uint64 QSTDividends;
         sint64 idx;
-        AssetPossessionIterator iter;
-        Asset QSTAsset;
         uint64 epochSnapshot;
         uint64 lpShare;
         uint64 ccfShare;
         uint64 treasuryShare;
         uint64 shareholders676Part;
-        sint64 possessionCount;
-        uint64 qstPayout;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -1712,46 +1758,16 @@ public:
         {
             qpi.transfer(state.get().treasuryAddress, (sint64)locals.treasuryShare);
         }
+        // QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT is now 50 (was 20), folding in
+        // the 30 points that used to go to QST holders here via a separate
+        // per-possessor AssetPossessionIterator loop -- removed entirely per
+        // client feedback (Sept 2026): "remove the revenue for the QST
+        // holders...it should be sum up to the shareholders." QST is still
+        // tracked (QSTAssetName/QSTIssuer) and still read elsewhere -- just
+        // purely as coinFlip's beta-gate holding-threshold check now, not a
+        // revenue share.
         qpi.distributeDividends(div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT), 1ULL), 67600ULL));
-        locals.QSTDividends = 0;
-        // Each possessor's payout is (epochSnapshot * QST_HOLDERS_PERCENT * their share
-        // count) / (100 * QUSINO_SUPPLY_OF_QST) -- computed per possessor, inside this
-        // loop, with every multiplication done before the one division.
-        //
-        // An earlier version of this computed a single shared "per-share rate" ONCE,
-        // outside the loop, by dividing first: (epochSnapshot * percent / 100) /
-        // QUSINO_SUPPLY_OF_QST. That's fatal with real numbers -- the whole dividend
-        // pool (tens of millions of Qu in practice) divided by QUSINO_SUPPLY_OF_QST
-        // (1.2 BILLION shares) is a fraction of a single Qu per share, and integer
-        // division truncates any such fraction straight to 0. That zeroed out every
-        // QST holder's payout entirely, regardless of whether the percent-to-fraction
-        // denominator used *1000 or *100 (a previous fix here changed *1000 to *100,
-        // correctly diagnosing an extra factor of 10 by analogy with lpShare/ccfShare/
-        // etc., but those are flat one-recipient payouts with no per-share division at
-        // all -- the *1000-vs-*100 choice was never the actual bug). Multiplying
-        // epochSnapshot * percent * possessionCount together before dividing once by
-        // QUSINO_SUPPLY_OF_QST * 100 keeps the precision that dividing early throws
-        // away. smul() saturates instead of wrapping if the product ever exceeds
-        // uint64 (astronomically unlikely given real Qu supply bounds, same
-        // extremely-low-risk tradeoff already accepted for the other shares above).
-        locals.QSTAsset.assetName = state.get().QSTAssetName;
-        locals.QSTAsset.issuer = state.get().QSTIssuer;
-        locals.iter.begin(locals.QSTAsset);
-        while (!locals.iter.reachedEnd())
-        {
-            locals.possessionCount = locals.iter.numberOfPossessedShares();
-            if (locals.possessionCount > 0)
-            {
-                locals.qstPayout = div<uint64>(smul(smul(locals.epochSnapshot, (uint64)QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT), (uint64)locals.possessionCount), QUSINO_SUPPLY_OF_QST * 100ULL);
-                locals.QSTDividends = sadd(locals.QSTDividends, locals.qstPayout);
-                if (locals.qstPayout <= (uint64)INT64_MAX)
-                {
-                    qpi.transfer(locals.iter.possessor(), (sint64)locals.qstPayout);
-                }
-            }
-            locals.iter.next();
-        }
-        state.mut().epochRevenue -= sadd(sadd(sadd(sadd(locals.lpShare, locals.ccfShare), locals.treasuryShare), locals.shareholders676Part), locals.QSTDividends);
+        state.mut().epochRevenue -= sadd(sadd(sadd(locals.lpShare, locals.ccfShare), locals.treasuryShare), locals.shareholders676Part);
 	}
 
     PRE_ACQUIRE_SHARES()
