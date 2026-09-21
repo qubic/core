@@ -307,7 +307,15 @@
 #define CONTRACT_STATE2_TYPE QPAYHUB2
 #include "contracts/QPayhub.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
 
+#define QTREAT_CONTRACT_INDEX 30
+#define CONTRACT_INDEX QTREAT_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QTREAT
+#define CONTRACT_STATE2_TYPE QTREAT2
+#include "contracts/QTREAT.h"
 
 // new contracts should be added above this line
 
@@ -425,6 +433,7 @@ constexpr struct ContractDescription
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
+    {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -552,12 +561,13 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
-	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
+	  REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPAYHUB);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTREAT);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
