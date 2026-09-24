@@ -42,10 +42,12 @@ struct ScoreEngine
 
     unsigned int computeBpp9000Score(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
     {
-        const unsigned int failures = _bpp9000Score.computeScore(publicKey, nonce, randomPool);
-        return (failures == ScoreBpp9000<Bpp9000ParamsT>::INFINITE_ERROR)
-            ? (unsigned int)ScoreBpp9000<Bpp9000ParamsT>::numberOfWindows
-            : failures;
+        const Rating rating = _bpp9000Score.computeScore(publicKey, nonce, randomPool);
+        // A timed-out walk reports the worst a frame can score rather than the sentinel. With the
+        // rolling frame that bound is the frame width, not the whole graded region.
+        return rating.isValid()
+            ? rating.error
+            : (unsigned int)ScoreBpp9000<Bpp9000ParamsT>::windowWidth;
     }
 
     unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
@@ -95,15 +97,16 @@ struct ScoreEngine
 
     // Ant colony: score a child by inheriting the parent's network and walking it with the child's
     // own seeds. Returns INVALID_SCORE_VALUE for a non-canonical nonce or an unsupported algorithm.
-    unsigned int computeAntScoreFromParent(const AntAnn& parent, const unsigned char* publicKey,
+    Rating computeAntScoreFromParent(const AntAnn& parent, unsigned long long parentShift,
+        const unsigned char* publicKey,
         const unsigned char* nonce, const unsigned char* anchorDigest, const unsigned char* randomPool)
     {
         switch (getAlgoType(nonce))
         {
             case AlgoType::Bpp9000:
-                return _bpp9000Score.computeScoreFromParent(parent, publicKey, nonce, anchorDigest, randomPool);
+                return _bpp9000Score.computeScoreFromParent(parent, parentShift, publicKey, nonce, anchorDigest, randomPool);
             default:
-                return INVALID_SCORE_VALUE;
+                return Rating::worst();
         }
     }
 

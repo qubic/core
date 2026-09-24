@@ -129,12 +129,17 @@ static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
 static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 28;
 static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
 static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
-static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 1024;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 2048;
 static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
-// Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
-// better, and a solution passes when score <= threshold.
+// Frames the rolling window can slide past. The score is an error inside ONE frame, so it lands in
+// [0, BPP9000_WINDOW_WIDTH]; smaller is better.
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
-static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4000;
+// Frame-0 floor; above it a network is no better than random. Must sit between
+// BPP9000_WINDOW_WIDTH / 3 and BPP9000_WINDOW_WIDTH / 2.
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT =
+    (unsigned int)(BPP9000_WINDOW_WIDTH * 45 / 100);
+// How far the frame may slide: production predicts one week ahead.
+static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
 static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/assert.h"
+#include "mining/rating.h"
 #include "platform/concurrency.h"
 #include "platform/m256.h"
 #include "platform/memory.h"
@@ -97,14 +98,16 @@ struct AntSolutionRecord
     m256i nonce;
     SolutionRef parentRef;        // this solution's parent, or ROOT_REF
     SolutionRef selfRef;          // this solution's own address (ABSOLUTE tick inside)
-    unsigned int score;           // error count, lower is better
+    unsigned int score;           // error count inside the frame, lower is better (rating key 2)
+    unsigned int shift;           // rolling-frame position reached, higher is better (rating key 1)
     unsigned int anchorTick;      // ABSOLUTE. tick whose digest seeded the RNG
     unsigned int depth;           // a child of the root is depth 1; the root itself is never stored
     unsigned int childAnnHash;    // K12 of the canonical ANN at commit; digest-fold input
     unsigned int annStateSlot;    // index into the ANN pool; always equals the record index
     unsigned int nextSiblingIdx;  // next child of the same parent, NO_SIBLING terminates
+    unsigned int padding;         // keeps the record padding-free
 };
-static_assert(sizeof(AntSolutionRecord) == 104, "AntSolutionRecord unexpected padding");
+static_assert(sizeof(AntSolutionRecord) == 112, "AntSolutionRecord unexpected padding");
 
 // ANN that will be saved for the epoch
 template<typename PackedAnnT>
@@ -112,6 +115,7 @@ struct AntExportSlotT
 {
     m256i pubkey;
     unsigned int score;
+    unsigned int shift;
     unsigned int depth;
     PackedAnnT ann;
 };
@@ -232,7 +236,7 @@ struct AntColonyDiagnostics
 struct ChildCandidate
 {
     m256i pubkey;
-    unsigned int score;           // error count, lower is better
+    score_engine::Rating rating; // what the solution is judged by
     unsigned int anchorTick;      // ABSOLUTE
     unsigned int publishTick;     // ABSOLUTE
 };
@@ -306,12 +310,14 @@ public:
         ReplayKey key;
         PackedAnn ann;
         unsigned int score;
+        unsigned int shift;      // restored with the score on a cache hit
         unsigned int occupied;
+        unsigned int padding;    // keeps the entry padding-free
     };
 
     // Padding-free, so the on-disk entry matches the in-memory one byte for byte.
     static_assert(sizeof(ReplayEntry) ==
-        sizeof(ReplayKey) + sizeof(PackedAnn) + 2 * sizeof(unsigned int),
+        sizeof(ReplayKey) + sizeof(PackedAnn) + 4 * sizeof(unsigned int),
         "ReplayEntry unexpected padding");
 
     static constexpr unsigned long long ANT_REPLAY_CACHE_BYTES =
@@ -379,8 +385,8 @@ public:
     bool loadSnapshot(unsigned short epoch, CHAR16* directory,
         const m256i& rootSeed, unsigned int errorThreshold, unsigned int initialTick);
 
-    void putReplayScore(const ReplayKey& key, unsigned int score, const Ann& ann);
-    bool tryGetReplayScore(const ReplayKey& key, unsigned int& outScore, Ann& outAnn);
+    void putReplayScore(const ReplayKey& key, const score_engine::Rating& rating, const Ann& ann);
+    bool tryGetReplayScore(const ReplayKey& key, score_engine::Rating& outRating, Ann& outAnn);
     void clearReplayCache();
     unsigned int replayCacheOccupancy() const
     {
@@ -457,7 +463,7 @@ public:
 
     // Validates and, if accepted, appends the record and its network to the store.
     ValidityResult commit(const AntCommitInput& in, const AntSolutionRecord* parentRec,
-        unsigned int score, const Ann& childAnn, unsigned int childAnnHash);
+        const score_engine::Rating& rating, const Ann& childAnn, unsigned int childAnnHash);
 
 private:
     // Children already recorded under this parent, capped at ANT_MAX_CHILDREN_PER_PARENT. Root
@@ -484,7 +490,7 @@ private:
     unsigned int childCountFromHead(unsigned int head) const;
 
     // Offers a solution to the epoch's best-N set. Called for EVERY solution that passes the rules
-    void noteExportCandidate(const m256i& pubkey, unsigned int score, unsigned int depth, const Ann& ann)
+    void noteExportCandidate(const m256i& pubkey, const score_engine::Rating& rating, unsigned int depth, const Ann& ann)
     {
         ExportSet& set = *_exportSet;
         unsigned int slot;
@@ -492,7 +498,9 @@ private:
         {
             slot = set.count;
         }
-        else if (score >= set.slots[set.order[ANT_EXPORT_MAX_SOLUTIONS - 1]].score)
+        else if (!rating.isBetterThan(score_engine::Rating{
+                     set.slots[set.order[ANT_EXPORT_MAX_SOLUTIONS - 1]].score,
+                     set.slots[set.order[ANT_EXPORT_MAX_SOLUTIONS - 1]].shift }))
         {
             // The common case once the set is full
             return;
@@ -504,15 +512,17 @@ private:
         }
 
         set.slots[slot].pubkey = pubkey;
-        set.slots[slot].score = score;
+        set.slots[slot].score = rating.error;
+        set.slots[slot].shift = rating.shift;
         set.slots[slot].depth = depth;
         ScoreT::store(ann, set.slots[slot].ann);
 
-        // Insert into the order, shifting indices only. Equal scores keep the incumbent ahead, so
+        // Insert into the order, shifting indices only. Equal (shift, error) keeps the incumbent ahead, so
         // among equals the earlier solution ranks first
         const unsigned int end = (set.count < ANT_EXPORT_MAX_SOLUTIONS) ? set.count : (ANT_EXPORT_MAX_SOLUTIONS - 1);
         unsigned int i = end;
-        while (i > 0 && set.slots[set.order[i - 1]].score > score)
+        while (i > 0 && rating.isBetterThan(score_engine::Rating{
+                            set.slots[set.order[i - 1]].score, set.slots[set.order[i - 1]].shift }))
         {
             set.order[i] = set.order[i - 1];
             i--;
@@ -756,7 +766,7 @@ inline void AntColony<ScoreT>::clearReplayCache()
 }
 
 template<typename ScoreT>
-inline void AntColony<ScoreT>::putReplayScore(const ReplayKey& key, unsigned int score, const Ann& ann)
+inline void AntColony<ScoreT>::putReplayScore(const ReplayKey& key, const score_engine::Rating& rating, const Ann& ann)
 {
     if (_replayCache == nullptr)
     {
@@ -765,8 +775,10 @@ inline void AntColony<ScoreT>::putReplayScore(const ReplayKey& key, unsigned int
     ReplayEntry staged;
     staged.key = key;
     ScoreT::store(ann, staged.ann);
-    staged.score = score;
+    staged.score = rating.error;
+    staged.shift = rating.shift;
     staged.occupied = 1;
+    staged.padding = 0;
 
     ReplayEntry& slot = _replayCache[replaySlotOf(key)];
     LockGuard guard(_replayCacheLock);
@@ -778,7 +790,7 @@ inline void AntColony<ScoreT>::putReplayScore(const ReplayKey& key, unsigned int
 }
 
 template<typename ScoreT>
-inline bool AntColony<ScoreT>::tryGetReplayScore(const ReplayKey& key, unsigned int& outScore, Ann& outAnn)
+inline bool AntColony<ScoreT>::tryGetReplayScore(const ReplayKey& key, score_engine::Rating& outRating, Ann& outAnn)
 {
     if (_replayCache == nullptr)
     {
@@ -790,7 +802,8 @@ inline bool AntColony<ScoreT>::tryGetReplayScore(const ReplayKey& key, unsigned 
     {
         return false;
     }
-    outScore = slot.score;
+    outRating.error = slot.score;
+    outRating.shift = slot.shift;
     ScoreT::load(slot.ann, outAnn);
     return true;
 }
@@ -889,10 +902,12 @@ struct AntColonyExportEntry
 {
     // Names the identity that found this network, log only
     m256i pubkey;
-    unsigned int score;    // error count, lower is better - how good this network is
+    unsigned int score;    // error count inside the frame, lower is better
+    unsigned int shift;    // rolling-frame position reached
     unsigned int depth;    // generations of strict improvement behind it, so the chain length is visible
+    unsigned int padding;  // keeps the entry padding-free
 };
-static_assert(sizeof(AntColonyExportEntry) == 32 + 8, "AntColonyExportEntry unexpected padding");
+static_assert(sizeof(AntColonyExportEntry) == 32 + 16, "AntColonyExportEntry unexpected padding");
 
 template<typename ScoreT>
 inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16* directory)
@@ -940,7 +955,9 @@ inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16*
         const ExportSlot& slot = set.slots[set.order[i]];
         out[i].meta.pubkey = slot.pubkey;
         out[i].meta.score = slot.score;
+        out[i].meta.shift = slot.shift;
         out[i].meta.depth = slot.depth;
+        out[i].meta.padding = 0;
         ScoreT::load(slot.ann, out[i].ann);
     }
 
@@ -1095,23 +1112,25 @@ inline ValidityResult AntColony<ScoreT>::validateChild(const ChildCandidate& chi
         return ValidityResult::RejectStale;
     }
 
-    // A null parent record means ROOT, it has no score of its own, so seed WORST_SCORE and any child
-    // improves on it. A non-root parent must belong to the same identity
-    unsigned int parentScore = WORST_SCORE;
+    // A null parent record means ROOT: seeded worst at frame 0, so any child beats it. A non-root parent
+    // must belong to the same identity.
+    score_engine::Rating parentRating = score_engine::Rating::worst();
     if (parentRecord != nullptr)
     {
         if (!(parentRecord->pubkey == child.pubkey))
         {
             return ValidityResult::RejectWrongTree;
         }
-        parentScore = parentRecord->score;
+        parentRating.error = parentRecord->score;
+        parentRating.shift = parentRecord->shift;
     }
 
-    if (child.score > threshold)
+    // The floor only bites at frame 0; deeper nodes are bounded by the parent test below.
+    if (!child.rating.clearsFloor(threshold))
     {
         return ValidityResult::RejectBelowThreshold;
     }
-    if (child.score >= parentScore)
+    if (!child.rating.isBetterThan(parentRating))
     {
         return ValidityResult::RejectLeParent;
     }
@@ -1125,10 +1144,10 @@ inline ValidityResult AntColony<ScoreT>::validateChild(const ChildCandidate& chi
 
 template<typename ScoreT>
 inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const AntSolutionRecord* parentRec,
-    unsigned int score, const Ann& childAnn, unsigned int childAnnHash)
+    const score_engine::Rating& rating, const Ann& childAnn, unsigned int childAnnHash)
 {
     const unsigned int childCount = countChildren(in.parentRef, in.pubkey);
-    const ChildCandidate child{ in.pubkey, score, in.anchorTick, in.publishTick };
+    const ChildCandidate child{ in.pubkey, rating, in.anchorTick, in.publishTick };
 
     const ValidityResult result = validateChild(child, parentRec, childCount, _errorThreshold);
     if (result != ValidityResult::Valid)
@@ -1149,7 +1168,7 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
     if (_solutionCount >= ANT_MAX_NODES_PER_EPOCH)
     {
         // The record is dropped, the network is not, still note this sols for end of epoch exppot
-        noteExportCandidate(in.pubkey, score, (parentRec != nullptr) ? (parentRec->depth + 1) : 1, childAnn);
+        noteExportCandidate(in.pubkey, rating, (parentRec != nullptr) ? (parentRec->depth + 1) : 1, childAnn);
         _stats.acceptedNotStored++;
         return ValidityResult::ValidNotStored;
     }
@@ -1204,12 +1223,14 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
     newRec.nonce = in.nonce;
     newRec.parentRef = in.parentRef;
     newRec.selfRef = in.selfRef;
-    newRec.score = score;
+    newRec.score = rating.error;
+    newRec.shift = rating.shift;
     newRec.anchorTick = in.anchorTick;
     newRec.depth = (parentRec != nullptr) ? (parentRec->depth + 1) : 1;
     newRec.childAnnHash = childAnnHash;
     newRec.annStateSlot = newIdx;
     newRec.nextSiblingIdx = prevHead;
+    newRec.padding = 0;
 
     AntTickSlot& tslot = _tickIndex[selfSlot];
     if (tslot.count == 0)
@@ -1226,7 +1247,7 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
     ATOMIC_STORE32(_solutionCount, (long)(newIdx + 1));
     ATOMIC_STORE32(tslot.count, (long)(tslot.count + 1));
 
-    noteExportCandidate(in.pubkey, score, newRec.depth, childAnn);
+    noteExportCandidate(in.pubkey, rating, newRec.depth, childAnn);
 
     _stats.acceptedSolutions++;
     _stats.treeSizeCurrent = _solutionCount;
@@ -1563,14 +1584,21 @@ inline bool AntColony<ScoreT>::rebuildDerivedState()
             return false;
         }
 
-        // The two score rules validateChild() enforced when this record was admitted. A corrupt
-        // score would otherwise set a wrong bar for its own children.
-        if (rec.score > _errorThreshold)
+        // The rules validateChild() enforced when this record was admitted. A corrupt (shift, score)
+        // would otherwise set a wrong bar for its own children.
+        if (rec.shift > ScoreT::shiftCap)
         {
-            antSnapshotFailure(L"score above the epoch threshold, record/score", i, rec.score);
+            antSnapshotFailure(L"shift above the epoch cap, record/shift", i, rec.shift);
             return false;
         }
-        if (parentRec != nullptr && rec.score >= parentRec->score)
+        const score_engine::Rating recRating{ rec.score, rec.shift };
+        if (!recRating.clearsFloor(_errorThreshold))
+        {
+            antSnapshotFailure(L"frame-0 score above the epoch threshold, record/score", i, rec.score);
+            return false;
+        }
+        if (parentRec != nullptr
+            && !recRating.isBetterThan(score_engine::Rating{ parentRec->score, parentRec->shift }))
         {
             antSnapshotFailure(L"score does not beat the parent, record/score", i, rec.score);
             return false;

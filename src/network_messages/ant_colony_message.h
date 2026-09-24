@@ -56,12 +56,13 @@ struct AntIdentityTreeNode
     unsigned int selfSolutionIndexInTick;
     unsigned int parentTick;
     unsigned int parentSolutionIndexInTick;
-    unsigned int score;
+    unsigned int score;               // error count inside the frame, lower is better
+    unsigned int shift;               // rolling-frame position reached, higher is better
     unsigned int childCount;
     unsigned int anchorTick;            // this node's own anchor tick number (ABSOLUTE)
     unsigned int depth;
 };
-static_assert(sizeof(AntIdentityTreeNode) == 32, "AntIdentityTreeNode unexpected size");
+static_assert(sizeof(AntIdentityTreeNode) == 36, "AntIdentityTreeNode unexpected size");
 
 // Metadata header only; followed by count * AntIdentityTreeNode (count * itemSize
 // bytes). itemSize lets the receiver validate the payload without hardcoding the

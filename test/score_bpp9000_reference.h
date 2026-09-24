@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../src/mining/score_common.h"
+#include "../src/mining/rating.h"
 #include "../src/mining/task_file.h"
 #include "score_common_reference.h"
 #include "kangaroo_twelve.h"
@@ -28,6 +29,7 @@ struct Miner
     static constexpr unsigned long long populationThreshold = Params::populationThreshold;
     static constexpr unsigned long long numberOfMutations = Params::numberOfMutations;
     static constexpr unsigned int solutionThreshold = Params::solutionThreshold;
+    static constexpr unsigned long long shiftCap = Params::shiftCap;
 
     static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
     static constexpr unsigned long long numberOfWindows = sequenceLength - windowWidth;
@@ -38,12 +40,15 @@ struct Miner
     static constexpr unsigned long long lutSize = 27;
     static constexpr unsigned int MAX_CHANGES_PER_STEP = 10;
     static constexpr unsigned long long numberOfLinks = populationThreshold * numberOfNeighbors;
+    // shift advances when the frame error drops to <= 1/3 of the frame.
+    static constexpr unsigned int advanceThreshold = (unsigned int)(windowWidth / 3);
 
     static_assert(numberOfNeighbors == 3, "the LUT index is hardcoded for 3 neighbors");
     static_assert(populationThreshold % 16 == 0, "populationThreshold must be a multiple of 16 so sizeof(RootMaterial) stays a multiple of 64 for the random2 draw");
     static_assert(numberOfOutputNeurons == 1, "score() grades only output neuron 0");
     static_assert(numberOfWindows >= 1 && numberOfWindows < sequenceLength, "the emit count must be positive and within the target sequence");
-    static_assert(maxNumberOfTicks > numberOfWindows, "maxNumberOfTicks must exceed the emit count so all emits can fit");
+    static_assert(maxNumberOfTicks > shiftCap + windowWidth, "maxNumberOfTicks must exceed the deepest emit count so all emits can fit");
+    static_assert(shiftCap >= 1 && shiftCap <= numberOfWindows, "shiftCap must keep the last frame inside the data");
     static_assert(populationThreshold <= 65536, "the transfer index is 16-bit");
 
     // Root material drawn from the pubkey over the epoch pool: trit bytes plus one unsigned long long per link.
@@ -83,6 +88,9 @@ struct Miner
 
     unsigned char neuronOut[maxNumberOfNeurons];
     unsigned char neuronPrev[maxNumberOfNeurons];
+
+    // Rolling-frame position; every score() grades [shift, shift + windowWidth).
+    unsigned long long shift = 0;
 
     RootMaterial rootMaterial;
     unsigned long long mutationSeed[mutationSeedPaddedCount];
@@ -141,7 +149,7 @@ struct Miner
         unsigned int failures = 0;
         unsigned long long counter = 0;
         unsigned long long ticks = 0;
-        while (counter < numberOfWindows)
+        while (counter < shift + windowWidth)
         {
             if (++ticks >= maxNumberOfTicks)
             {
@@ -159,7 +167,7 @@ struct Miner
 
             if (neuronOut[controlIndex] != TRIT_UNKNOWN)
             {
-                if (neuronOut[outputIndex] != targetOutputs[counter])
+                if (counter >= shift && neuronOut[outputIndex] != targetOutputs[counter])
                 {
                     failures++;
                 }
@@ -284,53 +292,87 @@ struct Miner
         return (unsigned char)((nonce[1] >> 4) & 0x03);
     }
 
-    unsigned int computeScoreFromCurrent(unsigned int L, unsigned long long K, unsigned char mode, unsigned int startScore)
+    // Slides the frame while this fixed network holds it; stops when it cannot, or at shiftCap.
+    score_engine::Rating advanceShift()
     {
-        unsigned int cur = startScore;
-        unsigned int best = cur;
+        for (;;)
+        {
+            const unsigned int frameError = score();
+            if (frameError > advanceThreshold)
+            {
+                return score_engine::Rating{ frameError, (unsigned int)shift };
+            }
+            if (shift == shiftCap)
+            {
+                return score_engine::Rating{ frameError, (unsigned int)shift };
+            }
+            shift++;
+        }
+    }
+
+    // Anti-attractor walk: L mutations/step, explore for K steps then exploit, one-step rollback of the
+    // network and the shift. Explore compares error and records nothing; exploit compares the rating.
+    // Returns the committed rating, leaving that network in best*.
+    score_engine::Rating computeScoreFromCurrent(unsigned int L, unsigned long long K, unsigned char mode)
+    {
+        score_engine::Rating cur = advanceShift();
+        score_engine::Rating best = cur;
         snapshotBest();
 
         for (unsigned long long s = 0; s < numberOfMutations; ++s)
         {
             snapshotPrev();
+            const unsigned long long prevShift = shift;
 
             for (unsigned int i = 0; i < L; ++i)
             {
                 mutate(mode, mutationSeed[s * MAX_CHANGES_PER_STEP + i]);
             }
 
-            const unsigned int r = score();
+            const score_engine::Rating r = advanceShift();
 
-            bool accept = false;
+            // A timed-out rollout is never accepted, in either phase.
             if (s < K)
             {
-                accept = (r >= cur);
+                // Anti-attractor: takes only a worse-or-equal error, and records nothing.
+                if (r.isValid() && r.errorWorseOrEqual(cur))
+                {
+                    cur = r;
+                }
+                else
+                {
+                    rollbackPrev();
+                    shift = prevShift;
+                }
             }
             else
             {
-                accept = (r <= cur);
-            }
+                // Takes anything no worse than where the walk stands.
+                if (r.isValid() && r.isNotWorseThan(cur))
+                {
+                    cur = r;
+                }
+                else
+                {
+                    rollbackPrev();
+                    shift = prevShift;
+                }
 
-            if (accept)
-            {
-                cur = r;
-            }
-            else
-            {
-                rollbackPrev();
-            }
-
-            if (cur < best)
-            {
-                best = cur;
-                snapshotBest();
+                // Records on the same keep-if-not-worse test as the accept above.
+                if (cur.isValid() && cur.isNotWorseThan(best))
+                {
+                    best = cur;
+                    snapshotBest();
+                }
             }
         }
+
+        shift = best.shift;
         return best;
     }
 
     // Standalone: root from the pubkey, walk with K = 0 (no explore). control/output already set by initialize.
-    unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce)
+    score_engine::Rating computeScore(const unsigned char* publicKey, const unsigned char* nonce)
     {
         const unsigned int L = changesPerStep(nonce);
         const unsigned char mode = modeOf(nonce);
@@ -339,8 +381,8 @@ struct Miner
         deriveMutationSeeds(publicKey, nonce, nullptr);
         applyRootMaterial();
 
-        const unsigned int cur = score();
-        return computeScoreFromCurrent(L, 0, mode, cur);
+        shift = 0;   // standalone has no parent, so the frame starts at the first window
+        return computeScoreFromCurrent(L, 0, mode);
     }
 };
 

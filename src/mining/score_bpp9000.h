@@ -1,6 +1,7 @@
 #pragma once
 
 #include "score_common.h"
+#include "rating.h"
 #include "task_file.h"
 #include "trit_pack.h"
 
@@ -28,6 +29,7 @@ struct ScoreBpp9000
     static constexpr unsigned long long populationThreshold = Params::populationThreshold;
     static constexpr unsigned long long numberOfMutations = Params::numberOfMutations;
     static constexpr unsigned int solutionThreshold = Params::solutionThreshold;
+    static constexpr unsigned long long shiftCap = Params::shiftCap;
 
     static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
     // Number of graded emits the network must produce.
@@ -38,14 +40,21 @@ struct ScoreBpp9000
     static constexpr unsigned int INVALID_SCORE_VALUE = 0xFFFFFFFFU;
     static constexpr unsigned long long lutSize = 27;   // 3^numberOfNeighbors, base-3 index t0 + 3*t1 + 9*t2
 
+    // Rolling-frame scoring, derived from the frame width so they scale with any config.
+    // advanceThreshold: shift advances when the frame error drops to <= 1/3 of the frame.
+    static constexpr unsigned int advanceThreshold = (unsigned int)(windowWidth / 3);
+
     // Directed links: one index per neuron neighbor slot.
     static constexpr unsigned long long numberOfLinks = populationThreshold * numberOfNeighbors;
 
     static_assert(numberOfNeighbors == 3, "the LUT index is hardcoded for 3 neighbors");
     static_assert(populationThreshold % 16 == 0, "populationThreshold must be a multiple of 16 so sizeof(RootMaterial) stays a multiple of 64 for the random2 draw");
     static_assert(numberOfOutputNeurons == 1, "score() grades only output neuron 0");
-    static_assert(numberOfWindows >= 1 && numberOfWindows < sequenceLength, "the emit count must be positive and within the target sequence");
-    static_assert(maxNumberOfTicks > numberOfWindows, "maxNumberOfTicks must exceed the emit count so all emits can fit");
+    static_assert(numberOfWindows >= 1 && numberOfWindows < sequenceLength, "the frame must leave targets after it");
+    static_assert(shiftCap >= 1 && shiftCap <= numberOfWindows, "shiftCap must be positive and keep the last frame inside the data");
+    static_assert(maxNumberOfTicks > shiftCap + windowWidth, "maxNumberOfTicks must exceed the deepest emit count so all emits can fit");
+    static_assert(advanceThreshold < windowWidth, "the advance gate must be reachable inside one frame");
+    static_assert(solutionThreshold > advanceThreshold && solutionThreshold < windowWidth, "the frame-0 floor must admit some root and still reject the worst");
     static_assert(populationThreshold <= 65536, "ANN.neighbor is a 16-bit transfer index");
 
     // nonce[1] layout: bits 0-3 = L in [1, BPP9000_MAX_CHANGES_PER_STEP], bits 4-5 = mode in [1, 3], bits 6-7 = 0.
@@ -159,6 +168,10 @@ struct ScoreBpp9000
     unsigned int bestNeighborIndices[numberOfLinks];
     unsigned char bestLut[maxNumberOfNeurons * lutSize];
 
+    // Rolling-frame position: score() grades [shift, shift+windowWidth). Holds the committed shift
+    // once the walk returns.
+    unsigned long long shift = 0;
+
     unsigned char neuronOut[maxNumberOfNeurons];
     unsigned char neuronPrev[maxNumberOfNeurons];
 
@@ -225,7 +238,7 @@ struct ScoreBpp9000
         return true;
     }
 
-    // Autonomous rollout: run from the start state; the control neuron gates a graded emit, timing out at maxNumberOfTicks.
+    // Emits shift+windowWidth outputs, grades only [shift, shift+windowWidth). Times out at maxNumberOfTicks.
     unsigned int score()
     {
         for (unsigned long long n = 0; n < populationThreshold; ++n)
@@ -236,7 +249,7 @@ struct ScoreBpp9000
         unsigned int failures = 0;
         unsigned long long counter = 0;
         unsigned long long ticks = 0;
-        while (counter < numberOfWindows)
+        while (counter < shift + windowWidth)
         {
             if (++ticks >= maxNumberOfTicks)
             {
@@ -254,7 +267,7 @@ struct ScoreBpp9000
 
             if (neuronOut[controlIndex] != TRIT_UNKNOWN)
             {
-                if (neuronOut[outputIndex] != targetOutputs[counter])
+                if (counter >= shift && neuronOut[outputIndex] != targetOutputs[counter])
                 {
                     failures++;
                 }
@@ -394,50 +407,83 @@ struct ScoreBpp9000
         copyMem(out.lut, bestLut, sizeof(out.lut));
     }
 
-    // Anti-attractor walk: L mutations/step of the mode; explore (accept worse-or-equal) for K steps, then
-    // exploit (better-or-equal); one-step rollback. Returns the best score, leaving that network in best*.
-    unsigned int computeScoreFromCurrent(unsigned int L, unsigned long long K, unsigned char mode, unsigned int startScore)
+    // Scores the frame at the current shift and advances while the network masters it. Stops when it
+    // cannot master a frame, or at shiftCap. Returns the rating reached.
+    Rating advanceShift()
     {
-        unsigned int cur = startScore;
-        unsigned int best = cur;
+        for (;;)
+        {
+            const unsigned int frameError = score();
+            if (frameError > advanceThreshold)
+            {
+                return Rating{ frameError, (unsigned int)shift };   // cannot master this frame
+            }
+            if (shift == shiftCap)
+            {
+                return Rating{ frameError, (unsigned int)shift };   // the cap
+            }
+            shift++;
+        }
+    }
+
+    // Anti-attractor walk: L mutations/step, explore for K steps then exploit, one-step rollback of the
+    // network and the shift. Explore compares error and records nothing; exploit compares the rating.
+    // Returns the committed rating, leaving that network in best*.
+    Rating computeScoreFromCurrent(unsigned int L, unsigned long long K, unsigned char mode)
+    {
+        Rating cur = advanceShift();
+        Rating best = cur;
         snapshotBest();
 
         for (unsigned long long s = 0; s < numberOfMutations; ++s)
         {
             snapshotPrev();
+            const unsigned long long prevShift = shift;
 
             for (unsigned int i = 0; i < L; ++i)
             {
                 mutate(mode, mutationSeed[s * BPP9000_MAX_CHANGES_PER_STEP + i]);
             }
 
-            const unsigned int r = score();
+            const Rating r = advanceShift();
 
-            bool accept = false;
+            // A timed-out rollout is never accepted, in either phase.
             if (s < K)
             {
-                accept = (r >= cur);
+                // Anti-attractor: takes only a worse-or-equal error, and records nothing.
+                if (r.isValid() && r.errorWorseOrEqual(cur))
+                {
+                    cur = r;
+                }
+                else
+                {
+                    rollbackPrev();
+                    shift = prevShift;
+                }
             }
             else
             {
-                accept = (r <= cur);
-            }
+                // Takes anything no worse than where the walk stands.
+                if (r.isValid() && r.isNotWorseThan(cur))
+                {
+                    cur = r;
+                }
+                else
+                {
+                    rollbackPrev();
+                    shift = prevShift;
+                }
 
-            if (accept)
-            {
-                cur = r;
-            }
-            else
-            {
-                rollbackPrev();
-            }
-
-            if (cur < best)
-            {
-                best = cur;
-                snapshotBest();
+                // Records on the same keep-if-not-worse test as the accept above.
+                if (cur.isValid() && cur.isNotWorseThan(best))
+                {
+                    best = cur;
+                    snapshotBest();
+                }
             }
         }
+
+        shift = best.shift;
         return best;
     }
 
@@ -464,7 +510,7 @@ struct ScoreBpp9000
 
     // Standalone: root from the pubkey, walk with K = 0 (no explore). control/output must already be set
     // by deriveControlOutput.
-    unsigned int computeScore(
+    Rating computeScore(
         const unsigned char* publicKey,
         const unsigned char* nonce,
         const unsigned char* pRandom2Pool)
@@ -476,8 +522,8 @@ struct ScoreBpp9000
         deriveMutationSeeds(publicKey, nonce, nullptr, pRandom2Pool);
         applyRootMaterial();
 
-        const unsigned int cur = score();
-        return computeScoreFromCurrent(L, 0, mode, cur);
+        shift = 0;   // standalone has no parent, so the frame starts at the first window
+        return computeScoreFromCurrent(L, 0, mode);
     }
 
     // Ant colony: the identity's root - LUTs, start state and wiring derived from rootSeed (the identity
@@ -489,24 +535,25 @@ struct ScoreBpp9000
         compact(out);
     }
 
-    // Ant colony: score a child by inheriting the parent's network, walking with the child's seeds.
+    // Ant colony: inherit the parent's network and shift, then walk with the child's own seeds.
     // control/output must already be set by deriveControlOutput.
-    unsigned int computeScoreFromParent(
+    Rating computeScoreFromParent(
         const ANN& parentANN,
+        unsigned long long parentShift,
         const unsigned char* publicKey,
         const unsigned char* nonce,
         const unsigned char* anchorTickDigest,
         const unsigned char* pRandom2Pool)
     {
-        if (!isCanonicalAntNonce(nonce))
+        if (!isCanonicalAntNonce(nonce) || parentShift > shiftCap)
         {
-            return INVALID_SCORE_VALUE;
+            return Rating::worst();
         }
 
         expand(parentANN);
         if (!validateTopology())
         {
-            return INVALID_SCORE_VALUE;
+            return Rating::worst();
         }
         deriveMutationSeeds(publicKey, nonce, anchorTickDigest, pRandom2Pool);
 
@@ -514,8 +561,8 @@ struct ScoreBpp9000
         const unsigned long long K = nonce[2];
         const unsigned char mode = modeOf(nonce);
 
-        const unsigned int cur = score();
-        return computeScoreFromCurrent(L, K, mode, cur);
+        shift = parentShift;   // inherit; the root's children start at 0
+        return computeScoreFromCurrent(L, K, mode);
     }
 
     int getLastOutput(unsigned char* requestedOutput, int requestedSizeInBytes)

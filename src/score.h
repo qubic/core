@@ -29,7 +29,8 @@ namespace score_engine
         BPP9000_NUMBER_OF_NEIGHBORS,
         BPP9000_POPULATION_THRESHOLD,
         BPP9000_NUMBER_OF_MUTATIONS,
-        BPP9000_SOLUTION_THRESHOLD_DEFAULT>;
+        BPP9000_SOLUTION_THRESHOLD_DEFAULT,
+        BPP9000_SHIFT_CAP>;
 
     using NeuraxonParamsT = NeuraxonParams<
         NEURAXON_NUMBER_OF_INPUT_NEURONS,
@@ -219,9 +220,10 @@ public:
     // Returns INVALID_SCORE_VALUE for a non-canonical nonce, in which case outChildAnn is not written
     // bestANN would still hold the previous call's network, and committing that would put one node's
     // stale bytes into childAnnHash.
-    unsigned int computeAntChildScore(
+    score_engine::Rating computeAntChildScore(
         const unsigned long long processor_Number,
         const score_engine::ScoreBpp9000T::ANN* parentAnn,
+        const unsigned int parentShift,
         const m256i& publicKey,
         const m256i& nonce,
         const m256i& anchorDigest,
@@ -241,14 +243,14 @@ public:
             parent = &_antRootScratch[solutionBufIdx];
         }
 
-        const unsigned int childScore = engine.computeAntScoreFromParent(
-            *parent, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
-        if (childScore == score_engine::INVALID_SCORE_VALUE)
+        const score_engine::Rating childRating = engine.computeAntScoreFromParent(
+            *parent, parentShift, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
+        if (!childRating.isValid())
         {
-            return childScore;
+            return childRating;
         }
         engine.getAntBestANN(outChildAnn);
-        return childScore;
+        return childRating;
     }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
