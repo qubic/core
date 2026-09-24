@@ -36,6 +36,7 @@ public:
     LoggingTest()
     {
         EXPECT_TRUE(qLogger::initLogging());
+        qLogger::registerNewTx(0, 0); // initLogging() resets tickBegin to 0 but keeps the tx context of earlier tests
     }
 
     ~LoggingTest()
