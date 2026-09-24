@@ -13,9 +13,9 @@ The cache keeps the chaining values of every large contract between ticks (0.4 p
 size) and recomputes only the leaves whose pages were written. The first chunk and the trailing
 partial leaf are always re-read.
 
-Which pages were written comes from the hardware: the state's page tables are split into 4 KiB
-entries at start-up, and the CPU sets the Dirty bit of a page-table entry on the first write to
-that page. Before hashing, the contract processor (the only core that writes tracked states while
+Which pages were written comes from the hardware: the CPU sets the Dirty bit of a page-table entry
+on the first write to that page. The states are mapped with 2 MiB pages (1 GiB pages are split
+into 2 MiB ones at start-up), so a written byte marks its 2 MiB page, i.e. 256 leaves, for rehashing. Before hashing, the contract processor (the only core that writes tracked states while
 the node ticks) scans those bits, marks the leaves, clears the bits and flushes the pages from its
 TLB. States written on other cores (contract 0 with the fee reserves, contracts in their IPO epoch,
 state files loaded at start-up, migrations) stay on the full-hash path or invalidate their cache.
@@ -63,5 +63,6 @@ so nodes with and without it can run in the same network.
 Measured on a 600 MiB state with 6 or 7 helper cores (`tools/k12_bench cache`): about 3 ms per
 changed contract when nothing or little was written, versus about 500 ms for the full hash on one
 core or 70 to 90 ms with helpers. With every page dirty the cost equals the parallel full hash.
-Contract code runs on 4 KiB mappings instead of 2 MiB after the split; on random access this costs
-about 15 percent, on sequential access nothing.
+A dirty 2 MiB page costs a 2 MiB rehash. Tracking at 4 KiB instead would rehash less but slowed
+every state access of the contract code by 23 to 43 percent (QEMU boot bench), so the states keep
+their 2 MiB mappings.

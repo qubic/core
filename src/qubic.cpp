@@ -7503,8 +7503,8 @@ static bool initialize()
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
 #if USE_K12_STATE_CACHE
-            // States that get a chaining-value cache are page-tracked: 2 MiB alignment keeps the
-            // page-table split confined to their own large pages.
+            // States that get a chaining-value cache are page-tracked: 2 MiB alignment gives them their
+            // own 2 MiB pages, so their Dirty bits are not set by writes to neighbouring data.
             if (size >= PARALLEL_K12_LEAVES_MIN_STATE_SIZE)
             {
                 if (!allocPagesWithErrorLog(L"contractStates", size, PageTables::LARGE_PAGE, (void**)&contractStates[contractIndex], &contractStatesRawBase[contractIndex], &contractStatesRawPages[contractIndex], __LINE__))

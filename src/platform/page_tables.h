@@ -3,9 +3,11 @@
 // x86-64 four-level page-table access for dirty-page tracking of large contract states under UEFI.
 //
 // The firmware identity-maps RAM (linear == physical) with the largest pages it can. For a tracked
-// range we split those into 4 KiB PTEs once at start-up, before any application processor runs, so no
-// TLB shootdown is ever needed. Afterwards the writing core can consume the hardware Dirty bit (PTE
-// bit 6): scan the PTEs of the range, report the set ones, clear them and invlpg each cleared page.
+// range we split 1 GiB pages into 2 MiB pages once at start-up, before any application processor runs,
+// so no TLB shootdown is ever needed. 2 MiB pages stay: 4 KiB mappings would slow every access of the
+// contract code. Afterwards the writing core can consume the hardware Dirty bit (bit 6 of the 2 MiB PDE,
+// or of the PTE where the firmware already mapped 4 KiB pages): scan the entries of the range, report
+// the set ones, clear them and invlpg each cleared page.
 // The invlpg is mandatory: a TLB entry that already carries D=1 stops the CPU from setting the bit
 // again in memory. Because scan and clear run on the single writing core, every write between two
 // collections is observed.
@@ -46,18 +48,18 @@ struct PageTables
         return ready;
     }
 
-    // Split every large page covering [base, base + size) into 4 KiB PTEs. Call before starting APs.
+    // Split every 1 GiB page covering [base, base + size) into 2 MiB pages. Call before starting APs.
     bool splitRange(const void* base, unsigned long long size)
     {
         if (!ready)
         {
             return false;
         }
-        const unsigned long long begin = (unsigned long long)base & ~(PAGE - 1);
+        const unsigned long long begin = (unsigned long long)base & ~(LARGE_PAGE - 1);
         const unsigned long long end = (unsigned long long)base + size;
         for (unsigned long long va = begin; va < end; va += LARGE_PAGE)
         {
-            if (!pte(va, true))
+            if (!pdeOf(va, true))
             {
                 return false;
             }
@@ -65,10 +67,11 @@ struct PageTables
         return true;
     }
 
-    // On the writing core: report every 4 KiB page of [base, base + size) whose Dirty bit is set as
-    // onDirty(pageIndex), then clear the bit and flush that page from this core's TLB. Pages that were
-    // never written cost one PTE read. Returns false (with the range possibly half consumed) if a page
-    // is unmapped or not split; the caller must then invalidate its cache.
+    // On the writing core: report every written page of [base, base + size) as onDirty(offset, length),
+    // a byte range relative to base (a 2 MiB page, or a 4 KiB page where the firmware mapped those),
+    // then clear its Dirty bit and flush it from this core's TLB. Pages that were never written cost one
+    // entry read. Returns false (with the range possibly half consumed) if a page is unmapped or still
+    // on a 1 GiB page; the caller must then invalidate its cache.
     template <class F>
     bool collectDirty(const void* base, unsigned long long size, F onDirty)
     {
@@ -81,11 +84,24 @@ struct PageTables
         WriteProtectGuard guard; // page-table pages may be mapped read-only with CR0.WP set
         for (unsigned long long va2m = begin & ~(LARGE_PAGE - 1); va2m < end; va2m += LARGE_PAGE)
         {
-            unsigned long long* table = pageTableOf(va2m);
-            if (!table)
+            volatile unsigned long long* pde = pdeOf(va2m, false);
+            if (!pde)
             {
                 return false;
             }
+            if (*pde & PS)
+            {
+                if (*pde & DIRTY)
+                {
+                    const unsigned long long lo = va2m < begin ? begin : va2m;
+                    const unsigned long long hi = va2m + LARGE_PAGE > end ? end : va2m + LARGE_PAGE;
+                    onDirty(lo - begin, hi - lo);
+                    atomicAnd(pde, ~DIRTY);
+                    invlpg((const void*)va2m);
+                }
+                continue;
+            }
+            unsigned long long* table = tableAt(*pde);
             for (unsigned int k = 0; k < 512; k++)
             {
                 const unsigned long long va = va2m + k * PAGE;
@@ -104,7 +120,7 @@ struct PageTables
                 }
                 if (*p & DIRTY)
                 {
-                    onDirty((va - begin) / PAGE);
+                    onDirty(va - begin, PAGE);
                     atomicAnd(p, ~DIRTY);
                     invlpg((const void*)va);
                 }
@@ -198,20 +214,10 @@ private:
         return true;
     }
 
-    // The 4 KiB PTE mapping va. With split set, large pages on the way are split; otherwise nullptr
-    // is returned for them. nullptr also for any non-present entry.
-    unsigned long long* pte(unsigned long long va, bool split)
-    {
-        unsigned long long* table = pageTableOfImpl(va, split);
-        return table ? &table[(va >> 12) & 511] : nullptr;
-    }
-
-    unsigned long long* pageTableOf(unsigned long long va)
-    {
-        return pageTableOfImpl(va, false);
-    }
-
-    unsigned long long* pageTableOfImpl(unsigned long long va, bool split)
+    // The page-directory entry covering va: a 2 MiB page (PS set) or a table of 4 KiB PTEs. With split
+    // set, a 1 GiB page on the way is split; otherwise nullptr is returned for it. nullptr also for any
+    // non-present entry.
+    unsigned long long* pdeOf(unsigned long long va, bool split)
     {
         unsigned long long* pml4 = tableAt(readCr3());
         unsigned long long* e = &pml4[(va >> 39) & 511];
@@ -231,15 +237,7 @@ private:
         }
         unsigned long long* pd = tableAt(*e);
         e = &pd[(va >> 21) & 511];
-        if (!(*e & PRESENT))
-        {
-            return nullptr;
-        }
-        if ((*e & PS) && (!split || !splitEntry(e, 21)))
-        {
-            return nullptr;
-        }
-        return tableAt(*e);
+        return (*e & PRESENT) ? e : nullptr;
     }
 
 #if defined(_MSC_VER) && !defined(__clang__)

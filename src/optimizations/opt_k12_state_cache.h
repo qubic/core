@@ -116,9 +116,9 @@ struct K12StateCacheSet
                 continue;
             }
             unsigned long long pages = 0;
-            const bool ok = pageTables.collectDirty(e.state, e.size, [&](unsigned long long page) {
-                e.cache.markDirtyBytes(page * PageTables::PAGE, PageTables::PAGE);
-                pages++;
+            const bool ok = pageTables.collectDirty(e.state, e.size, [&](unsigned long long offset, unsigned long long length) {
+                e.cache.markDirtyBytes(offset, length);
+                pages += length / PageTables::PAGE;
             });
             dirtyPagesCollected += pages;
             if (!ok)
