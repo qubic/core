@@ -536,8 +536,8 @@ TEST(TestAntColonySnapshot, AnchorRingSurvivesTheRoundTrip)
     EXPECT_FALSE(colony->getAnchorDigest(100001, out));
 }
 
-// The seed and threshold are supplied by the node, not read from the file. A disagreement means the
-// colony files and the node state are from different moments, so the tree is refused.
+// The seed is supplied by the node, not read from the file. A disagreement means the colony files and
+// the node state are from different moments, so the tree is refused.
 TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
 {
     AntColonyBpp9000T* colony = freshColony();
@@ -547,7 +547,6 @@ TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
     ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
 
     EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, makeKey(12345), TEST_THRESHOLD, TEST_INITIAL_TICK));
-    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD + 1, TEST_INITIAL_TICK));
 
     // A different base would resolve every parentRef to the wrong record.
     EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK + 1));
@@ -557,6 +556,31 @@ TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
 
     // And the matching one still loads, so the refusals above were the checks and not a bad file.
     EXPECT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
+}
+
+// The floor can move inside an epoch, so a snapshot written under the old one must still load.
+TEST(TestAntColonySnapshot, SnapshotLoadsAfterTheFloorMoves)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(43);
+    ASSERT_NE(commitRootChild(colony, me, 3800, 0, 710), ANT_INVALID_INDEX);
+    ASSERT_NE(commitRootChild(colony, me, 3700, 1, 711), ANT_INVALID_INDEX);
+    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
+
+    // Tightened: both records now sit above the floor the node is running with.
+    colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
+    ASSERT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, 300, TEST_INITIAL_TICK));
+    ASSERT_EQ(colony->solutionCount(), 2u);
+    EXPECT_EQ(colony->recordAt(0)->score, 3800u);
+    EXPECT_EQ(colony->recordAt(1)->score, 3700u);
+
+    // Loosened, the other direction.
+    colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
+    ASSERT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD + 100,
+        TEST_INITIAL_TICK));
+    EXPECT_EQ(colony->solutionCount(), 2u);
 }
 
 // Those refusals all happen while only the meta has been read, so the tree the node is already

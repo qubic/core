@@ -1428,10 +1428,10 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
         antSnapshotFailure(L"root seed does not match the restored node state, record/0", 0, 0);
         return false;
     }
+    // The floor can move inside an epoch, so a mismatch is logged rather than refused.
     if (meta.errorThreshold != errorThreshold)
     {
-        antSnapshotFailure(L"threshold does not match the node, file/node", meta.errorThreshold, errorThreshold);
-        return false;
+        antSnapshotFailure(L"threshold moved since the snapshot, file/node", meta.errorThreshold, errorThreshold);
     }
     // Records hold absolute ticks; slotOf() maps them against initialTick, so a snapshot taken at a
     // different base would resolve parent references to the wrong records. Refuse it.
@@ -1591,10 +1591,11 @@ inline bool AntColony<ScoreT>::rebuildDerivedState()
             antSnapshotFailure(L"shift above the epoch cap, record/shift", i, rec.shift);
             return false;
         }
+        // The floor can move inside an epoch, so a stored record is checked against the sentinel only.
         const score_engine::Rating recRating{ rec.score, rec.shift };
-        if (!recRating.clearsFloor(_errorThreshold))
+        if (!recRating.isValid())
         {
-            antSnapshotFailure(L"frame-0 score above the epoch threshold, record/score", i, rec.score);
+            antSnapshotFailure(L"record holds the invalid-score sentinel, record/score", i, rec.score);
             return false;
         }
         if (parentRec != nullptr
