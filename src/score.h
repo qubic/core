@@ -189,7 +189,7 @@ public:
     {
         if (selectedAlgo == score_engine::AlgoType::Bpp9000)
         {
-            return (solutionScore <= BPP9000_NUMBER_OF_WINDOWS)
+            return (solutionScore <= BPP9000_WINDOW_WIDTH)
                 && (solutionScore != score_engine::INVALID_SCORE_VALUE);
         }
         // Neuraxon slot is reserved and not yet minable.

@@ -125,21 +125,16 @@ static constexpr unsigned char BPP9000_DATA_HASH[32] =
       0xcb, 0x1c, 0x9c, 0x3d, 0x80, 0x4a, 0xf6, 0xed, 0xe6, 0xb5, 0x9f, 0xc5, 0x2c, 0x0e, 0x3d, 0xfa };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
-static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
-static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 28;
-static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
-static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
 static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 2048;
+static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
 static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
-// Frames the rolling window can slide past. The score is an error inside ONE frame, so it lands in
-// [0, BPP9000_WINDOW_WIDTH]; smaller is better.
-static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
-// Frame-0 floor; above it a network is no better than random. Must sit between
-// BPP9000_WINDOW_WIDTH / 3 and BPP9000_WINDOW_WIDTH / 2.
-static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT =
-    (unsigned int)(BPP9000_WINDOW_WIDTH * 45 / 100);
+static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
+static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365 + 24 * 7;
+static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 365;
 // How far the frame may slide: production predicts one week ahead.
 static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT =
+    (unsigned int)(BPP9000_WINDOW_WIDTH * 45 / 100);
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
 static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;
