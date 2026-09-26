@@ -55,26 +55,58 @@ static ValidityResult admit(const ChildCandidate& child, const AntSolutionRecord
     return AntColonyBpp9000T::validateChild(child, parent, childCount, TEST_THRESHOLD);
 }
 
-// The LUT packing must round-trip the whole LUT at the unpadded stride (wiring/start are copied verbatim).
-TEST(TestAntColonyPackedAnn, CoversAWholeAnnAtTheUnpaddedStride)
+// All three parts of the ANN are packed in the store: wiring at the population's index width, the start
+// state and the LUTs five trits to a byte. A mistake in any one of them hands children a wrong parent.
+TEST(TestAntColonyPackedAnn, StoreLoadRoundTripsTheWholeAnn)
 {
-    AntColonyBpp9000T::Ann src;
+    static AntColonyBpp9000T::Ann src;
+    const unsigned long long links = sizeof(src.neighbor) / sizeof(src.neighbor[0]);
+    for (unsigned long long i = 0; i < links; i++)
+    {
+        src.neighbor[i] = (unsigned short)((i * 7919) % BPP9000_POPULATION_THRESHOLD);
+    }
+    for (unsigned long long i = 0; i < sizeof(src.initialNeuronValues); i++)
+    {
+        src.initialNeuronValues[i] = (unsigned char)((i * 2) % 3);
+    }
     for (unsigned long long i = 0; i < sizeof(src.lut); i++)
     {
         src.lut[i] = (unsigned char)(i % 3);   // mutate() only ever writes 0, 1 or 2
     }
 
-    AntColonyBpp9000T::PackedAnn packed;
-    packed.lut.pack(src.lut);
+    static AntColonyBpp9000T::PackedAnn packed;
+    score_engine::ScoreBpp9000T::store(src, packed);
 
-    AntColonyBpp9000T::Ann back;
+    static AntColonyBpp9000T::Ann back;
     setMem(&back, sizeof(back), 0xFF);
-    packed.lut.unpack(back.lut);
+    score_engine::ScoreBpp9000T::load(packed, back);
 
+    for (unsigned long long i = 0; i < links; i++)
+    {
+        ASSERT_EQ(back.neighbor[i], src.neighbor[i]) << "link " << i;
+    }
+    for (unsigned long long i = 0; i < sizeof(src.initialNeuronValues); i++)
+    {
+        ASSERT_EQ(back.initialNeuronValues[i], src.initialNeuronValues[i]) << "start state " << i;
+    }
     for (unsigned long long i = 0; i < sizeof(src.lut); i++)
     {
         ASSERT_EQ(back.lut[i], src.lut[i]) << "entry " << i;
     }
+}
+
+// The stored size is what the pool and the replay cache are allocated from, so pin it to the encoding
+// rather than to whatever the struct happens to lay out.
+TEST(TestAntColonyPackedAnn, StoredSizeMatchesTheEncoding)
+{
+    const unsigned long long indexBits = score_engine::bitsToIndex(BPP9000_POPULATION_THRESHOLD);
+    const unsigned long long data =
+        (BPP9000_POPULATION_THRESHOLD * BPP9000_NUMBER_OF_NEIGHBORS * indexBits + 7) / 8
+        + (BPP9000_POPULATION_THRESHOLD + 4) / 5
+        + (BPP9000_POPULATION_THRESHOLD * 27 + 4) / 5;
+    EXPECT_EQ(sizeof(AntColonyBpp9000T::PackedAnn), data + (8 - data % 8));
+    EXPECT_EQ(sizeof(AntColonyBpp9000T::PackedAnn) % 8, 0u) << "ReplayEntry would gain an implicit gap";
+    EXPECT_LT(sizeof(AntColonyBpp9000T::PackedAnn), sizeof(AntColonyBpp9000T::Ann));
 }
 
 // The threshold is checked before the parent comparison, so nodes worse than it are never stored 

@@ -900,6 +900,35 @@ TEST(TestQubicScoreAntColony, RootAnnIsTritValuedAndInRange)
     }
 }
 
+// expand() takes the parent's bytes as they are, and both the tick's LUT offset and the store's base-3
+// encoding assume trits. A parent carrying anything else is refused before it is scored.
+TEST(TestQubicScoreAntColony, NonTritParentAnnIsRejected)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(11);
+    const m256i anchor = makePubkey(31);
+    const m256i nonce = makeAntNonce(3, 0, 91);
+
+    static AntEngine::ANN parent;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parent);
+    ASSERT_TRUE(f.engine->computeScoreFromParent(parent, 0, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, f.pool.data()).isValid()) << "the untouched root must score";
+
+    const unsigned char goodLut = parent.lut[0];
+    parent.lut[0] = 3;
+    EXPECT_FALSE(f.engine->computeScoreFromParent(parent, 0, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, f.pool.data()).isValid()) << "a LUT byte above 2 was accepted";
+    parent.lut[0] = goodLut;
+
+    // The last neuron, so a scan that stops early is caught.
+    const unsigned long long last = AntEngine::maxNumberOfNeurons - 1;
+    parent.initialNeuronValues[last] = 3;
+    EXPECT_FALSE(f.engine->computeScoreFromParent(parent, 0, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, f.pool.data()).isValid()) << "a start byte above 2 was accepted";
+}
+
 // expand/compact must be lossless, since every parent read from the tree goes through expand and
 // every child written back goes through compact.
 TEST(TestQubicScoreAntColony, AnnSurvivesExpandAndCompact)

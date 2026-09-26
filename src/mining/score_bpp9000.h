@@ -108,33 +108,49 @@ struct ScoreBpp9000
     static_assert(sizeof(ANN) == numberOfLinks * sizeof(unsigned short) + maxNumberOfNeurons + maxNumberOfNeurons * lutSize,
         "ANN must be padding-free");
 
+    // Wiring indices only ever address a neuron, so they are stored at the width the population needs
+    // rather than a whole unsigned short.
+    static constexpr unsigned int neighborIndexBits = bitsToIndex(populationThreshold);
+
+    using StoredNeighbors = PackedIndices<numberOfLinks, neighborIndexBits>;
+    using StoredStartState = PackedBase3<maxNumberOfNeurons>;
+    using StoredLut = PackedBase3<maxNumberOfNeurons * lutSize>;
+
+    static constexpr unsigned long long storedAnnDataBytes =
+        sizeof(StoredNeighbors) + sizeof(StoredStartState) + sizeof(StoredLut);
+    // Rounds the record up to eight bytes. The packers are alignment-1, so without this a struct that
+    // follows StoredAnn with a wider member - ReplayEntry does - gets an implicit gap. One byte at
+    // minimum, since a zero-length array is not valid.
+    static constexpr unsigned long long storedAnnPadBytes = 8 - (storedAnnDataBytes % 8);
+
+    // The in-store form. Every member is a byte array, so the struct is alignment-1 and padding-free.
     struct StoredAnn
     {
-        unsigned short neighbor[numberOfLinks];
-        unsigned char initialNeuronValues[maxNumberOfNeurons];
-        PackedTrits<maxNumberOfNeurons, lutSize> lut;
+        StoredNeighbors neighbor;
+        StoredStartState initialNeuronValues;
+        StoredLut lut;
+        unsigned char padding[storedAnnPadBytes];
     };
-    static_assert(sizeof(StoredAnn)
-            == numberOfLinks * sizeof(unsigned short) + maxNumberOfNeurons + sizeof(PackedTrits<maxNumberOfNeurons, lutSize>),
+    static_assert(sizeof(StoredAnn) == storedAnnDataBytes + storedAnnPadBytes,
         "StoredAnn must be padding-free");
+    static_assert(sizeof(StoredAnn) % 8 == 0,
+        "StoredAnn must be eight-byte sized so the structs holding it have no implicit gap");
 
     static void store(const ANN& a, StoredAnn& out)
     {
-        copyMem(out.initialNeuronValues, a.initialNeuronValues, sizeof(out.initialNeuronValues));
-        for (unsigned long long i = 0; i < numberOfLinks; ++i)
-        {
-            out.neighbor[i] = a.neighbor[i];
-        }
+        out.neighbor.pack(a.neighbor);
+        out.initialNeuronValues.pack(a.initialNeuronValues);
         out.lut.pack(a.lut);
+        for (unsigned long long i = 0; i < storedAnnPadBytes; ++i)
+        {
+            out.padding[i] = 0;
+        }
     }
 
     static void load(const StoredAnn& s, ANN& out)
     {
-        copyMem(out.initialNeuronValues, s.initialNeuronValues, sizeof(out.initialNeuronValues));
-        for (unsigned long long i = 0; i < numberOfLinks; ++i)
-        {
-            out.neighbor[i] = s.neighbor[i];
-        }
+        s.neighbor.unpack(out.neighbor);
+        s.initialNeuronValues.unpack(out.initialNeuronValues);
         s.lut.unpack(out.lut);
     }
 
@@ -216,6 +232,22 @@ struct ScoreBpp9000
         for (unsigned long long i = 0; i < numberOfLinks; ++i)
         {
             if (neighborIndices[i] >= populationThreshold)
+            {
+                return false;
+            }
+        }
+        // Start state and LUT entries are trits. The tick derives its LUT offset from them and the
+        // store re-encodes them in base 3, so a byte above TRIT_UNKNOWN is refused with the wiring.
+        for (unsigned long long n = 0; n < populationThreshold; ++n)
+        {
+            if (curInitial[n] > TRIT_UNKNOWN)
+            {
+                return false;
+            }
+        }
+        for (unsigned long long i = 0; i < maxNumberOfNeurons * lutSize; ++i)
+        {
+            if (curLut[i] > TRIT_UNKNOWN)
             {
                 return false;
             }
