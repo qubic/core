@@ -152,24 +152,27 @@ struct PackedIndices
 
     unsigned char data[byteCount];
 
+    // Indices are appended to a bit accumulator and whole bytes flushed as they fill, so every output
+    // byte is written exactly once and no clearing pass is needed.
     void pack(const unsigned short* src)
     {
-        for (unsigned long long b = 0; b < byteCount; b++)
-        {
-            data[b] = 0;
-        }
+        unsigned long long acc = 0;
+        unsigned int accBits = 0;
+        unsigned long long out = 0;
         for (unsigned long long i = 0; i < COUNT; i++)
         {
-            const unsigned long long base = i * BITS;
-            const unsigned int value = (unsigned int)src[i];
-            for (unsigned int k = 0; k < BITS; k++)
+            acc |= ((unsigned long long)src[i] & ((1ULL << BITS) - 1ULL)) << accBits;
+            accBits += BITS;
+            while (accBits >= 8)
             {
-                if ((value >> k) & 1u)
-                {
-                    const unsigned long long bit = base + k;
-                    data[bit >> 3] |= (unsigned char)(1u << (bit & 7));
-                }
+                data[out++] = (unsigned char)(acc & 0xFF);
+                acc >>= 8;
+                accBits -= 8;
             }
+        }
+        if (accBits > 0)
+        {
+            data[out++] = (unsigned char)(acc & 0xFF);
         }
     }
 
