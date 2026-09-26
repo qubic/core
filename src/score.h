@@ -29,7 +29,8 @@ namespace score_engine
         BPP9000_NUMBER_OF_NEIGHBORS,
         BPP9000_POPULATION_THRESHOLD,
         BPP9000_NUMBER_OF_MUTATIONS,
-        BPP9000_SOLUTION_THRESHOLD_DEFAULT>;
+        BPP9000_SOLUTION_THRESHOLD_DEFAULT,
+        BPP9000_SHIFT_CAP>;
 
     using NeuraxonParamsT = NeuraxonParams<
         NEURAXON_NUMBER_OF_INPUT_NEURONS,
@@ -98,6 +99,16 @@ public:
 
         LockGuard guard(random2PoolLock);
         copyMem(poolVec, externalPoolVec, score_engine::POOL_VEC_PADDING_SIZE);
+
+        // The control/output neurons are global for the epoch, derived from the digest alone; set them in
+        // every compute buffer now that the digest and pool are established.
+        if (!isZero(randomSeed))
+        {
+            for (unsigned long long i = 0; i < solutionBufferCount; i++)
+            {
+                _computeBuffer[i].deriveControlOutput(currentRandomSeed.m256i_u8, poolVec);
+            }
+        }
     }
 
     // Load the task blocks into every compute buffer; returns false if any leaf rejects them.
@@ -178,7 +189,7 @@ public:
     {
         if (selectedAlgo == score_engine::AlgoType::Bpp9000)
         {
-            return (solutionScore <= BPP9000_NUMBER_OF_WINDOWS)
+            return (solutionScore <= BPP9000_WINDOW_WIDTH)
                 && (solutionScore != score_engine::INVALID_SCORE_VALUE);
         }
         // Neuraxon slot is reserved and not yet minable.
@@ -203,14 +214,16 @@ public:
 
     // Ant colony main score function
     // score a child by inheriting its parent's network and walking it with the child's own seeds.
-    // parentAnn == nullptr means the parent is the epoch root, which is derived here from the
-    // epoch-start spectrum digest (currentRandomSeed) and is identical for every identity
+    // parentAnn == nullptr means the parent is the identity's root, derived here from the identity's
+    // public key (the epoch pool from the spectrum digest supplies the random bytes), so each identity's
+    // tree starts from its own root.
     // Returns INVALID_SCORE_VALUE for a non-canonical nonce, in which case outChildAnn is not written
     // bestANN would still hold the previous call's network, and committing that would put one node's
     // stale bytes into childAnnHash.
-    unsigned int computeAntChildScore(
+    score_engine::Rating computeAntChildScore(
         const unsigned long long processor_Number,
         const score_engine::ScoreBpp9000T::ANN* parentAnn,
+        const unsigned int parentShift,
         const m256i& publicKey,
         const m256i& nonce,
         const m256i& anchorDigest,
@@ -223,21 +236,21 @@ public:
         // Derived into this slot's scratch rather than the engine's own buffer: deriveRootANN() uses
         // currentANN as working space
         const score_engine::ScoreBpp9000T::ANN* parent = parentAnn;
-        // Depth 1, the shared epoch root every identity starts from
+        // Depth 1: the identity's own root, derived from its public key
         if (parent == nullptr)
         {
-            engine.deriveAntRootANN(currentRandomSeed.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
+            engine.deriveAntRootANN(publicKey.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
             parent = &_antRootScratch[solutionBufIdx];
         }
 
-        const unsigned int childScore = engine.computeAntScoreFromParent(
-            *parent, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
-        if (childScore == score_engine::INVALID_SCORE_VALUE)
+        const score_engine::Rating childRating = engine.computeAntScoreFromParent(
+            *parent, parentShift, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
+        if (!childRating.isValid())
         {
-            return childScore;
+            return childRating;
         }
         engine.getAntBestANN(outChildAnn);
-        return childScore;
+        return childRating;
     }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)

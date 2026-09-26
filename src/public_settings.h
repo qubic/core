@@ -121,20 +121,20 @@ static constexpr unsigned char BPP9000_TOPOLOGY_HASH[32] =
     { 0x1d, 0xcc, 0x19, 0x94, 0x1b, 0xb5, 0x25, 0xe8, 0xa8, 0x1f, 0xbd, 0xac, 0x61, 0x2d, 0x3d, 0xa9,
       0x2a, 0xba, 0x06, 0xe8, 0x75, 0x3a, 0xfb, 0x29, 0x74, 0xbc, 0xbe, 0xa6, 0xa6, 0x86, 0xd5, 0xda };
 static constexpr unsigned char BPP9000_DATA_HASH[32] =
-    { 0x97, 0x9c, 0xdc, 0x22, 0x47, 0xd2, 0xca, 0x4e, 0xd3, 0xd6, 0x14, 0xbf, 0x27, 0x89, 0x63, 0x84,
-      0xcb, 0x1c, 0x9c, 0x3d, 0x80, 0x4a, 0xf6, 0xed, 0xe6, 0xb5, 0x9f, 0xc5, 0x2c, 0x0e, 0x3d, 0xfa };
+    { 0xe8, 0x35, 0x13, 0x0d, 0x75, 0x54, 0x6c, 0xa3, 0xe7, 0xcb, 0xfc, 0x12, 0x80, 0xe7, 0x34, 0x5d,
+      0x6f, 0x92, 0xb9, 0x1d, 0x0f, 0x6e, 0x7b, 0xb1, 0xa3, 0xed, 0xf7, 0x45, 0xd3, 0xef, 0x03, 0xb3 };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
-static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
-static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 28;
-static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 2048;
 static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
-static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 64;
-static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
-// Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
-// better, and a solution passes when score <= threshold.
-static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
-static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4000;
+static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
+static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
+static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365 + 24 * 7;
+static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 365;
+// How far the frame may slide: production predicts one week ahead.
+static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT =
+    (unsigned int)(BPP9000_WINDOW_WIDTH * 45 / 100);
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
 static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;
@@ -145,11 +145,11 @@ static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;
 static constexpr unsigned int ANT_MAX_CHILDREN_PER_PARENT = 0;
 
 // Ant colony: tree nodes recorded per epoch; one per accepted solution.
-static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
+static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 22;
 
 // Ant colony: replay-cache entries, scores this node already computed so a restart does not
 // recompute them. Node-local, not consensus; a miss only costs time.
-static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 20;
+static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 19;
 static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
     "ANT_REPLAY_CACHE_SIZE must be a power of two, the slot index masks with it");
 

@@ -14,9 +14,11 @@ struct AntPendingSolution
     m256i nonce;
     SolutionRef parentRef;
     unsigned int anchorTick;      // ABSOLUTE. Bounds how long this entry is worth publishing.
-    unsigned int score;           // computed at receipt; the publisher uses it without re-scoring
+    unsigned int padding;         // keeps the entry padding-free
+    // Computed at receipt; the publisher re-runs the admission gate with it rather than re-scoring.
+    score_engine::Rating rating;
 };
-static_assert(sizeof(AntPendingSolution) == 32 + 32 + 8 + 8, "AntPendingSolution unexpected padding");
+static_assert(sizeof(AntPendingSolution) == 32 + 32 + 8 + 4 + 4 + 8, "AntPendingSolution unexpected padding");
 
 class AntPendingSolutions
 {
@@ -150,7 +152,7 @@ public:
 
     // Queue a solution for publication, called from request processors.
     bool add(const m256i& computorPublicKey, const SolutionRef& parentRef,
-        unsigned int anchorTick, unsigned int score, const m256i& nonce)
+        unsigned int anchorTick, const score_engine::Rating& rating, const m256i& nonce)
     {
         LockGuard guard(_lock);
         const unsigned int slot = indexSlotFor(computorPublicKey, parentRef, nonce);
@@ -182,7 +184,8 @@ public:
         e.nonce = nonce;
         e.parentRef = parentRef;
         e.anchorTick = anchorTick;
-        e.score = score;
+        e.rating = rating;
+        e.padding = 0;
         _publicationTick[entryIdx] = NOT_SCHEDULED;
         if (_index[slot] == INDEX_EMPTY)
         {
@@ -265,7 +268,8 @@ public:
         e.nonce = nonce;
         e.parentRef = parentRef;
         e.anchorTick = 0;
-        e.score = 0;
+        e.rating = score_engine::Rating::worst();
+        e.padding = 0;
         _publicationTick[entryIdx] = RECORDED;
         _index[slot] = entryIdx;
         _count++;
