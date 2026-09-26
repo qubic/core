@@ -39,8 +39,9 @@ identical for any algorithm.
 
 Under bpp9000 a solution has three parts: the **start state** (each neuron's initial trit), the network's
 **wiring** (which neuron reads which), and each neuron's **lookup table (LUT)**, the ternary function it
-computes. All three start from the epoch's shared root - the task file supplies the root wiring, the
-spectrum digest the root start state and LUTs. A miner picks **one** of three mutation modes for a
+computes. All three start from the identity's own root, drawn in one go from the identity's public key
+(the epoch's spectrum digest seeds the random pool the draw reads). The task file supplies only the
+target output sequence the network is graded against; its topology block is not used. A miner picks **one** of three mutation modes for a
 solution and declares it in the nonce - mutate the start state, the wiring, or the LUTs - inheriting all
 three parts from the parent it extends.
 
@@ -49,10 +50,10 @@ Standalone mining searches alone: every attempt starts from scratch. Ant-colony 
 
 - Every **mining identity** (a computor or candidate public key) owns its **own tree** - the colony is
   a per-identity forest. A pool's workers extend the tree of the computor they mine for.
-- Every tree starts from the same **virtual root**: one starting solution per epoch, derived from the
-  epoch's spectrum digest alone - identical for all identities, identical every time you derive it,
-  and never stored or submitted. All identities search from one shared origin; the trees branching
-  from it stay per-identity.
+- Every tree starts from its identity's own **virtual root**: one starting solution per identity per
+  epoch, derived from that identity's **public key** (the epoch's spectrum digest supplies the random
+  bytes), identical every time you derive it, and never stored or submitted. Each identity searches
+  from its own origin.
 - To mine, you pick a **parent** (the root, or any node already in your tree), **inherit** it, vary it
   under your nonce, and score the result.
 - If the result **strictly beats the parent** and clears the epoch **threshold**, you **submit** it. On
@@ -63,7 +64,7 @@ miner starts from there instead of from scratch. The goal of the epoch is the si
 found anywhere in the forest.
 
 ```
-        virtual root (shared per epoch, not stored)
+        virtual root (per identity per epoch, not stored)
                  |
             +----+----+
             |         |
@@ -110,7 +111,7 @@ only publishes solutions it has already validated, and an honest, correct one co
 ## Part 2 - Miner / pool integration guide
 
 **In short.** A miner works one identity's tree. It reads the epoch context, takes a **parent** (the
-epoch's shared virtual root, or a node already in the tree), picks a canonical **nonce**, inherits the
+identity's own virtual root, or a node already in the tree), picks a canonical **nonce**, inherits the
 parent's network, and **mutates and scores** it - reproducing the node's score exactly. If the result
 **beats its parent** and **clears the threshold**, it hands the solution to the **computor**, which
 re-checks it and **publishes it on-chain**; every node then recomputes the score, folds it into
@@ -122,7 +123,7 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 1. **Epoch context** - `REQUEST_ANT_EPOCH_CONTEXT` (public). Read the threshold, freshness window,
    epoch spectrum digest, and child cap for this epoch, and **verify your task file** against the
    returned `topologyHash` / `dataHash` (section 2.7a) before doing any work.
-2. **Get a starting point** - derive the epoch's shared virtual root (from the spectrum digest), or
+2. **Get a starting point** - derive the identity's virtual root (from its public key), or
    fetch an existing node you want to extend (`REQUEST_ANT_PARENT_ANN`).
 3. **Pick a parent** - the root, or any node in your own tree.
 4. **Search** - choose a nonce (section 2.2), inherit the parent's start state, wiring, and LUTs, run the
@@ -174,7 +175,7 @@ identity**; per-identity variation enters only through the mutation seeds.
 1. Inherit the parent's start state, wiring, and LUTs.
 2. `mutationSeed = K12(publicKey || nonce || anchorTickDigest)` with `nonce[0..2]` zeroed in place
    (the full 32-byte nonce is hashed, its first 3 bytes set to 0, not dropped) - still keyed by the
-   mining identity, so different identities walk differently from the shared root.
+   mining identity, so different identities walk differently and from different roots.
 3. Walk `numberOfMutations = 100` steps. Each step applies `L` mutations of the mode declared in the
    nonce - `L` start-state trits, `L` links, or `L` LUT entries. For the first `K` steps accept a
    worse-or-equal result (**explore**); after that accept only better-or-equal (**exploit**); one-step
@@ -213,8 +214,7 @@ recorded but the **deposit is kept** and the miner is **not ranked**.
 
 **Starting a tree.** The root's record score is the worst possible value, so a first (depth-1) child
 passes the "beats parent" check trivially - the **threshold is the only score gate** for starting a
-tree. The shared epoch root scores far above the threshold, so a start still requires real mutation -
-and every identity starts from the same score, so ranking differences reflect search effort only.
+tree. A root scores far above the threshold, so a start still requires real mutation.
 
 **`ValidNotStored`.** Accepted, refunded, and ranked exactly like `Valid`, but the per-epoch store was
 full so the node was not persisted for others to extend. Ranking and refund are unaffected.
@@ -296,7 +296,7 @@ solutions it expects to be accepted and refunded. Fund the computor identity, no
 
 ### 2.6a Submitting a root (depth-1) solution
 
-A root solution starts a tree: its parent is the epoch's shared virtual root, which is derived rather
+A root solution starts a tree: its parent is this identity's virtual root, which is derived rather
 than stored, so you never fetch it. This is the first solution every identity submits, and it differs
 from extending an existing node only in how the parent is named and scored.
 
@@ -304,25 +304,25 @@ from extending an existing node only in how the parent is named and scored.
    Both fields are load-bearing: `(0, 0xFFFFFFFF)` is the only value the node reads as root; a `0`
    tick with any other index is treated as a normal parent, found nowhere, and rejected with
    `RejectParentNotRegistered`.
-2. **Derive the parent LUT yourself.** `deriveRootANN(spectrumDigest, epochPool)` from the epoch
-   context (section 2.3) - do **not** call `REQUEST_ANT_PARENT_ANN` for the root; it answers
-   `status = IS_ROOT` with no ANN payload precisely so you derive it locally. The root is identical
-   for every identity.
+2. **Derive the parent yourself.** `deriveRootANN(publicKey, epochPool)` - the seed is the mining
+   identity's **public key**, and the pool comes from the epoch's spectrum digest (section 2.3). Do
+   **not** call `REQUEST_ANT_PARENT_ANN` for the root; it answers `status = IS_ROOT` with no ANN
+   payload precisely so you derive it locally. Each identity has its own root, so deriving it from
+   the spectrum digest instead of the public key yields a parent the node will not agree with.
 3. **Search.** Pick a canonical nonce (section 2.2), inherit the derived root start state, wiring, and
    LUTs, run the walk, and take the best score - exactly as for any parent.
 4. **The only score gate is the threshold.** The root's record score is the worst possible value, so
    the "strictly beats the parent" rule passes trivially; a root child is accepted on score iff its
-   score is `<=` the epoch threshold. The shared root scores far above the threshold, so a valid
-   start still requires real mutation - and since every identity starts from the same root score,
-   ranking reflects search effort alone.
+   score is `<=` the epoch threshold. A root scores far above the threshold, so a valid start still
+   requires real mutation.
 5. **Anchor and submit.** Choose a non-empty anchor tick within `freshnessWindow` of the publish tick
    (section 2.3), fill the payload with the root `parentRef` above, and hand it to your computor
    (section 2.6, stage 1). The computor publishes it as the usual `AntColonyMiningSolutionTransaction`.
 
 On the node, a root submission is recognized by `parentRef.isRoot()`: the parent lookup returns a
-null record (root is not a stored solution), the node derives the shared root itself to recompute
-your `claimedScore`, and root children are de-duplicated per miner because the root is shared by all
-identities. Once accepted, the node becomes a normal parent - extend it by copying its `selfTick` /
+null record (root is not a stored solution), the node derives that identity's root itself to recompute
+your `claimedScore`, and root children are de-duplicated on `(pubkey, nonce, parentRef)` like any other
+solution. Once accepted, the node becomes a normal parent - extend it by copying its `selfTick` /
 `selfSolutionIndexInTick` from the identity-tree query (section 2.7b) into a child's `parentRef`.
 
 ### 2.7 Read queries
@@ -458,7 +458,7 @@ The ant colony adds the following files on the node's disk. File names are defin
 | `antColonySolutions.eoe` | end-of-epoch export: best 676 networks (pubkey, score, depth, ANN) | output only |
 | `bpp9000.task` | the epoch's pinned task | required at boot |
 
-**Snapshot set**: the four snapshot files are part of the node snapshot. When you back up, copy, or restore node state, take them TOGETHER with the other snapshot files (spectrum, universe, contracts, system) from the same point. On load the node cross-checks the colony snapshot's rootSeed, error threshold, and initial tick against the restored node state, a colony snapshot from a different moment is refused and the node will not start from it.
+**Snapshot set**: the four snapshot files are part of the node snapshot. When you back up, copy, or restore node state, take them TOGETHER with the other snapshot files (spectrum, universe, contracts, system) from the same point. On load the node cross-checks the colony snapshot's rootSeed and initial tick against the restored node state, plus the record and ANN sizes the build lays out; a colony snapshot from a different moment or a different build is refused and the node will not start from it. The error threshold is logged when it differs but not enforced, so a snapshot still loads after a mid-epoch threshold change.
 
 **Replay cache**: a score memo, not consensus state, same behavior with standalone score. Without it a restart recomputes every stored solution, so keep it for fast restarts; losing it only costs time.
 
