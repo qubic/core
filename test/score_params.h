@@ -17,7 +17,7 @@ namespace score_params
 using Config0 = score_engine::Bpp9000Params<18, 1, 128, 32, 5000, 3, 64, 10, 14, 32 / 4>;
 using Config1 = score_engine::Bpp9000Params<18, 1, 512, 128, 20000, 3, 64, 15, 57, 128 / 4>;
 using Config2 = score_engine::Bpp9000Params<18, 1, 2048, 512, 80000, 3, 64, 20, 230, 512 / 4>;
-using Config3 = score_engine::Bpp9000Params<18, 1, 8760, 672, 100000, 3, 64, 5, 302, 24 * 7>;
+using Config3 = score_engine::Bpp9000Params<18, 1, 8928, 8760, 100000, 3, 64, 5, 3942, 24 * 7>;
 
 using ConfigList = std::tuple<Config0, Config1, Config2, Config3>;
 static constexpr std::size_t CONFIG_COUNT = std::tuple_size_v<ConfigList>;
