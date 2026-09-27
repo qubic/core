@@ -77,7 +77,9 @@ found anywhere in the forest.
 ```
 
 Concretely, the **rating** `(shift, error)` gates every attachment: it only improves down a branch (a
-child must beat its parent), and a *start* - a depth-1 child of the root - must clear the threshold.
+child must beat its parent), and every node still at shift 0 must clear the threshold. In practice that
+only bites on a *start* - a depth-1 child of the virtual root - because any deeper child already beats a
+parent that cleared it.
 
 ```
     every number below is illustrative, not a measured value - only the rules are real
@@ -433,7 +435,7 @@ state, and LUTs, the exact form the scorer consumes - no unpacking needed):
 unsigned int  parentRefTick;
 unsigned int  parentRefSolutionIndexInTick;
 unsigned int  annSizeBytes;   // sizeof(ANN) when status is OK, else 0
-unsigned char status;         // 0 = OK, 1 = NOT_FOUND, 2 = IS_ROOT (derive the epoch root instead)
+unsigned char status;         // 0 = OK, 1 = NOT_FOUND, 2 = IS_ROOT (derive your own root instead)
 unsigned char padding[3];
 ```
 
