@@ -460,20 +460,21 @@ struct ScoreBpp9000
 
     static constexpr unsigned long long B = populationThreshold / 64;        // 64-neuron blocks
     static constexpr unsigned long long PBYTES = populationThreshold / 8;    // bytes per bit-plane
-    static constexpr unsigned long long PHALVES = PBYTES / 128;              // 128-byte windows/plane
-    static_assert(populationThreshold % 1024 == 0,
-        "the bit-sliced tick assumes populationThreshold/8 is a whole number of 128-byte gather "
-        "windows (populationThreshold a multiple of 1024) -- true at both gated populations, 1024 and 2048");
-    static_assert(PHALVES >= 1 && PHALVES <= 8, "gWin's window-index field assumes a small window count");
+    static constexpr unsigned long long PWINDOWS = (PBYTES + 127) / 128;     // 128-byte windows/plane
+    // A gather always reads a whole 128-byte window, so the planes are padded up to one. Below 1024
+    // neurons a plane is shorter than a window and the padding is what keeps the read in bounds; it is
+    // never selected, because a source byte index is always below PBYTES.
+    static constexpr unsigned long long PPADDED = PWINDOWS * 128;
+    static_assert(populationThreshold % 64 == 0, "the bit-sliced tick advances whole 64-neuron blocks");
 
-    alignas(64) unsigned char plane0[PBYTES];
-    alignas(64) unsigned char plane1[PBYTES];
-    alignas(64) unsigned char planeOut0[PBYTES];
-    alignas(64) unsigned char planeOut1[PBYTES];
+    alignas(64) unsigned char plane0[PPADDED];
+    alignas(64) unsigned char plane1[PPADDED];
+    alignas(64) unsigned char planeOut0[PPADDED];
+    alignas(64) unsigned char planeOut1[PPADDED];
 
     // Gather controls, rebuilt from neighborIndices -- see advanceShift() below for when.
     alignas(64) unsigned char gIdx[B][numberOfNeighbors][64];
-    unsigned long long gWin[B][numberOfNeighbors][PHALVES];
+    unsigned long long gWin[B][numberOfNeighbors][PWINDOWS];
     alignas(64) unsigned char gCtl[B][numberOfNeighbors][64];
 
     // Table area, rebuilt from curLut: 64 neurons x 32-byte LUT slots per block, first 27 bytes used.
@@ -518,7 +519,7 @@ struct ScoreBpp9000
         {
             for (unsigned long long j = 0; j < numberOfNeighbors; ++j)
             {
-                for (unsigned long long w = 0; w < PHALVES; ++w)
+                for (unsigned long long w = 0; w < PWINDOWS; ++w)
                 {
                     gWin[b][j][w] = 0;
                 }
@@ -549,8 +550,8 @@ struct ScoreBpp9000
 
     void packPlanesFromCurInitial()
     {
-        setMem(plane0, PBYTES, 0);
-        setMem(plane1, PBYTES, 0);
+        setMem(plane0, PPADDED, 0);
+        setMem(plane1, PPADDED, 0);
         for (unsigned long long n = 0; n < populationThreshold; ++n)
         {
             if (curInitial[n] & 1) { plane0[n >> 3] |= (unsigned char)(1u << (n & 7)); }
@@ -575,7 +576,7 @@ struct ScoreBpp9000
         __m512i g0, g1;
         {
             __m512i acc = idx;
-            for (unsigned long long w = 0; w < PHALVES; ++w)
+            for (unsigned long long w = 0; w < PWINDOWS; ++w)
             {
                 acc = _mm512_mask2_permutex2var_epi8(
                     _mm512_loadu_si512((const void*)(pl0 + w * 128)), acc,
@@ -586,7 +587,7 @@ struct ScoreBpp9000
         }
         {
             __m512i acc = idx;
-            for (unsigned long long w = 0; w < PHALVES; ++w)
+            for (unsigned long long w = 0; w < PWINDOWS; ++w)
             {
                 acc = _mm512_mask2_permutex2var_epi8(
                     _mm512_loadu_si512((const void*)(pl1 + w * 128)), acc,
