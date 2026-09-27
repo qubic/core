@@ -33,7 +33,8 @@ separate things: the structure, and the algorithm currently running in it.
 With that split in mind: mining is a search for a **solution** that does well on a fixed task, and the
 algorithm defines what a solution is and how it scores. Under **bpp9000** a solution is a neural network
 (an "ANN") that runs on its own from a fixed start state, emitting an output sequence graded against the
-task's target - an **error count**, range `[0, WINDOW_WIDTH]`, **lower is better** (a flawless network makes
+task's target - an **error count** inside one `WINDOW_WIDTH`-wide frame of that target, range
+`[0, WINDOW_WIDTH]`, **lower is better** (a flawless network makes
 zero mistakes). The rest of this overview uses bpp9000's terms, but the tree structure around them is
 identical for any algorithm.
 
@@ -68,37 +69,45 @@ found anywhere in the forest.
                  |
             +----+----+
             |         |
-         node A     node B        each node beats its parent
+         node A     node B        each node beats its parent on (shift, error)
             |         |           and clears the threshold
          node C     node D
             |
          node E   <-- best in this tree so far
 ```
 
-Concretely, error gates every attachment: it only falls down a branch (a child must beat its parent),
-and a *start* - a depth-1 child of the root - must clear the threshold.
+Concretely, the **rating** `(shift, error)` gates every attachment: it only improves down a branch (a
+child must beat its parent), and a *start* - a depth-1 child of the root - must clear the threshold.
 
 ```
-    error = error count, lower is better          threshold = 4000
+    every number below is illustrative, not a measured value - only the rules are real
 
-    root  ~4200 raw     the identity's own root sits above 4000; a start must mutate below it
+    rating = (shift, error)   higher shift wins; at equal shift, lower error wins
+    threshold = 4500          gates shift-0 nodes only; shift > 0 clears it outright
+
+    virtual root        never submitted and never stored; for the beats-parent test it counts
+                        as the WORST possible rating, so any child beats it. Its own network
+                        scores ~5200 here - above the threshold - so a start has to mutate
+                        below 4500 to be accepted at all.
       |
-      +-- A  3900   <= threshold                            ACCEPT (depth-1 start)
+      +-- A  (0, 4400)  error <= threshold                        ACCEPT (depth-1 start)
       |    |
-      |    +-- B  3540   < 3900, beats A                    ACCEPT
+      |    +-- B  (0, 4250)  same shift, beats A on error         ACCEPT
       |    |    |
-      |    |    +-- D  3120   < 3540, beats B               ACCEPT
-      |    |    +-- E  3560   not < 3540                    REJECT (must beat parent)
+      |    |    +-- D  (1, 4600)  advanced the frame: beats B on  ACCEPT
+      |    |    |                 shift alone, worse error and
+      |    |    |                 no threshold check
+      |    |    +-- E  (0, 4260)  same shift, not below 4250      REJECT (must beat parent)
       |    |
-      |    +-- C  3700   < 3900, beats A                    ACCEPT
+      |    +-- C  (0, 4300)  same shift, beats A on error         ACCEPT
       |
-      +-- X  4100   > threshold                             REJECT (over threshold)
+      +-- X  (0, 4700)  error above threshold at shift 0          REJECT (over threshold)
 
-    Error only falls as you go deeper. The epoch winner is the single lowest-error node
-    found in any identity's forest.
+    Rating only improves as you go deeper. The epoch winner is the best (shift, error) in
+    any identity's forest: highest shift first, lowest error as the tie-break.
 ```
 
-At epoch end the node ranks every identity by its **single best** score and **harvests the top 676**
+At epoch end the node ranks every identity by its **single best** `(shift, error)` and **harvests the top 676**
 (the number of computors).
 
 **Anti-spam deposit.** Each solution a computor publishes on-chain carries a **refundable
@@ -140,9 +149,9 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 | Byte(s)     | Meaning | Valid range |
 |-------------|---------|-------------|
 | `nonce[0]`  | algorithm selector (must select bpp9000) | - |
-| `nonce[1]` bits 0-3 | `L` = changes per mutation step | `[1, 10]` |
+| `nonce[1]` bits 0-3 | `L` = changes per mutation step | `[1, MAX_CHANGES_PER_STEP]` |
 | `nonce[1]` bits 4-5 | mutation mode: 1 = start state, 2 = wiring, 3 = LUTs (bits 6-7 = 0) | `[1, 3]` |
-| `nonce[2]`  | `K` = number of **explore** steps | `[0, 100]` |
+| `nonce[2]`  | `K` = number of **explore** steps | `<= NUMBER_OF_MUTATIONS` (a byte, so any value) |
 | `nonce[3..31]` | the walk seed (the actual search space) | any |
 
 **Canonical-nonce rule.** The scorer **refuses** any non-canonical nonce - it returns no score, and the
@@ -190,7 +199,21 @@ is `K12(TickData)` of the anchor tick's `TickData` (`REQUEST_TICK_DATA`). This b
 solution whose `anchorTick` is an empty tick is rejected (`RejectStale`) with the **deposit
 forfeited**. Anchor only on ticks that have `TickData`, make sure select a non-empty tick as an anchor tick.
 
-Score is an error count in `[0, WINDOW_WIDTH]`; lower is better.
+**Shift.** The frame graded is not fixed: `shift` is where it starts in the task data, and a score is the
+error count over `[shift, shift + WINDOW_WIDTH)`. When a frame is scored at or below
+`WINDOW_WIDTH / 3`, the network has mastered it: `shift` advances by one and the frame is re-scored at
+the new position, repeating until it fails or reaches `SHIFT_CAP`. A solution therefore reports a
+**pair** - the shift it reached and the error in that frame.
+
+`shift` is **inherited**: a child's walk starts at its parent's shift, not at 0, so a lineage
+accumulates shift and depth buys frame position as well as a lower error. Only a child of the virtual
+root starts at 0, once per epoch. It never moves backwards, and an inherited shift above `SHIFT_CAP`
+is rejected. A node with `shift > 0` also **bypasses the epoch threshold** entirely - the threshold
+gates frame-0 solutions only.
+
+Score is an error count in `[0, WINDOW_WIDTH]` for the frame at that shift; lower is better. Between
+two solutions the **higher shift always wins** and error only breaks a tie at equal shift - a better
+error can never make up for a lower shift.
 
 ### 2.4 Accept rules
 
@@ -204,8 +227,8 @@ detail and can change):
 | Parent is in the **same** identity's tree (the tx `sourcePublicKey`) | `RejectWrongTree` |
 | Nonce is canonical | `RejectNonCanonicalNonce` |
 | Anchor not in the future, published within `freshnessWindow` ticks of it | `RejectStale` / `RejectTickOutOfRange` |
-| Score `<=` epoch threshold | `RejectBelowThreshold` |
-| Score **strictly** below the parent's score | `RejectLeParent` |
+| Clears the floor: `error <= threshold`, **or** `shift > 0` (an advanced frame bypasses it) | `RejectBelowThreshold` |
+| **Beats the parent** on `(shift, error)`: higher shift, or equal shift and strictly lower error | `RejectLeParent` |
 | Parent holds fewer than `maxChildrenPerParent` children (`0` = unbounded) | `RejectMaxChildrenPerParent` |
 | `(publicKey, parentRef, nonce)` not already committed this epoch | `RejectReplay` |
 | Store and miner index not full | `RejectDedupFull` / `RejectMinerIndexFull` |
@@ -379,12 +402,13 @@ Response: `RespondAntIdentityTreeHeader` (12 bytes: `count`, `itemSize`, `nextIn
 `count` x `AntIdentityTreeNode`. Up to 64 nodes per response; page with `nextIndex` until it is `0`.
 
 ```
-AntIdentityTreeNode {                     // 32 bytes
+AntIdentityTreeNode {                     // 36 bytes
     unsigned int selfTick;                // ABSOLUTE; set these two as your parentRef to extend THIS node
     unsigned int selfSolutionIndexInTick;
     unsigned int parentTick;              // this node's own parent (ABSOLUTE); (0, 0xFFFFFFFF) = root
     unsigned int parentSolutionIndexInTick;
-    unsigned int score;                   // error count; a child must score strictly below this
+    unsigned int score;                   // error count inside this node's frame
+    unsigned int shift;                   // this node's frame position; your walk starts here
     unsigned int childCount;              // children already attached (compare vs maxChildrenPerParent)
     unsigned int anchorTick;
     unsigned int depth;
