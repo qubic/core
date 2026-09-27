@@ -33,7 +33,7 @@ separate things: the structure, and the algorithm currently running in it.
 With that split in mind: mining is a search for a **solution** that does well on a fixed task, and the
 algorithm defines what a solution is and how it scores. Under **bpp9000** a solution is a neural network
 (an "ANN") that runs on its own from a fixed start state, emitting an output sequence graded against the
-task's target - an **error count**, range `[0, 8088]`, **lower is better** (a flawless network makes
+task's target - an **error count**, range `[0, WINDOW_WIDTH]`, **lower is better** (a flawless network makes
 zero mistakes). The rest of this overview uses bpp9000's terms, but the tree structure around them is
 identical for any algorithm.
 
@@ -81,7 +81,7 @@ and a *start* - a depth-1 child of the root - must clear the threshold.
 ```
     error = error count, lower is better          threshold = 4000
 
-    root  ~4200 raw     the epoch root (same for everyone) sits above 4000; a start must mutate below it
+    root  ~4200 raw     the identity's own root sits above 4000; a start must mutate below it
       |
       +-- A  3900   <= threshold                            ACCEPT (depth-1 start)
       |    |
@@ -149,7 +149,8 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 node rejects the submission with `RejectNonCanonicalNonce`. For an ant solution the rule is:
 
 ```
-algo == bpp9000  &&  L in [1, 10]  &&  mode in [1, 3]  &&  nonce[1] bits 6-7 == 0  &&  nonce[2] in [0, 100]
+algo == bpp9000  &&  L in [1, MAX_CHANGES_PER_STEP]  &&  mode in [1, 3]
+                 &&  nonce[1] bits 6-7 == 0  &&  K <= NUMBER_OF_MUTATIONS
 ```
 
 `nonce[0..2]` (the algo / `L` / mode / `K` knobs) are **excluded from the RNG seed** - zeroed before
@@ -161,14 +162,14 @@ that differ only in these knobs are not two solutions.
 
 Throughout, `publicKey` is the **mining identity you are extending** - the computor you mine for, which
 becomes the transaction's `sourcePublicKey`. The **mutation seed** derives from **that** key, not your
-worker key, or the node's recompute will not match yours. The **root** derives from no key at all -
+worker key, or the node's recompute will not match yours. The **root** derives from that same key -
 see below.
 
-**Root.** `deriveRootANN(spectrumDigest, epochPool)`: the root **wiring** is the epoch's task-file
-topology; the root **start state** and **LUTs** come from `K12(spectrumDigest)` - the epoch-start
-spectrum digest from the epoch context - seeding them from the epoch's random pool (the pool itself
-also comes from that digest). No mutation walk. Never stored. **One root per epoch, identical for every
-identity**; per-identity variation enters only through the mutation seeds.
+**Root.** `deriveRootANN(publicKey, epochPool)`: the root **wiring**, **start state** and **LUTs** all
+come from `K12(publicKey)`, drawn from the epoch's random pool. The pool itself is seeded from the
+epoch-start spectrum digest in the epoch context, so every identity draws from the same pool but at its
+own position. The task file's topology block is **not** loaded. No mutation walk. Never stored.
+**One root per identity per epoch**, so two identities start from different networks.
 
 **Child.** `computeScoreFromParent(parentANN, publicKey, nonce, anchorTickDigest)`:
 
@@ -176,7 +177,7 @@ identity**; per-identity variation enters only through the mutation seeds.
 2. `mutationSeed = K12(publicKey || nonce || anchorTickDigest)` with `nonce[0..2]` zeroed in place
    (the full 32-byte nonce is hashed, its first 3 bytes set to 0, not dropped) - still keyed by the
    mining identity, so different identities walk differently and from different roots.
-3. Walk `numberOfMutations = 100` steps. Each step applies `L` mutations of the mode declared in the
+3. Walk `numberOfMutations` steps. Each step applies `L` mutations of the mode declared in the
    nonce - `L` start-state trits, `L` links, or `L` LUT entries. For the first `K` steps accept a
    worse-or-equal result (**explore**); after that accept only better-or-equal (**exploit**); one-step
    rollback on reject. Keep and return the **best** score seen. The best is seeded with the inherited
@@ -189,7 +190,7 @@ is `K12(TickData)` of the anchor tick's `TickData` (`REQUEST_TICK_DATA`). This b
 solution whose `anchorTick` is an empty tick is rejected (`RejectStale`) with the **deposit
 forfeited**. Anchor only on ticks that have `TickData`, make sure select a non-empty tick as an anchor tick.
 
-Score is an error count in `[0, 8088]`; lower is better.
+Score is an error count in `[0, WINDOW_WIDTH]`; lower is better.
 
 ### 2.4 Accept rules
 
@@ -412,17 +413,18 @@ unsigned char status;         // 0 = OK, 1 = NOT_FOUND, 2 = IS_ROOT (derive the 
 unsigned char padding[3];
 ```
 
-**ANN layout.** The same byte form is used everywhere ANN bytes leave the node: this response, the snapshot pool, and the epoch export. Under the current bpp9000 parameters it is 2176 bytes = 384 wiring + 64 start state + 1728 LUT, contiguous in that order:
+**ANN layout.** The same byte form is used everywhere ANN bytes leave the node: this response, the snapshot pool, and the epoch export. Its size follows the parameters: `P*K*2` wiring + `P` start state + `P*lutSize` LUT, contiguous in that
+order, where `P` = POPULATION_THRESHOLD, `K` = NUMBER_OF_NEIGHBORS (3) and `lutSize` = 27.
 
 ```
-wiring: neighbor[192]  192 uint16 link targets = 64 neurons x 3 neighbours; neighbor[n*3 + k]
-                       is neuron n's k-th neighbour (any neuron index in [0, population))
+wiring: neighbor[P*K]  P*K uint16 link targets = P neurons x K neighbours; neighbor[n*K + k]
+                       is neuron n's k-th neighbour (any neuron index in [0, P))
 
-start state: 64 bytes  initialNeuronValues[n] is neuron n's initial trit {0,1,2}; every neuron
+start state: P bytes   initialNeuronValues[n] is neuron n's initial trit {0,1,2}; every neuron
                        starts the rollout from this value
 
-lut: 1728 bytes = 64 rows of 27:
-row n, n = 0..63       neuron n's LUT, at its absolute neuron index (every neuron computes;
+lut: P*lutSize bytes = P rows of lutSize:
+row n, n = 0..P-1      neuron n's LUT, at its absolute neuron index (every neuron computes;
                        bpp9000 has no input neurons)
 
 byte[line] of a row, line = t0 + 3*t1 + 9*t2
