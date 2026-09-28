@@ -675,20 +675,77 @@ TEST(ContractQPayhub, EndEpochPurgesReceiptsPastRetentionWindow)
     ContractTestingQPayhub qpayhub;
     increaseEnergy(BUYER1, 10000000);
 
+    static_assert(QPAYHUB_RECEIPT_RETENTION_EPOCHS == 1, "epochs below assume retention 1");
+
+    // A receipt paid in epoch E is purged by END_EPOCH of E + retention.
     system.epoch = 200;
     auto oldReceipt = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 5000);
 
-    system.epoch = 202;
+    // It survives the END_EPOCH of the epoch it was paid in...
+    qpayhub.endEpoch();
+    EXPECT_EQ(qpayhub.getReceipt(oldReceipt.receiptKey).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.getInfo().totalPurged, 0ULL);
+
+    system.epoch = 201;
     auto freshReceipt = qpayhub.pay(BUYER1, SELLER1, RESOURCE2, 2, 5000);
 
-    // cutoff = 203 - QPAYHUB_RECEIPT_RETENTION_EPOCHS(2) = 201; epochPaid 200 < 201 purges,
-    // epochPaid 202 survives.
-    system.epoch = 203;
+    // ...and is gone after the next one, while the receipt paid in 201 stays.
     qpayhub.endEpoch();
-
     EXPECT_EQ(qpayhub.getReceipt(oldReceipt.receiptKey).returnCode, QPAYHUB_ERR_NOT_FOUND);
     EXPECT_EQ(qpayhub.getReceipt(freshReceipt.receiptKey).returnCode, QPAYHUB_OK);
     EXPECT_EQ(qpayhub.getInfo().totalPurged, 1ULL);
+}
+
+// Removing a receipt only marks its slot, and lookups keep scanning past
+// marked slots until a truly empty one. With the table exactly full before
+// the purge, 100,000 expired receipts - fewer than the 50% of capacity that
+// cleanupIfNeeded() waits for - would leave every slot either live or marked:
+// no empty slot at all, so every Pay's duplicate lookup would scan the whole
+// table while population() sat below the load limit. END_EPOCH must clear the
+// marks, so the load limit bounds the table's real occupancy.
+TEST(ContractQPayhub, EndEpochPurgeClearsRemovedSlotsSoLoadLimitHolds)
+{
+    ContractTestingQPayhub qpayhub;
+    system.epoch = 200;
+
+    constexpr uint64 expired = 100000;
+    static_assert(expired < QPAYHUB_RECEIPT_CAPACITY / 2, "must stay below the cleanupIfNeeded() threshold");
+    static_assert(QPAYHUB_RECEIPT_CAPACITY - expired <= QPAYHUB_RECEIPT_LOAD_LIMIT, "survivors must be under the load limit");
+
+    QPAYHUB::Receipt receipt{};
+    uint64 nextKey = 0;
+    receipt.epochPaid = 100;
+    for (uint64 i = 0; i < expired; ++i)
+    {
+        qpayhub.state()->receipts.set(m256i(nextKey++, 7, 7, 7), receipt);
+    }
+    receipt.epochPaid = 200;
+    while (qpayhub.state()->receipts.population() < QPAYHUB_RECEIPT_CAPACITY)
+    {
+        qpayhub.state()->receipts.set(m256i(nextKey++, 7, 7, 7), receipt);
+    }
+
+    qpayhub.endEpoch();
+
+    const uint64 survivors = QPAYHUB_RECEIPT_CAPACITY - expired;
+    EXPECT_EQ(qpayhub.getInfo().totalPurged, expired);
+    EXPECT_EQ(qpayhub.state()->receipts.population(), survivors);
+    // No slot is left marked-removed, so every slot population() does not
+    // count is truly empty.
+    EXPECT_FALSE(qpayhub.state()->receipts.needsCleanup(0));
+
+    // Refill up to just below the load limit: that 20% of the table stays
+    // empty, and a payment still goes through.
+    while (qpayhub.state()->receipts.population() < QPAYHUB_RECEIPT_LOAD_LIMIT - 1)
+    {
+        qpayhub.state()->receipts.set(m256i(nextKey++, 7, 7, 7), receipt);
+    }
+    EXPECT_FALSE(qpayhub.state()->receipts.needsCleanup(0));
+
+    increaseEnergy(BUYER1, 10000000);
+    auto output = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000);
+    EXPECT_EQ(output.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.state()->receipts.population(), QPAYHUB_RECEIPT_LOAD_LIMIT);
 }
 
 TEST(ContractQPayhub, EndEpochDistributesFeePoolAboveReserveToSharesAndTokenHolders)
@@ -1035,6 +1092,35 @@ TEST(ContractQPayhub, BeginEpochResubscribesFromContractFunds)
     // The oracle fee is destroyed, not paid to anyone; feePool shrinks by it.
     EXPECT_EQ(qpayhub.state()->feePool, QPAYHUB_EXEC_RESERVE - requiredFee);
     EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID), QPAYHUB_EXEC_RESERVE - requiredFee);
+}
+
+// If SUBSCRIBE_ORACLE rejects the renewal even though feePool covers the fee,
+// the framework hands the fee straight back to the contract, so neither
+// feePool nor the balance may change and the id must stay cleared.
+TEST(ContractQPayhub, BeginEpochSubscribeRejectedLeavesFeePoolAndBalanceUnchanged)
+{
+    ContractTestingQPayhub qpayhub;
+    increaseEnergy(BUYER1, 10000000);
+
+    OI::Price::OracleQuery dummyQuery;
+    const sint64 requiredFee = OI::Price::getSubscriptionFee(dummyQuery, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
+
+    // Subscribed through the engine, which keeps listing QPayhub as a
+    // subscriber below because its own beginEpoch() reset is not run - so the
+    // renewal in BEGIN_EPOCH is rejected ("contract is already subscribed").
+    auto first = qpayhub.subscribeToPriceFeed(BUYER1, requiredFee);
+    ASSERT_EQ(first.returnCode, QPAYHUB_OK);
+
+    qpayhub.state()->feePool = QPAYHUB_EXEC_RESERVE;
+    increaseEnergy(QPAYHUB_CONTRACT_ID, QPAYHUB_EXEC_RESERVE);
+    const sint64 balanceBefore = getBalance(QPAYHUB_CONTRACT_ID);
+    ASSERT_GE(qpayhub.state()->feePool, requiredFee);
+
+    qpayhub.beginEpoch();
+
+    EXPECT_LT(qpayhub.state()->priceOracleSubscriptionId, 0);
+    EXPECT_EQ(qpayhub.state()->feePool, QPAYHUB_EXEC_RESERVE);
+    EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID), balanceBefore);
 }
 
 // When SUBSCRIBE_ORACLE itself fails, the framework refunds the fee to the

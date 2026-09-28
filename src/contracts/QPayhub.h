@@ -37,8 +37,9 @@ using namespace QPI;
 //   balance and credits it to the contract's own execution fee reserve, so
 //   the 1% is not paid to anyone but is not destroyed outright either - it
 //   is what makes QPayhub fund its own execution out of its own revenue
-//   rather than slowly draining a reserve nothing refills. Receipts expire
-//   after QPAY_RECEIPT_RETENTION_EPOCHS epochs.
+//   rather than slowly draining a reserve nothing refills. A receipt paid
+//   in epoch E is purged by END_EPOCH of epoch
+//   E + QPAYHUB_RECEIPT_RETENTION_EPOCHS.
 //
 //   REFUNDS: the fee is NOT returned on a refund. No path pays out of
 //   feePool, and invoice.js validates refunds against the GROSS amount,
@@ -204,17 +205,25 @@ using namespace QPI;
 //     via an intermediate).
 // ============================================================================
 
-constexpr uint64 QPAYHUB_RECEIPT_CAPACITY = 262144; // 2^18 (was 65536) -- ~9.4k/day mainnet headroom
+constexpr uint64 QPAYHUB_RECEIPT_CAPACITY = 262144; // 2^18 (was 65536)
 // New receipts are refused once the map is 80% full. HashMap lookups stay
 // near constant time only below that (doc/contracts.md), and a lookup for a
 // key that is not present scans until it finds an empty slot - so letting
 // the map fill completely would make every later Pay scan the whole table.
+// The bound only holds because END_EPOCH clears every removed slot after its
+// purge (see there); receipts are never removed during an epoch.
+// Sustained headroom: a receipt lives at most two epochs (~14 days) with
+// retention 1, so ~15k payments/day before new receipts are refused.
 constexpr uint64 QPAYHUB_RECEIPT_LOAD_LIMIT = 209715; // 80% of QPAYHUB_RECEIPT_CAPACITY
 constexpr sint64 QPAYHUB_MIN_PAYMENT = 100;        // dust floor, QU - rejects the payment outright
 constexpr uint64 QPAYHUB_FEE_PERMILLE = 75;        // 75 per 10000 = 0.75 percent
 // Floor on the fee itself, not a rejection threshold like MIN_PAYMENT.
 constexpr sint64 QPAYHUB_FEE_FLOOR_QU = 100;
-constexpr uint32 QPAYHUB_RECEIPT_RETENTION_EPOCHS = 2;
+// A receipt paid in epoch E is purged by END_EPOCH of epoch E + retention,
+// so it stays readable for the rest of epoch E and all of the next one -
+// far beyond any payment freshness window a facilitator would accept, and
+// short enough that filling the map does not block new receipts for long.
+constexpr uint32 QPAYHUB_RECEIPT_RETENTION_EPOCHS = 1;
 constexpr sint64 QPAYHUB_EXEC_RESERVE = 1000000;   // never distributed, QU
 // Execution fee reserve the contract keeps itself above. END_EPOCH burns from
 // feePool - including the EXEC_RESERVE held back above, which is ordinary
@@ -1302,7 +1311,6 @@ struct QPAYHUB : public ContractBase
         Receipt r;
         Affiliate aff; // AFFILIATE ADDITION
         uint32 cur;
-        uint32 cutoff;
         Entity ent;
         sint64 balance;
         sint64 distributable;
@@ -1321,32 +1329,31 @@ struct QPAYHUB : public ContractBase
     };
     END_EPOCH_WITH_LOCALS()
     {
-        state.mut().receipts.cleanupIfNeeded();
-
-        // Purge receipts older than the retention window. A receipt paid in
-        // epoch E survives until END_EPOCH of E + retention, far beyond any
-        // payment freshness window a facilitator would accept.
+        // Purge receipts past the retention window: a receipt paid in epoch E
+        // goes at END_EPOCH of E + QPAYHUB_RECEIPT_RETENTION_EPOCHS.
         locals.cur = (uint32)qpi.epoch();
-        if (locals.cur > QPAYHUB_RECEIPT_RETENTION_EPOCHS)
-        {
-            locals.cutoff = locals.cur - QPAYHUB_RECEIPT_RETENTION_EPOCHS;
-        }
-        else
-        {
-            locals.cutoff = 0;
-        }
         for (locals.idx = state.get().receipts.nextElementIndex(NULL_INDEX);
              locals.idx != NULL_INDEX;
              locals.idx = state.get().receipts.nextElementIndex(locals.idx))
         {
             locals.r = state.get().receipts.value(locals.idx);
-            if (locals.r.epochPaid < locals.cutoff)
+            if (locals.cur >= locals.r.epochPaid + QPAYHUB_RECEIPT_RETENTION_EPOCHS)
             {
                 state.mut().receipts.removeByKey(state.get().receipts.key(locals.idx));
                 state.mut().totalPurged = sadd(state.get().totalPurged, (uint64)1);
             }
         }
-        state.mut().receipts.cleanupIfNeeded();
+        // Always rebuild, not cleanupIfNeeded(): removal only marks a slot,
+        // population() stops counting it, yet lookups still scan past it until
+        // a truly empty slot. cleanupIfNeeded() waits for >50% of capacity in
+        // removed marks, so live receipts under QPAYHUB_RECEIPT_LOAD_LIMIT plus
+        // leftover marks could leave no empty slot at all, and every Pay's
+        // duplicate lookup would scan the whole table. Receipts are never
+        // removed during an epoch (Consume updates in place), so after this
+        // population() equals occupied slots until the next END_EPOCH and the
+        // load limit really bounds lookups. The purge loop above is already
+        // O(capacity); cleanup() returns at once when nothing was removed.
+        state.mut().receipts.cleanup();
 
         // AFFILIATE ADDITION: purge referral links past their term, freeing
         // the slot - same purge pattern as receipt retention above. Pay()
@@ -1385,7 +1392,8 @@ struct QPAYHUB : public ContractBase
 
         // Distribute above the exec reserve: 10% shares, 1% burned back into
         // this contract's own execution fee reserve, 89% token holders.
-        // Balance is re-read before spending; every payment is clamped to it.
+        // Balance was read once before the top-up and is tracked through every
+        // outflow since; every payment is clamped to it.
         locals.distributable = state.get().feePool - QPAYHUB_EXEC_RESERVE;
         if (locals.distributable > locals.balance)
         {
