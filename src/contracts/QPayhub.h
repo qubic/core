@@ -202,7 +202,16 @@ using namespace QPI;
 //     via an intermediate).
 // ============================================================================
 
-constexpr uint64 QPAYHUB_RECEIPT_CAPACITY = 262144; // 2^18 (was 65536) -- ~9.4k/day mainnet headroom
+constexpr uint64 QPAYHUB_RECEIPT_CAPACITY = 262144; // 2^18 (was 65536)
+// New receipts are refused once the map is 80% full. HashMap lookups stay
+// near constant time only below that (doc/contracts.md), and a lookup for a
+// key that is not present scans until it finds an empty slot - so letting
+// the map fill completely would make every later Pay scan the whole table.
+// The bound only holds because END_EPOCH clears every removed slot after its
+// purge (see there); receipts are never removed during an epoch.
+// Sustained headroom: a receipt lives at most three epochs (~21 days) with
+// retention 2, so ~10k payments/day before new receipts are refused.
+constexpr uint64 QPAYHUB_RECEIPT_LOAD_LIMIT = 209715; // 80% of QPAYHUB_RECEIPT_CAPACITY
 constexpr sint64 QPAYHUB_MIN_PAYMENT = 100;        // dust floor, QU - rejects the payment outright
 constexpr uint64 QPAYHUB_FEE_PERMILLE = 75;        // 75 per 10000 = 0.75 percent
 // Floor on the fee itself, not a rejection threshold like MIN_PAYMENT.
@@ -251,6 +260,7 @@ constexpr uint32 QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS = 16u * 60u * 1000u;
 constexpr uint32 QPAYHUB_PRICE_STALE_TICKS = 4000; // roughly 20-25 min at current tick rates
 
 static_assert((QPAYHUB_RECEIPT_CAPACITY & (QPAYHUB_RECEIPT_CAPACITY - 1)) == 0);
+static_assert(QPAYHUB_RECEIPT_LOAD_LIMIT < QPAYHUB_RECEIPT_CAPACITY);
 static_assert(QPAYHUB_FEE_PERMILLE < 10000);
 static_assert(QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE <= 1000);
 // The two fixed slices must leave a non-negative remainder for token holders.
@@ -751,19 +761,22 @@ struct QPAYHUB : public ContractBase
         locals.km.nonce = input.nonce;
         locals.key = qpi.K12(locals.km);
 
+        // Capacity is checked before any money moves so the receipt insert
+        // below can never fail after the seller has been paid - and before
+        // the duplicate lookup, because that lookup is what gets expensive as
+        // the map fills (see QPAYHUB_RECEIPT_LOAD_LIMIT). A full map therefore
+        // answers ERR_CAPACITY even for a replayed key; both refund in full.
+        if (state.get().receipts.population() >= QPAYHUB_RECEIPT_LOAD_LIMIT)
+        {
+            qpi.transfer(qpi.invocator(), locals.amount);
+            output.returnCode = QPAYHUB_ERR_CAPACITY;
+            return;
+        }
         // A duplicate key is a replayed payment attempt, not a new purchase.
         if (state.get().receipts.contains(locals.key))
         {
             qpi.transfer(qpi.invocator(), locals.amount);
             output.returnCode = QPAYHUB_ERR_DUPLICATE;
-            return;
-        }
-        // Capacity is checked before any money moves so the receipt insert
-        // below can never fail after the seller has been paid.
-        if (state.get().receipts.population() >= QPAYHUB_RECEIPT_CAPACITY)
-        {
-            qpi.transfer(qpi.invocator(), locals.amount);
-            output.returnCode = QPAYHUB_ERR_CAPACITY;
             return;
         }
 
@@ -918,10 +931,11 @@ struct QPAYHUB : public ContractBase
             QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS, 1);
         if (output.subscriptionId < 0)
         {
-            // Subscription failed to register - the fee already left the
-            // caller balance; the framework does not refund on this path
-            // (mirrors QUtil.h own handling of the same failure), so
-            // this is intentionally not retried automatically here.
+            // On every failure path the fee is back in this contract's
+            // balance: either SUBSCRIBE_ORACLE never took it, or it took it
+            // and oracleEngine.refundFees() returned it - to the contract,
+            // not to the caller who paid (qpi_oracle_impl.h). Pass it on.
+            qpi.transfer(qpi.invocator(), locals.fee);
             output.returnCode = QPAYHUB_ERR_SUBSCRIBE_FAILED;
             return;
         }
@@ -1240,7 +1254,6 @@ struct QPAYHUB : public ContractBase
         Receipt r;
         Affiliate aff; // AFFILIATE ADDITION
         uint32 cur;
-        uint32 cutoff;
         Entity ent;
         sint64 balance;
         sint64 distributable;
@@ -1258,32 +1271,32 @@ struct QPAYHUB : public ContractBase
     };
     END_EPOCH_WITH_LOCALS()
     {
-        state.mut().receipts.cleanupIfNeeded();
-
         // Purge receipts older than the retention window. A receipt paid in
-        // epoch E survives until END_EPOCH of E + retention, far beyond any
+        // epoch E is purged by END_EPOCH of E + retention, far beyond any
         // payment freshness window a facilitator would accept.
         locals.cur = (uint32)qpi.epoch();
-        if (locals.cur > QPAYHUB_RECEIPT_RETENTION_EPOCHS)
-        {
-            locals.cutoff = locals.cur - QPAYHUB_RECEIPT_RETENTION_EPOCHS;
-        }
-        else
-        {
-            locals.cutoff = 0;
-        }
         for (locals.idx = state.get().receipts.nextElementIndex(NULL_INDEX);
              locals.idx != NULL_INDEX;
              locals.idx = state.get().receipts.nextElementIndex(locals.idx))
         {
             locals.r = state.get().receipts.value(locals.idx);
-            if (locals.r.epochPaid < locals.cutoff)
+            if (locals.cur >= locals.r.epochPaid + QPAYHUB_RECEIPT_RETENTION_EPOCHS)
             {
                 state.mut().receipts.removeByKey(state.get().receipts.key(locals.idx));
                 state.mut().totalPurged = sadd(state.get().totalPurged, (uint64)1);
             }
         }
-        state.mut().receipts.cleanupIfNeeded();
+        // Always rebuild, not cleanupIfNeeded(): removal only marks a slot,
+        // population() stops counting it, yet lookups still scan past it until
+        // a truly empty slot. cleanupIfNeeded() waits for >50% of capacity in
+        // removed marks, so live receipts under QPAYHUB_RECEIPT_LOAD_LIMIT plus
+        // leftover marks could leave no empty slot at all, and every Pay's
+        // duplicate lookup would scan the whole table. Receipts are never
+        // removed during an epoch (Consume updates in place), so after this
+        // population() equals occupied slots until the next END_EPOCH and the
+        // load limit really bounds lookups. The purge loop above is already
+        // O(capacity); cleanup() returns at once when nothing was removed.
+        state.mut().receipts.cleanup();
 
         // AFFILIATE ADDITION: purge referral links past their term, freeing
         // the slot - same purge pattern as receipt retention above. Pay()

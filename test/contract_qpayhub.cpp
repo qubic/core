@@ -449,6 +449,32 @@ TEST(ContractQPayhub, PayDuplicateKeyRefundsAndRejects)
     EXPECT_EQ(qpayhub.getInfo().receiptCount, 1ULL);
 }
 
+// Filling the receipt map is the cheapest way to stop QPayhub taking
+// payments: an attacker paying their own second address gets everything back
+// except the 100 QU fee floor, so each receipt costs them 100 QU whatever the
+// amount. Past 80% load a lookup for a key that is not present degrades toward
+// scanning the whole table, so new receipts must be refused at the load limit,
+// with the payment refunded, rather than only once the map is completely full.
+TEST(ContractQPayhub, PayRefusedAndRefundedAtReceiptLoadLimit)
+{
+    ContractTestingQPayhub qpayhub;
+
+    QPAYHUB::Receipt filler{};
+    for (uint64 i = 0; i < QPAYHUB_RECEIPT_LOAD_LIMIT; ++i)
+    {
+        qpayhub.state()->receipts.set(m256i(i, 7, 7, 7), filler);
+    }
+    ASSERT_EQ(qpayhub.state()->receipts.population(), QPAYHUB_RECEIPT_LOAD_LIMIT);
+
+    increaseEnergy(BUYER1, 10000000);
+    const sint64 balanceBefore = getBalance(BUYER1);
+    auto output = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000);
+
+    EXPECT_EQ(output.returnCode, QPAYHUB_ERR_CAPACITY);
+    EXPECT_EQ(getBalance(BUYER1), balanceBefore);
+    EXPECT_EQ(qpayhub.state()->receipts.population(), QPAYHUB_RECEIPT_LOAD_LIMIT);
+}
+
 TEST(ContractQPayhub, PayFeeFloorDominatesBelowPercentThreshold)
 {
     ContractTestingQPayhub qpayhub;
@@ -643,20 +669,80 @@ TEST(ContractQPayhub, EndEpochPurgesReceiptsPastRetentionWindow)
     ContractTestingQPayhub qpayhub;
     increaseEnergy(BUYER1, 10000000);
 
+    static_assert(QPAYHUB_RECEIPT_RETENTION_EPOCHS == 2, "epochs below assume retention 2");
+
+    // A receipt paid in epoch E is purged by END_EPOCH of E + retention, as
+    // documented and as GetInfo.retentionEpochs advertises. The previous rule
+    // (epochPaid < cur - retention) kept it one epoch longer.
     system.epoch = 200;
     auto oldReceipt = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 5000);
+
+    // It survives END_EPOCH of 201 = E + retention - 1...
+    system.epoch = 201;
+    qpayhub.endEpoch();
+    EXPECT_EQ(qpayhub.getReceipt(oldReceipt.receiptKey).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.getInfo().totalPurged, 0ULL);
 
     system.epoch = 202;
     auto freshReceipt = qpayhub.pay(BUYER1, SELLER1, RESOURCE2, 2, 5000);
 
-    // cutoff = 203 - QPAYHUB_RECEIPT_RETENTION_EPOCHS(2) = 201; epochPaid 200 < 201 purges,
-    // epochPaid 202 survives.
-    system.epoch = 203;
+    // ...and is gone after END_EPOCH of 202, while the receipt paid in 202 stays.
     qpayhub.endEpoch();
-
     EXPECT_EQ(qpayhub.getReceipt(oldReceipt.receiptKey).returnCode, QPAYHUB_ERR_NOT_FOUND);
     EXPECT_EQ(qpayhub.getReceipt(freshReceipt.receiptKey).returnCode, QPAYHUB_OK);
     EXPECT_EQ(qpayhub.getInfo().totalPurged, 1ULL);
+}
+
+// Removing a receipt only marks its slot, and lookups keep scanning past
+// marked slots until a truly empty one. With the table exactly full before
+// the purge, 100,000 expired receipts - fewer than the 50% of capacity that
+// cleanupIfNeeded() waits for - would leave every slot either live or marked:
+// no empty slot at all, so every Pay's duplicate lookup would scan the whole
+// table while population() sat below the load limit. END_EPOCH must clear the
+// marks, so the load limit bounds the table's real occupancy.
+TEST(ContractQPayhub, EndEpochPurgeClearsRemovedSlotsSoLoadLimitHolds)
+{
+    ContractTestingQPayhub qpayhub;
+    system.epoch = 200;
+
+    constexpr uint64 expired = 100000;
+    static_assert(expired < QPAYHUB_RECEIPT_CAPACITY / 2, "must stay below the cleanupIfNeeded() threshold");
+    static_assert(QPAYHUB_RECEIPT_CAPACITY - expired <= QPAYHUB_RECEIPT_LOAD_LIMIT, "survivors must be under the load limit");
+
+    QPAYHUB::Receipt receipt{};
+    uint64 nextKey = 0;
+    receipt.epochPaid = 100;
+    for (uint64 i = 0; i < expired; ++i)
+    {
+        qpayhub.state()->receipts.set(m256i(nextKey++, 7, 7, 7), receipt);
+    }
+    receipt.epochPaid = 200;
+    while (qpayhub.state()->receipts.population() < QPAYHUB_RECEIPT_CAPACITY)
+    {
+        qpayhub.state()->receipts.set(m256i(nextKey++, 7, 7, 7), receipt);
+    }
+
+    qpayhub.endEpoch();
+
+    const uint64 survivors = QPAYHUB_RECEIPT_CAPACITY - expired;
+    EXPECT_EQ(qpayhub.getInfo().totalPurged, expired);
+    EXPECT_EQ(qpayhub.state()->receipts.population(), survivors);
+    // No slot is left marked-removed, so every slot population() does not
+    // count is truly empty.
+    EXPECT_FALSE(qpayhub.state()->receipts.needsCleanup(0));
+
+    // Refill up to just below the load limit: that 20% of the table stays
+    // empty, and a payment still goes through.
+    while (qpayhub.state()->receipts.population() < QPAYHUB_RECEIPT_LOAD_LIMIT - 1)
+    {
+        qpayhub.state()->receipts.set(m256i(nextKey++, 7, 7, 7), receipt);
+    }
+    EXPECT_FALSE(qpayhub.state()->receipts.needsCleanup(0));
+
+    increaseEnergy(BUYER1, 10000000);
+    auto output = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000);
+    EXPECT_EQ(output.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.state()->receipts.population(), QPAYHUB_RECEIPT_LOAD_LIMIT);
 }
 
 TEST(ContractQPayhub, EndEpochDistributesFeePoolAboveReserveToSharesAndTokenHolders)
@@ -909,6 +995,37 @@ TEST(ContractQPayhub, BeginEpochClearsStaleSubscriptionSoFeedCanBeRenewed)
     EXPECT_EQ(second.returnCode, QPAYHUB_OK);
     EXPECT_GE(second.subscriptionId, 0);
     EXPECT_EQ(qpayhub.state()->priceOracleSubscriptionId, second.subscriptionId);
+}
+
+// When SUBSCRIBE_ORACLE itself fails, the framework refunds the fee to the
+// calling contract (qpi_oracle_impl.h -> oracleEngine.refundFees), not to the
+// user who paid it. SubscribeToPriceFeed must pass it back, like every other
+// rejection path in this contract does.
+TEST(ContractQPayhub, SubscribeToPriceFeedRefundsCallerWhenOracleRejects)
+{
+    ContractTestingQPayhub qpayhub;
+    increaseEnergy(BUYER1, 10000000);
+
+    OI::Price::OracleQuery dummyQuery;
+    const sint64 requiredFee = OI::Price::getSubscriptionFee(dummyQuery, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
+
+    auto first = qpayhub.subscribeToPriceFeed(BUYER1, requiredFee);
+    ASSERT_EQ(first.returnCode, QPAYHUB_OK);
+
+    // BEGIN_EPOCH without the engine's own reset: QPayhub forgets its
+    // subscription id while the engine still lists it as a subscriber, so the
+    // next SUBSCRIBE_ORACLE is rejected ("contract is already subscribed").
+    qpayhub.beginEpoch();
+    ASSERT_LT(qpayhub.state()->priceOracleSubscriptionId, 0);
+
+    const sint64 buyerBefore = getBalance(BUYER1);
+    const sint64 contractBefore = getBalance(QPAYHUB_CONTRACT_ID);
+    auto second = qpayhub.subscribeToPriceFeed(BUYER1, requiredFee);
+
+    EXPECT_EQ(second.returnCode, QPAYHUB_ERR_SUBSCRIBE_FAILED);
+    EXPECT_EQ(getBalance(BUYER1), buyerBefore);
+    EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID), contractBefore);
+    EXPECT_LT(qpayhub.state()->priceOracleSubscriptionId, 0);
 }
 
 TEST(ContractQPayhub, GetQuUsdPriceFreshContractIsStale)
