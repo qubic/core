@@ -37,9 +37,8 @@ using namespace QPI;
 //   balance and credits it to the contract's own execution fee reserve, so
 //   the 1% is not paid to anyone but is not destroyed outright either - it
 //   is what makes QPayhub fund its own execution out of its own revenue
-//   rather than slowly draining a reserve nothing refills. A receipt paid
-//   in epoch E is purged by END_EPOCH of epoch
-//   E + QPAYHUB_RECEIPT_RETENTION_EPOCHS.
+//   rather than slowly draining a reserve nothing refills. Receipts expire
+//   after QPAY_RECEIPT_RETENTION_EPOCHS epochs.
 //
 //   REFUNDS: the fee is NOT returned on a refund. No path pays out of
 //   feePool, and invoice.js validates refunds against the GROSS amount,
@@ -185,12 +184,10 @@ using namespace QPI;
 //     them during the epoch transition (qubic.cpp beginEpoch() ->
 //     oracleEngine.beginEpoch() -> reset()) and runs each contract's
 //     BEGIN_EPOCH only afterwards, so BEGIN_EPOCH below clears
-//     priceOracleSubscriptionId back to -1 and resubscribes, paying the
-//     oracle fee from feePool. SubscribeToPriceFeed remains as a
-//     permissionless fallback for epochs where feePool cannot cover it.
-//     Without the reset the `>= 0` guard in SubscribeToPriceFeed would
-//     reject every renewal and the price feed would go permanently stale
-//     after the first epoch.
+//     priceOracleSubscriptionId back to -1 and the feed is renewed by
+//     calling SubscribeToPriceFeed once per epoch. Without that reset the
+//     `>= 0` guard in SubscribeToPriceFeed would reject every renewal and
+//     the price feed would go permanently stale after the first epoch.
 //
 // NOT YET VERIFIED (the currency pair and the subscription renewal/lifetime
 // semantics are now covered by GoogleTest - see
@@ -212,25 +209,15 @@ constexpr uint64 QPAYHUB_RECEIPT_CAPACITY = 262144; // 2^18 (was 65536)
 // the map fill completely would make every later Pay scan the whole table.
 // The bound only holds because END_EPOCH clears every removed slot after its
 // purge (see there); receipts are never removed during an epoch.
-// Sustained headroom: a receipt lives at most two epochs (~14 days) with
-// retention 1, so ~15k payments/day before new receipts are refused.
+// Sustained headroom: a receipt lives at most three epochs (~21 days) with
+// retention 2, so ~10k payments/day before new receipts are refused.
 constexpr uint64 QPAYHUB_RECEIPT_LOAD_LIMIT = 209715; // 80% of QPAYHUB_RECEIPT_CAPACITY
 constexpr sint64 QPAYHUB_MIN_PAYMENT = 100;        // dust floor, QU - rejects the payment outright
 constexpr uint64 QPAYHUB_FEE_PERMILLE = 75;        // 75 per 10000 = 0.75 percent
 // Floor on the fee itself, not a rejection threshold like MIN_PAYMENT.
 constexpr sint64 QPAYHUB_FEE_FLOOR_QU = 100;
-// A receipt paid in epoch E is purged by END_EPOCH of epoch E + retention,
-// so it stays readable for the rest of epoch E and all of the next one -
-// far beyond any payment freshness window a facilitator would accept, and
-// short enough that filling the map does not block new receipts for long.
-constexpr uint32 QPAYHUB_RECEIPT_RETENTION_EPOCHS = 1;
+constexpr uint32 QPAYHUB_RECEIPT_RETENTION_EPOCHS = 2;
 constexpr sint64 QPAYHUB_EXEC_RESERVE = 1000000;   // never distributed, QU
-// Execution fee reserve the contract keeps itself above. END_EPOCH burns from
-// feePool - including the EXEC_RESERVE held back above, which is ordinary
-// balance and pays for nothing until burned - to refill the reserve before
-// anything is distributed. Staying runnable comes before dividends: once the
-// reserve reaches zero the node rejects every Pay.
-constexpr sint64 QPAYHUB_FEE_RESERVE_FLOOR = 50000000;
 
 // Epoch fee pool splits: shares get one slice, the burn another, and
 // QPAY-token holders take the rest (89% plus any rounding remainder).
@@ -274,7 +261,6 @@ constexpr uint32 QPAYHUB_PRICE_STALE_TICKS = 4000; // roughly 20-25 min at curre
 
 static_assert((QPAYHUB_RECEIPT_CAPACITY & (QPAYHUB_RECEIPT_CAPACITY - 1)) == 0);
 static_assert(QPAYHUB_RECEIPT_LOAD_LIMIT < QPAYHUB_RECEIPT_CAPACITY);
-static_assert(QPAYHUB_FEE_RESERVE_FLOOR > 0);
 static_assert(QPAYHUB_FEE_PERMILLE < 10000);
 static_assert(QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE <= 1000);
 // The two fixed slices must leave a non-negative remainder for token holders.
@@ -514,17 +500,6 @@ struct QPAYHUB : public ContractBase
         uint32 age;
     };
 
-    // The fixed QUBIC/USDT query, shared by SubscribeToPriceFeed (caller
-    // pays) and BEGIN_EPOCH (contract pays). Fee handling stays with the
-    // callers, because who paid differs.
-    struct PriceFeedQuery_input
-    {
-    };
-    struct PriceFeedQuery_output
-    {
-        OI::Price::OracleQuery query;
-    };
-
     struct SubscribeToPriceFeed_input
     {
     };
@@ -535,17 +510,8 @@ struct QPAYHUB : public ContractBase
     };
     struct SubscribeToPriceFeed_locals
     {
-        PriceFeedQuery_input queryIn;
-        PriceFeedQuery_output queryOut;
+        OI::Price::OracleQuery query;
         sint64 fee;
-    };
-
-    struct BEGIN_EPOCH_locals
-    {
-        PriceFeedQuery_input queryIn;
-        PriceFeedQuery_output queryOut;
-        sint64 fee;
-        sint32 subscriptionId;
     };
 
     // The reference contracts this pattern is copied from use an older
@@ -906,26 +872,6 @@ struct QPAYHUB : public ContractBase
         output.returnCode = QPAYHUB_OK;
     }
 
-    PRIVATE_FUNCTION(PriceFeedQuery)
-    {
-        output.query.oracle = OI::Price::getBinanceMexcOracleId();
-        {
-            // Scoped so these single-letter names do not leak into the rest
-            // of the file - the same pattern TestExampleC.h uses.
-            //
-            // Always pass at least 5 characters, padding with null: id()'s
-            // character constructor declares c0..c4 without defaults, so a
-            // 4-character id(U, S, D, T) is not viable for it and silently
-            // binds to id(uint64, uint64, uint64, uint64) instead, producing
-            // the four ASCII codes as separate 64-bit limbs rather than
-            // "USDT" packed into the first four bytes.
-            using namespace Ch;
-            output.query.currency1 = id(Q, U, B, I, C);
-            output.query.currency2 = id(U, S, D, T, null);
-        }
-        output.query.timestamp = qpi.now();
-    }
-
     // ---- ORACLE PRICE FEED ADDITIONS: subscribe procedure ----
     // Deliberately permissionless (see file header): the query is fixed -
     // QUBIC/USDT via the combined Binance+MEXC oracle - so anyone can call
@@ -946,8 +892,24 @@ struct QPAYHUB : public ContractBase
             return;
         }
 
-        CALL(PriceFeedQuery, locals.queryIn, locals.queryOut);
-        locals.fee = OI::Price::getSubscriptionFee(locals.queryOut.query, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
+        locals.query.oracle = OI::Price::getBinanceMexcOracleId();
+        {
+            // Scoped so these single-letter names do not leak into the rest
+            // of the file - the same pattern TestExampleC.h uses.
+            //
+            // Always pass at least 5 characters, padding with null: id()'s
+            // character constructor declares c0..c4 without defaults, so a
+            // 4-character id(U, S, D, T) is not viable for it and silently
+            // binds to id(uint64, uint64, uint64, uint64) instead, producing
+            // the four ASCII codes as separate 64-bit limbs rather than
+            // "USDT" packed into the first four bytes.
+            using namespace Ch;
+            locals.query.currency1 = id(Q, U, B, I, C);
+            locals.query.currency2 = id(U, S, D, T, null);
+        }
+        locals.query.timestamp = qpi.now();
+
+        locals.fee = OI::Price::getSubscriptionFee(locals.query, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
         if (qpi.invocationReward() < locals.fee)
         {
             if (qpi.invocationReward() > 0)
@@ -965,7 +927,7 @@ struct QPAYHUB : public ContractBase
         }
 
         output.subscriptionId = SUBSCRIBE_ORACLE(
-            OI::Price, locals.queryOut.query, NotifyQuUsdPriceReply,
+            OI::Price, locals.query, NotifyQuUsdPriceReply,
             QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS, 1);
         if (output.subscriptionId < 0)
         {
@@ -1276,33 +1238,14 @@ struct QPAYHUB : public ContractBase
     // calls oracleEngine.beginEpoch(), whose reset() is documented there as
     // "Drop all queries of the previous epoch"), and only afterwards runs
     // each contract's BEGIN_EPOCH. So by the time this executes the stored id
-    // refers to a subscription that no longer exists, so it is cleared first.
-    //
-    // Nobody outside has a reason to pay for renewing QPayhub's feed, so the
-    // contract renews it itself from feePool - calling SUBSCRIBE_ORACLE in
-    // BEGIN_EPOCH is the pattern qpi_macros.h documents. The oracle fee is
-    // destroyed rather than paid to anyone, so feePool shrinks by it. If
-    // feePool cannot cover it, or the oracle rejects the subscription (every
-    // failure path leaves the fee in this contract's balance), the id stays
-    // at -1 and anyone can still renew through SubscribeToPriceFeed.
-    BEGIN_EPOCH_WITH_LOCALS()
+    // refers to a subscription that no longer exists. Clearing it back to the
+    // not-subscribed sentinel is what lets SubscribeToPriceFeed be called
+    // again - otherwise its `>= 0` guard would reject every renewal and the
+    // price feed would stay dead for the remaining life of the contract.
+    // Renewal stays permissionless, exactly like the initial subscription.
+    BEGIN_EPOCH()
     {
         state.mut().priceOracleSubscriptionId = -1;
-
-        CALL(PriceFeedQuery, locals.queryIn, locals.queryOut);
-        locals.fee = OI::Price::getSubscriptionFee(locals.queryOut.query, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
-        if (state.get().feePool < locals.fee)
-        {
-            return;
-        }
-        locals.subscriptionId = SUBSCRIBE_ORACLE(
-            OI::Price, locals.queryOut.query, NotifyQuUsdPriceReply,
-            QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS, 1);
-        if (locals.subscriptionId >= 0)
-        {
-            state.mut().priceOracleSubscriptionId = locals.subscriptionId;
-            state.mut().feePool = state.get().feePool - locals.fee;
-        }
     }
 
     struct END_EPOCH_locals
@@ -1319,7 +1262,6 @@ struct QPAYHUB : public ContractBase
         sint64 shareholderPart;
         sint64 tokenPart;
         sint64 burnPart; // BURN ADDITION
-        sint64 reserveTopUp;
         sint64 paidShare;
         sint64 totalHeld;
         sint64 holderBal;
@@ -1329,8 +1271,9 @@ struct QPAYHUB : public ContractBase
     };
     END_EPOCH_WITH_LOCALS()
     {
-        // Purge receipts past the retention window: a receipt paid in epoch E
-        // goes at END_EPOCH of E + QPAYHUB_RECEIPT_RETENTION_EPOCHS.
+        // Purge receipts older than the retention window. A receipt paid in
+        // epoch E is purged by END_EPOCH of E + retention, far beyond any
+        // payment freshness window a facilitator would accept.
         locals.cur = (uint32)qpi.epoch();
         for (locals.idx = state.get().receipts.nextElementIndex(NULL_INDEX);
              locals.idx != NULL_INDEX;
@@ -1371,29 +1314,11 @@ struct QPAYHUB : public ContractBase
         }
         state.mut().affiliateOf.cleanupIfNeeded();
 
-        qpi.getEntity(SELF, locals.ent);
-        locals.balance = locals.ent.incomingAmount - locals.ent.outgoingAmount;
-
-        // Refill the execution fee reserve first. Free transactions make it
-        // cheap to drain (every rejected call is refunded in full, yet still
-        // costs execution time), and at zero the node rejects every Pay. The
-        // top-up may spend all of feePool - including the EXEC_RESERVE part,
-        // which is plain balance and funds nothing until burned - because a
-        // contract that cannot run pays no dividends either.
-        locals.reserveTopUp = QPAYHUB_FEE_RESERVE_FLOOR - qpi.queryFeeReserve(SELF_INDEX);
-        if (locals.reserveTopUp > state.get().feePool) locals.reserveTopUp = state.get().feePool;
-        if (locals.reserveTopUp > locals.balance) locals.reserveTopUp = locals.balance;
-        if (locals.reserveTopUp > 0 && qpi.burn(locals.reserveTopUp) >= 0)
-        {
-            state.mut().feePool = state.get().feePool - locals.reserveTopUp;
-            locals.balance = locals.balance - locals.reserveTopUp;
-            state.mut().totalBurned = sadd(state.get().totalBurned, (uint64)locals.reserveTopUp);
-        }
-
         // Distribute above the exec reserve: 10% shares, 1% burned back into
         // this contract's own execution fee reserve, 89% token holders.
-        // Balance was read once before the top-up and is tracked through every
-        // outflow since; every payment is clamped to it.
+        // Balance is re-read before spending; every payment is clamped to it.
+        qpi.getEntity(SELF, locals.ent);
+        locals.balance = locals.ent.incomingAmount - locals.ent.outgoingAmount;
         locals.distributable = state.get().feePool - QPAYHUB_EXEC_RESERVE;
         if (locals.distributable > locals.balance)
         {

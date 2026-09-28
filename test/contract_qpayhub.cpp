@@ -90,12 +90,6 @@ public:
         EXPECT_TRUE(ts.init());
         ts.beginEpoch((unsigned int)system.tick);
 
-        // A constructed contract always has a positive execution fee reserve
-        // (the IPO fills it with finalPrice * 676). Start well above
-        // QPAYHUB_FEE_RESERVE_FLOOR so END_EPOCH's reserve top-up stays out
-        // of tests that are about something else; top-up tests lower it.
-        setContractFeeReserve(QPAYHUB_CONTRACT_INDEX, QPAYHUB_FEE_RESERVE_FLOOR * 10);
-
         checkContractExecCleanup();
 
         callFunction(QX_CONTRACT_INDEX, 1, QX::Fees_input(), qxFees);
@@ -675,21 +669,24 @@ TEST(ContractQPayhub, EndEpochPurgesReceiptsPastRetentionWindow)
     ContractTestingQPayhub qpayhub;
     increaseEnergy(BUYER1, 10000000);
 
-    static_assert(QPAYHUB_RECEIPT_RETENTION_EPOCHS == 1, "epochs below assume retention 1");
+    static_assert(QPAYHUB_RECEIPT_RETENTION_EPOCHS == 2, "epochs below assume retention 2");
 
-    // A receipt paid in epoch E is purged by END_EPOCH of E + retention.
+    // A receipt paid in epoch E is purged by END_EPOCH of E + retention, as
+    // documented and as GetInfo.retentionEpochs advertises. The previous rule
+    // (epochPaid < cur - retention) kept it one epoch longer.
     system.epoch = 200;
     auto oldReceipt = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 5000);
 
-    // It survives the END_EPOCH of the epoch it was paid in...
+    // It survives END_EPOCH of 201 = E + retention - 1...
+    system.epoch = 201;
     qpayhub.endEpoch();
     EXPECT_EQ(qpayhub.getReceipt(oldReceipt.receiptKey).returnCode, QPAYHUB_OK);
     EXPECT_EQ(qpayhub.getInfo().totalPurged, 0ULL);
 
-    system.epoch = 201;
+    system.epoch = 202;
     auto freshReceipt = qpayhub.pay(BUYER1, SELLER1, RESOURCE2, 2, 5000);
 
-    // ...and is gone after the next one, while the receipt paid in 201 stays.
+    // ...and is gone after END_EPOCH of 202, while the receipt paid in 202 stays.
     qpayhub.endEpoch();
     EXPECT_EQ(qpayhub.getReceipt(oldReceipt.receiptKey).returnCode, QPAYHUB_ERR_NOT_FOUND);
     EXPECT_EQ(qpayhub.getReceipt(freshReceipt.receiptKey).returnCode, QPAYHUB_OK);
@@ -876,73 +873,6 @@ TEST(ContractQPayhub, EndEpochDoesNotDistributeWhenFeePoolAtOrBelowReserve)
     EXPECT_EQ(info.feePool, QPAYHUB_EXEC_RESERVE - 1);
 }
 
-// Transactions are free in Qubic, so anyone can spam QPayhub with calls it
-// refunds in full (Consume, admin procedures, rejected Pay) and drain its
-// execution fee reserve; at zero the node rejects every Pay. END_EPOCH must
-// refill the reserve back up to QPAYHUB_FEE_RESERVE_FLOOR from feePool before
-// splitting the rest, not only burn 1% of whatever happens to be distributable.
-TEST(ContractQPayhub, EndEpochTopsUpLowFeeReserveBeforeDistributing)
-{
-    ContractTestingQPayhub qpayhub;
-
-    // Chosen so the shareholder slice of what remains divides evenly by
-    // NUMBER_OF_COMPUTORS (dividends are paid per share, remainder stays).
-    const sint64 deficit = 67600;
-    setContractFeeReserve(QPAYHUB_CONTRACT_INDEX, QPAYHUB_FEE_RESERVE_FLOOR - deficit);
-
-    const sint64 feePoolAmount = QPAYHUB_EXEC_RESERVE + 676000;
-    qpayhub.state()->feePool = feePoolAmount;
-    increaseEnergy(QPAYHUB_CONTRACT_ID, feePoolAmount);
-
-    std::vector<std::pair<m256i, unsigned int>> qpayhubShares{
-        { SHAREHOLDER1, NUMBER_OF_COMPUTORS }
-    };
-    issueContractShares(QPAYHUB_CONTRACT_INDEX, qpayhubShares);
-    const sint64 shareholderBalanceBefore = getBalance(SHAREHOLDER1);
-
-    qpayhub.endEpoch();
-
-    // Top-up first, then the usual 10/1/89 split of what is left above the
-    // exec reserve: 676,000 - 67,600 = 608,400 distributable.
-    const sint64 expectedShareholderTotal = 60840; // 10% = 90 per share
-    const sint64 expectedSplitBurn = 6084;         // 1%
-
-    EXPECT_EQ(getContractFeeReserve(QPAYHUB_CONTRACT_INDEX), QPAYHUB_FEE_RESERVE_FLOOR + expectedSplitBurn);
-    EXPECT_EQ(getBalance(SHAREHOLDER1), shareholderBalanceBefore + expectedShareholderTotal);
-    EXPECT_EQ(qpayhub.getInfo().totalBurned, (uint64)(deficit + expectedSplitBurn));
-    // No QPAY token exists here, so the 89% slice stays in feePool.
-    EXPECT_EQ(qpayhub.getInfo().feePool, feePoolAmount - deficit - expectedShareholderTotal - expectedSplitBurn);
-    EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID), qpayhub.getInfo().feePool);
-}
-
-// When feePool cannot cover the whole deficit, END_EPOCH burns all of it -
-// including the EXEC_RESERVE held back from distribution, which exists to
-// keep the contract running - and distributes nothing.
-TEST(ContractQPayhub, EndEpochTopUpUsesExecReserveAndSkipsDividendsWhenReserveIsEmpty)
-{
-    ContractTestingQPayhub qpayhub;
-
-    setContractFeeReserve(QPAYHUB_CONTRACT_INDEX, 0);
-
-    const sint64 feePoolAmount = QPAYHUB_EXEC_RESERVE + 676000;
-    qpayhub.state()->feePool = feePoolAmount;
-    increaseEnergy(QPAYHUB_CONTRACT_ID, feePoolAmount);
-
-    std::vector<std::pair<m256i, unsigned int>> qpayhubShares{
-        { SHAREHOLDER1, NUMBER_OF_COMPUTORS }
-    };
-    issueContractShares(QPAYHUB_CONTRACT_INDEX, qpayhubShares);
-    const sint64 shareholderBalanceBefore = getBalance(SHAREHOLDER1);
-
-    qpayhub.endEpoch();
-
-    EXPECT_EQ(getContractFeeReserve(QPAYHUB_CONTRACT_INDEX), feePoolAmount);
-    EXPECT_EQ(qpayhub.getInfo().feePool, 0);
-    EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID), 0);
-    EXPECT_EQ(getBalance(SHAREHOLDER1), shareholderBalanceBefore);
-    EXPECT_EQ(qpayhub.getInfo().totalBurned, (uint64)feePoolAmount);
-}
-
 TEST(ContractQPayhub, SubscribeToPriceFeedFeeTooLowRefundsAndRejects)
 {
     ContractTestingQPayhub qpayhub;
@@ -1067,62 +997,6 @@ TEST(ContractQPayhub, BeginEpochClearsStaleSubscriptionSoFeedCanBeRenewed)
     EXPECT_EQ(qpayhub.state()->priceOracleSubscriptionId, second.subscriptionId);
 }
 
-// Subscriptions end with the epoch, and nobody has a reason to pay to renew
-// QPayhub's. qpi_macros.h documents calling SUBSCRIBE_ORACLE in BEGIN_EPOCH as
-// the common pattern; QPayhub pays the fee from its own feePool so the price
-// feed survives the epoch boundary without an outside caller.
-TEST(ContractQPayhub, BeginEpochResubscribesFromContractFunds)
-{
-    ContractTestingQPayhub qpayhub;
-
-    OI::Price::OracleQuery dummyQuery;
-    const sint64 requiredFee = OI::Price::getSubscriptionFee(dummyQuery, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
-
-    qpayhub.state()->feePool = QPAYHUB_EXEC_RESERVE;
-    increaseEnergy(QPAYHUB_CONTRACT_ID, QPAYHUB_EXEC_RESERVE);
-
-    // Epoch rollover, in the order the node performs it.
-    qpayhub.endEpoch();
-    oracleEngine.beginEpoch();
-    qpayhub.beginEpoch();
-
-    const sint32 subscriptionId = qpayhub.state()->priceOracleSubscriptionId;
-    EXPECT_GE(subscriptionId, 0);
-    EXPECT_NE(oracleEngine.getOracleSubscription(subscriptionId), nullptr);
-    // The oracle fee is destroyed, not paid to anyone; feePool shrinks by it.
-    EXPECT_EQ(qpayhub.state()->feePool, QPAYHUB_EXEC_RESERVE - requiredFee);
-    EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID), QPAYHUB_EXEC_RESERVE - requiredFee);
-}
-
-// If SUBSCRIBE_ORACLE rejects the renewal even though feePool covers the fee,
-// the framework hands the fee straight back to the contract, so neither
-// feePool nor the balance may change and the id must stay cleared.
-TEST(ContractQPayhub, BeginEpochSubscribeRejectedLeavesFeePoolAndBalanceUnchanged)
-{
-    ContractTestingQPayhub qpayhub;
-    increaseEnergy(BUYER1, 10000000);
-
-    OI::Price::OracleQuery dummyQuery;
-    const sint64 requiredFee = OI::Price::getSubscriptionFee(dummyQuery, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
-
-    // Subscribed through the engine, which keeps listing QPayhub as a
-    // subscriber below because its own beginEpoch() reset is not run - so the
-    // renewal in BEGIN_EPOCH is rejected ("contract is already subscribed").
-    auto first = qpayhub.subscribeToPriceFeed(BUYER1, requiredFee);
-    ASSERT_EQ(first.returnCode, QPAYHUB_OK);
-
-    qpayhub.state()->feePool = QPAYHUB_EXEC_RESERVE;
-    increaseEnergy(QPAYHUB_CONTRACT_ID, QPAYHUB_EXEC_RESERVE);
-    const sint64 balanceBefore = getBalance(QPAYHUB_CONTRACT_ID);
-    ASSERT_GE(qpayhub.state()->feePool, requiredFee);
-
-    qpayhub.beginEpoch();
-
-    EXPECT_LT(qpayhub.state()->priceOracleSubscriptionId, 0);
-    EXPECT_EQ(qpayhub.state()->feePool, QPAYHUB_EXEC_RESERVE);
-    EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID), balanceBefore);
-}
-
 // When SUBSCRIBE_ORACLE itself fails, the framework refunds the fee to the
 // calling contract (qpi_oracle_impl.h -> oracleEngine.refundFees), not to the
 // user who paid it. SubscribeToPriceFeed must pass it back, like every other
@@ -1141,7 +1015,6 @@ TEST(ContractQPayhub, SubscribeToPriceFeedRefundsCallerWhenOracleRejects)
     // BEGIN_EPOCH without the engine's own reset: QPayhub forgets its
     // subscription id while the engine still lists it as a subscriber, so the
     // next SUBSCRIBE_ORACLE is rejected ("contract is already subscribed").
-    // feePool is empty, so BEGIN_EPOCH does not try to resubscribe itself.
     qpayhub.beginEpoch();
     ASSERT_LT(qpayhub.state()->priceOracleSubscriptionId, 0);
 
