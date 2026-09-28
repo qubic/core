@@ -449,30 +449,132 @@ TEST(ContractQPayhub, PayDuplicateKeyRefundsAndRejects)
     EXPECT_EQ(qpayhub.getInfo().receiptCount, 1ULL);
 }
 
-// Filling the receipt map is the cheapest way to stop QPayhub taking
-// payments: an attacker paying their own second address gets everything back
-// except the 100 QU fee floor, so each receipt costs them 100 QU whatever the
-// amount. Past 80% load a lookup for a key that is not present degrades toward
-// scanning the whole table, so new receipts must be refused at the load limit,
-// with the payment refunded, rather than only once the map is completely full.
-TEST(ContractQPayhub, PayRefusedAndRefundedAtReceiptLoadLimit)
+// Receipt keys are K12 outputs, so they land evenly across the map. These
+// synthetic filler keys must too - sequential keys would sit in one block,
+// and a sampling window could then fall entirely in the empty part. An odd
+// multiplier is a bijection on the low 18 bits, so fillers never collide.
+static m256i qpayhubFillerKey(uint64 i)
+{
+    return m256i(i * 0x9E3779B97F4A7C15ULL, 7, 7, 7);
+}
+
+static void qpayhubFillReceipts(ContractTestingQPayhub& qpayhub, uint64 count, uint32 tickPaid)
+{
+    QPAYHUB::Receipt filler{};
+    filler.epochPaid = (uint32)system.epoch;
+    filler.tickPaid = tickPaid;
+    for (uint64 i = 0; i < count; ++i)
+    {
+        qpayhub.state()->receipts.set(qpayhubFillerKey(i), filler);
+    }
+    ASSERT_EQ(qpayhub.state()->receipts.population(), count);
+}
+
+// The attack: an attacker paying their own second address loses only the
+// 100 QU fee floor per receipt, so ~21M QU fills the map to the load limit.
+// Refusing new receipts there would block every payment for as long as the
+// filler lives (up to three epochs). Instead Pay replaces a receipt, and only
+// a consumed one or one older than QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS, so the
+// filler blocks payments only while it is fresh: keeping payments blocked
+// means refilling the whole map within that window, again and again.
+TEST(ContractQPayhub, ReceiptFillAttackBlocksPaymentsOnlyWhileFillerIsFresh)
 {
     ContractTestingQPayhub qpayhub;
-
-    QPAYHUB::Receipt filler{};
-    for (uint64 i = 0; i < QPAYHUB_RECEIPT_LOAD_LIMIT; ++i)
-    {
-        qpayhub.state()->receipts.set(m256i(i, 7, 7, 7), filler);
-    }
-    ASSERT_EQ(qpayhub.state()->receipts.population(), QPAYHUB_RECEIPT_LOAD_LIMIT);
+    const uint32 attackTick = (uint32)system.tick;
+    qpayhubFillReceipts(qpayhub, QPAYHUB_RECEIPT_LOAD_LIMIT, attackTick);
 
     increaseEnergy(BUYER1, 10000000);
-    const sint64 balanceBefore = getBalance(BUYER1);
-    auto output = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000);
 
-    EXPECT_EQ(output.returnCode, QPAYHUB_ERR_CAPACITY);
-    EXPECT_EQ(getBalance(BUYER1), balanceBefore);
+    // Right after the fill: every sampled receipt is fresh and unconsumed, so
+    // the payment is refused and refunded in full.
+    system.tick = attackTick + 1;
+    sint64 buyerBefore = getBalance(BUYER1);
+    auto refused = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000);
+    EXPECT_EQ(refused.returnCode, QPAYHUB_ERR_CAPACITY);
+    EXPECT_EQ(getBalance(BUYER1), buyerBefore);
     EXPECT_EQ(qpayhub.state()->receipts.population(), QPAYHUB_RECEIPT_LOAD_LIMIT);
+    EXPECT_EQ(qpayhub.getInfo().totalPurged, 0ULL);
+
+    // One tick short of the window: still protected.
+    system.tick = attackTick + QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS - 1;
+    EXPECT_EQ(qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000).returnCode, QPAYHUB_ERR_CAPACITY);
+
+    // Once the filler is QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS old, a payment
+    // goes through by replacing one of it; the map stays at the limit.
+    system.tick = attackTick + QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS;
+    const sint64 sellerBefore = getBalance(SELLER1);
+    auto paid = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000);
+    EXPECT_EQ(paid.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(getBalance(SELLER1), sellerBefore + paid.net);
+    EXPECT_EQ(qpayhub.getReceipt(paid.receiptKey).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.state()->receipts.population(), QPAYHUB_RECEIPT_LOAD_LIMIT);
+    EXPECT_EQ(qpayhub.getInfo().totalPurged, 1ULL);
+}
+
+// A consumed receipt has served its purpose - its seller has already checked
+// it - so it may be replaced even when fresh, and is preferred over an old
+// unconsumed one. Here every other receipt is old and unconsumed and the rest
+// fresh and consumed: all are eligible, and the one replaced must be consumed.
+TEST(ContractQPayhub, PayAtLoadLimitPrefersConsumedReceipts)
+{
+    ContractTestingQPayhub qpayhub;
+    const uint32 now = (uint32)system.tick;
+    const uint32 oldTick = now - QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS;
+
+    QPAYHUB::Receipt filler{};
+    filler.epochPaid = (uint32)system.epoch;
+    for (uint64 i = 0; i < QPAYHUB_RECEIPT_LOAD_LIMIT; ++i)
+    {
+        filler.consumed = (i & 1) ? 1 : 0;
+        filler.tickPaid = filler.consumed ? now : oldTick;
+        qpayhub.state()->receipts.set(qpayhubFillerKey(i), filler);
+    }
+    const uint64 consumedBefore = QPAYHUB_RECEIPT_LOAD_LIMIT / 2;
+    const uint64 unconsumedBefore = QPAYHUB_RECEIPT_LOAD_LIMIT - consumedBefore;
+
+    increaseEnergy(BUYER1, 10000000);
+    auto paid = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000);
+    ASSERT_EQ(paid.returnCode, QPAYHUB_OK);
+
+    uint64 consumed = 0, unconsumed = 0;
+    for (sint64 idx = qpayhub.state()->receipts.nextElementIndex(NULL_INDEX); idx != NULL_INDEX;
+         idx = qpayhub.state()->receipts.nextElementIndex(idx))
+    {
+        if (qpayhub.state()->receipts.key(idx) == paid.receiptKey)
+            continue;
+        if (qpayhub.state()->receipts.value(idx).consumed)
+            ++consumed;
+        else
+            ++unconsumed;
+    }
+    EXPECT_EQ(consumed, consumedBefore - 1);
+    EXPECT_EQ(unconsumed, unconsumedBefore);
+}
+
+// Every eviction may leave a removed-slot mark, and lookups scan past marks as
+// if the slot were full. Under a sustained attack Pay must rebuild the map
+// once marks pass QPAYHUB_RECEIPT_REBUILD_PERCENT, not wait for END_EPOCH -
+// otherwise ~50k evictions in one epoch would leave no empty slot at all.
+TEST(ContractQPayhub, PayEvictionRebuildsRemovedSlotMarksBeforeTheyPileUp)
+{
+    ContractTestingQPayhub qpayhub;
+    const uint32 oldTick = (uint32)system.tick - QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS;
+    qpayhubFillReceipts(qpayhub, QPAYHUB_RECEIPT_LOAD_LIMIT, oldTick);
+
+    // Enough evictions to cross the rebuild threshold once.
+    const uint64 threshold = QPAYHUB_RECEIPT_REBUILD_PERCENT * QPAYHUB_RECEIPT_CAPACITY / 100;
+    const uint64 evictions = threshold + 1000;
+
+    increaseEnergy(BUYER1, (sint64)(evictions * QPAYHUB_MIN_PAYMENT) + 1000000);
+    for (uint64 n = 0; n < evictions; ++n)
+    {
+        ASSERT_EQ(qpayhub.pay(BUYER1, SELLER1, RESOURCE1, n, QPAYHUB_MIN_PAYMENT).returnCode, QPAYHUB_OK) << "payment " << n;
+    }
+
+    EXPECT_EQ(qpayhub.state()->receipts.population(), QPAYHUB_RECEIPT_LOAD_LIMIT);
+    EXPECT_EQ(qpayhub.getInfo().totalPurged, evictions);
+    // Without the rebuild, `evictions` marks (> threshold) would remain.
+    EXPECT_FALSE(qpayhub.state()->receipts.needsCleanup(QPAYHUB_RECEIPT_REBUILD_PERCENT));
 }
 
 TEST(ContractQPayhub, PayFeeFloorDominatesBelowPercentThreshold)
