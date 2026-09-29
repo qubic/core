@@ -57,7 +57,8 @@ template<
     unsigned long long neighbor,
     unsigned long long population,
     unsigned long long mutations,
-    unsigned int threshold
+    unsigned int threshold,
+    unsigned long long shiftCapValue
 >
 struct Bpp9000Params
 {
@@ -70,10 +71,11 @@ struct Bpp9000Params
     static constexpr unsigned long long populationThreshold = population;
     static constexpr unsigned long long numberOfMutations = mutations;
     static constexpr unsigned int solutionThreshold = threshold;
+    static constexpr unsigned long long shiftCap = shiftCapValue;
     static constexpr unsigned long long numberOfWindows = seqLength - winWidth;
 
     static constexpr AlgoType algoType = AlgoType::Bpp9000;
-    static constexpr unsigned int paramsCount = 9;
+    static constexpr unsigned int paramsCount = 10;
 };
 
 //=================================================================================================
@@ -528,7 +530,9 @@ static bool checkAlgoThreshold(int threshold, AlgoType algo)
     switch (algo)
     {
     case AlgoType::Bpp9000:
-        if (threshold > (int)BPP9000_NUMBER_OF_WINDOWS)
+        // The score is an error inside one frame. At or below the advance gate no root clears the
+        // frame-0 floor; at or above the frame width every error clears it.
+        if (threshold <= (int)(BPP9000_WINDOW_WIDTH / 3) || threshold >= (int)BPP9000_WINDOW_WIDTH)
         {
             return false;
         }

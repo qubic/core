@@ -38,11 +38,11 @@ static AntSolutionRecord makeParent(const m256i& owner, unsigned int score, unsi
 // A candidate from `owner` at `score`, anchored and published in the same tick unless the test is
 // about freshness.
 static ChildCandidate makeChild(const m256i& owner, unsigned int score,
-    unsigned int anchorTick = 1000, unsigned int publishTick = 1000)
+    unsigned int anchorTick = 1000, unsigned int publishTick = 1000, unsigned int shift = 0)
 {
     ChildCandidate c;
     c.pubkey = owner;
-    c.score = score;
+    c.rating = score_engine::Rating{ score, shift };
     c.anchorTick = anchorTick;
     c.publishTick = publishTick;
     return c;
@@ -55,26 +55,58 @@ static ValidityResult admit(const ChildCandidate& child, const AntSolutionRecord
     return AntColonyBpp9000T::validateChild(child, parent, childCount, TEST_THRESHOLD);
 }
 
-// The packing itself is generic and tested exhaustively
-TEST(TestAntColonyPackedAnn, CoversAWholeAnnAtTheUnpaddedStride)
+// All three parts of the ANN are packed in the store: wiring at the population's index width, the start
+// state and the LUTs five trits to a byte. A mistake in any one of them hands children a wrong parent.
+TEST(TestAntColonyPackedAnn, StoreLoadRoundTripsTheWholeAnn)
 {
-    AntColonyBpp9000T::Ann src;
-    for (unsigned long long i = 0; i < sizeof(src); i++)
+    static AntColonyBpp9000T::Ann src;
+    const unsigned long long links = sizeof(src.neighbor) / sizeof(src.neighbor[0]);
+    for (unsigned long long i = 0; i < links; i++)
+    {
+        src.neighbor[i] = (unsigned short)((i * 7919) % BPP9000_POPULATION_THRESHOLD);
+    }
+    for (unsigned long long i = 0; i < sizeof(src.initialNeuronValues); i++)
+    {
+        src.initialNeuronValues[i] = (unsigned char)((i * 2) % 3);
+    }
+    for (unsigned long long i = 0; i < sizeof(src.lut); i++)
     {
         src.lut[i] = (unsigned char)(i % 3);   // mutate() only ever writes 0, 1 or 2
     }
 
-    AntColonyBpp9000T::PackedAnn packed;
-    packed.pack(src.lut);
+    static AntColonyBpp9000T::PackedAnn packed;
+    score_engine::ScoreBpp9000T::store(src, packed);
 
-    AntColonyBpp9000T::Ann back;
+    static AntColonyBpp9000T::Ann back;
     setMem(&back, sizeof(back), 0xFF);
-    packed.unpack(back.lut);
+    score_engine::ScoreBpp9000T::load(packed, back);
 
-    for (unsigned long long i = 0; i < sizeof(src); i++)
+    for (unsigned long long i = 0; i < links; i++)
+    {
+        ASSERT_EQ(back.neighbor[i], src.neighbor[i]) << "link " << i;
+    }
+    for (unsigned long long i = 0; i < sizeof(src.initialNeuronValues); i++)
+    {
+        ASSERT_EQ(back.initialNeuronValues[i], src.initialNeuronValues[i]) << "start state " << i;
+    }
+    for (unsigned long long i = 0; i < sizeof(src.lut); i++)
     {
         ASSERT_EQ(back.lut[i], src.lut[i]) << "entry " << i;
     }
+}
+
+// The stored size is what the pool and the replay cache are allocated from, so pin it to the encoding
+// rather than to whatever the struct happens to lay out.
+TEST(TestAntColonyPackedAnn, StoredSizeMatchesTheEncoding)
+{
+    const unsigned long long indexBits = score_engine::bitsToIndex(BPP9000_POPULATION_THRESHOLD);
+    const unsigned long long data =
+        (BPP9000_POPULATION_THRESHOLD * BPP9000_NUMBER_OF_NEIGHBORS * indexBits + 7) / 8
+        + (BPP9000_POPULATION_THRESHOLD + 4) / 5
+        + (BPP9000_POPULATION_THRESHOLD * 27 + 4) / 5;
+    EXPECT_EQ(sizeof(AntColonyBpp9000T::PackedAnn), data + (8 - data % 8));
+    EXPECT_EQ(sizeof(AntColonyBpp9000T::PackedAnn) % 8, 0u) << "ReplayEntry would gain an implicit gap";
+    EXPECT_LT(sizeof(AntColonyBpp9000T::PackedAnn), sizeof(AntColonyBpp9000T::Ann));
 }
 
 // The threshold is checked before the parent comparison, so nodes worse than it are never stored 
@@ -274,7 +306,7 @@ static long long commitRootChild(AntColonyBpp9000T* colony, const m256i& owner, 
     KangarooTwelve(&ann, sizeof(ann), &annHash, sizeof(annHash));
 
     const long long landsAt = (long long)colony->solutionCount();
-    if (colony->commit(in, nullptr, score, ann, annHash) != ValidityResult::Valid)
+    if (colony->commit(in, nullptr, score_engine::Rating{ score, 0 }, ann, annHash) != ValidityResult::Valid)
     {
         return ANT_INVALID_INDEX;
     }
@@ -307,7 +339,7 @@ static long long commitChild(AntColonyBpp9000T* colony, const m256i& owner, cons
     KangarooTwelve(&ann, sizeof(ann), &annHash, sizeof(annHash));
 
     const long long landsAt = (long long)colony->solutionCount();
-    if (colony->commit(in, parentRec, score, ann, annHash) != ValidityResult::Valid)
+    if (colony->commit(in, parentRec, score_engine::Rating{ score, 0 }, ann, annHash) != ValidityResult::Valid)
     {
         return ANT_INVALID_INDEX;
     }
@@ -536,8 +568,8 @@ TEST(TestAntColonySnapshot, AnchorRingSurvivesTheRoundTrip)
     EXPECT_FALSE(colony->getAnchorDigest(100001, out));
 }
 
-// The seed and threshold are supplied by the node, not read from the file. A disagreement means the
-// colony files and the node state are from different moments, so the tree is refused.
+// The seed is supplied by the node, not read from the file. A disagreement means the colony files and
+// the node state are from different moments, so the tree is refused.
 TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
 {
     AntColonyBpp9000T* colony = freshColony();
@@ -547,7 +579,6 @@ TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
     ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
 
     EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, makeKey(12345), TEST_THRESHOLD, TEST_INITIAL_TICK));
-    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD + 1, TEST_INITIAL_TICK));
 
     // A different base would resolve every parentRef to the wrong record.
     EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK + 1));
@@ -557,6 +588,31 @@ TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
 
     // And the matching one still loads, so the refusals above were the checks and not a bad file.
     EXPECT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
+}
+
+// The floor can move inside an epoch, so a snapshot written under the old one must still load.
+TEST(TestAntColonySnapshot, SnapshotLoadsAfterTheFloorMoves)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(43);
+    ASSERT_NE(commitRootChild(colony, me, 3800, 0, 710), ANT_INVALID_INDEX);
+    ASSERT_NE(commitRootChild(colony, me, 3700, 1, 711), ANT_INVALID_INDEX);
+    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
+
+    // Tightened: both records now sit above the floor the node is running with.
+    colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
+    ASSERT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, 300, TEST_INITIAL_TICK));
+    ASSERT_EQ(colony->solutionCount(), 2u);
+    EXPECT_EQ(colony->recordAt(0)->score, 3800u);
+    EXPECT_EQ(colony->recordAt(1)->score, 3700u);
+
+    // Loosened, the other direction.
+    colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
+    ASSERT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD + 100,
+        TEST_INITIAL_TICK));
+    EXPECT_EQ(colony->solutionCount(), 2u);
 }
 
 // Those refusals all happen while only the meta has been read, so the tree the node is already
@@ -678,13 +734,13 @@ TEST(TestAntColonyReplayCache, StoresAndReturnsScoreAndNetwork)
 
     const AntColonyBpp9000T::ReplayKey key = makeReplayKey(1);
     const AntColonyBpp9000T::Ann ann = makeAnn(7);
-    colony->putReplayScore(key, 3800, ann);
+    colony->putReplayScore(key, score_engine::Rating{ 3800, 0 }, ann);
 
-    unsigned int score = 0;
+    score_engine::Rating score = score_engine::Rating::worst();
     AntColonyBpp9000T::Ann out;
     setMem(&out, sizeof(out), 0xFF);
     ASSERT_TRUE(colony->tryGetReplayScore(key, score, out));
-    EXPECT_EQ(score, 3800u);
+    EXPECT_EQ(score.error, 3800u);
     EXPECT_TRUE(annEquals(out, ann));
 }
 
@@ -696,9 +752,9 @@ TEST(TestAntColonyReplayCache, EveryKeyComponentIsPartOfTheLookup)
     ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
 
     const AntColonyBpp9000T::ReplayKey key = makeReplayKey(2);
-    colony->putReplayScore(key, 3800, makeAnn(1));
+    colony->putReplayScore(key, score_engine::Rating{ 3800, 0 }, makeAnn(1));
 
-    unsigned int score = 0;
+    score_engine::Rating score = score_engine::Rating::worst();
     AntColonyBpp9000T::Ann out;
     for (int component = 0; component < 4; component++)
     {
@@ -723,12 +779,12 @@ TEST(TestAntColonyReplayCache, BeginEpochClearsIt)
     ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
 
     const AntColonyBpp9000T::ReplayKey key = makeReplayKey(3);
-    colony->putReplayScore(key, 3800, makeAnn(2));
+    colony->putReplayScore(key, score_engine::Rating{ 3800, 0 }, makeAnn(2));
     ASSERT_EQ(colony->replayCacheOccupancy(), 1u);
 
     colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
 
-    unsigned int score = 0;
+    score_engine::Rating score = score_engine::Rating::worst();
     AntColonyBpp9000T::Ann out;
     EXPECT_FALSE(colony->tryGetReplayScore(key, score, out));
     EXPECT_EQ(colony->replayCacheOccupancy(), 0u);
@@ -742,14 +798,14 @@ TEST(TestAntColonyReplayCache, SurvivesResetAndSnapshotLoad)
     ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
 
     const AntColonyBpp9000T::ReplayKey key = makeReplayKey(4);
-    colony->putReplayScore(key, 3800, makeAnn(3));
+    colony->putReplayScore(key, score_engine::Rating{ 3800, 0 }, makeAnn(3));
     ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
     ASSERT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
 
-    unsigned int score = 0;
+    score_engine::Rating score = score_engine::Rating::worst();
     AntColonyBpp9000T::Ann out;
     EXPECT_TRUE(colony->tryGetReplayScore(key, score, out));
-    EXPECT_EQ(score, 3800u);
+    EXPECT_EQ(score.error, 3800u);
 }
 
 // The file is the table verbatim, so this checks that entries survive the write and stay findable
@@ -763,7 +819,7 @@ TEST(TestAntColonyReplayCache, RoundTripsThroughAFile)
     constexpr unsigned int COUNT = 500;
     for (unsigned int i = 0; i < COUNT; i++)
     {
-        colony->putReplayScore(makeReplayKey(10000 + i), 3000 + i, makeAnn((unsigned char)i));
+        colony->putReplayScore(makeReplayKey(10000 + i), score_engine::Rating{ 3000 + i, 0 }, makeAnn((unsigned char)i));
     }
     ASSERT_EQ(colony->replayCacheOccupancy(), COUNT);
     ASSERT_TRUE(colony->saveReplayCache(TEST_EPOCH, NULL));
@@ -774,12 +830,12 @@ TEST(TestAntColonyReplayCache, RoundTripsThroughAFile)
     ASSERT_TRUE(colony->loadReplayCache(TEST_EPOCH, NULL));
     EXPECT_EQ(colony->replayCacheOccupancy(), COUNT);
 
-    unsigned int score = 0;
+    score_engine::Rating score = score_engine::Rating::worst();
     AntColonyBpp9000T::Ann out;
     for (unsigned int i = 0; i < COUNT; i++)
     {
         ASSERT_TRUE(colony->tryGetReplayScore(makeReplayKey(10000 + i), score, out)) << "entry " << i;
-        ASSERT_EQ(score, 3000 + i) << "entry " << i;
+        ASSERT_EQ(score.error, 3000 + i) << "entry " << i;
         ASSERT_TRUE(annEquals(out, makeAnn((unsigned char)i))) << "entry " << i;
     }
 }
@@ -791,11 +847,11 @@ TEST(TestAntColonyReplayCache, AbsentFileIsNotAnError)
     AntColonyBpp9000T* colony = freshColony();
     ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
 
-    colony->putReplayScore(makeReplayKey(7), 3800, makeAnn(6));
+    colony->putReplayScore(makeReplayKey(7), score_engine::Rating{ 3800, 0 }, makeAnn(6));
     EXPECT_FALSE(colony->loadReplayCache((unsigned short)(TEST_EPOCH + 77), NULL));
     EXPECT_EQ(colony->replayCacheOccupancy(), 0u);
 
-    unsigned int score = 0;
+    score_engine::Rating score = score_engine::Rating::worst();
     AntColonyBpp9000T::Ann out;
     EXPECT_FALSE(colony->tryGetReplayScore(makeReplayKey(7), score, out));
 }
