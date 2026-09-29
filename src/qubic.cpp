@@ -401,7 +401,7 @@ static_assert(sizeof(AntScoreTaskPayload) <= 128, "ant score payload must fit TA
 // parent named by position and an anchor named by tick number both depend on this node already
 // holding the same tree, which is exactly what a node replaying after a restart is still building.
 static AntColonyBpp9000T::ReplayKey makeAntReplayKey(const m256i& pubkey, const m256i& nonce,
-    const AntColonyBpp9000T::Ann* parentAnn, const m256i& anchorDigest)
+    const AntColonyBpp9000T::Ann* parentAnn, unsigned int parentShift, const m256i& anchorDigest)
 {
     AntColonyBpp9000T::ReplayKey key;
     key.pubkey = pubkey;
@@ -409,7 +409,12 @@ static AntColonyBpp9000T::ReplayKey makeAntReplayKey(const m256i& pubkey, const 
     key.parentAnnHash = m256i::zero();   // a child of the root has no parent network to name
     if (parentAnn != nullptr)
     {
-        KangarooTwelve(parentAnn, sizeof(*parentAnn), &key.parentAnnHash, sizeof(key.parentAnnHash));
+        m256i annDigest;
+        KangarooTwelve(parentAnn, sizeof(*parentAnn), &annDigest, sizeof(annDigest));
+        unsigned char preimage[sizeof(annDigest) + sizeof(parentShift)];
+        copyMem(preimage, &annDigest, sizeof(annDigest));
+        copyMem(preimage + sizeof(annDigest), &parentShift, sizeof(parentShift));
+        KangarooTwelve(preimage, sizeof(preimage), &key.parentAnnHash, sizeof(key.parentAnnHash));
     }
     key.anchorDigest = anchorDigest;
     return key;
@@ -443,7 +448,8 @@ static void scoreAntSolutionTask(unsigned long long processorNumber, void* paylo
     }
 
     const AntColonyBpp9000T::ReplayKey replayKey =
-        makeAntReplayKey(task->pubkey, task->nonce, parentAnn, anchorDigest);
+        makeAntReplayKey(task->pubkey, task->nonce, parentAnn,
+            (parentRec != nullptr) ? parentRec->shift : 0u, anchorDigest);
 
     // Check in the cache first if this sol was computed
     // A root parent sits at frame 0.
@@ -558,7 +564,8 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
 
     // Building the key is far cheaper than a miss, so the cache is consulted first.
     const AntColonyBpp9000T::ReplayKey replayKey =
-        makeAntReplayKey(computorPublicKey, payload.nonce, parentAnn, anchorDigest);
+        makeAntReplayKey(computorPublicKey, payload.nonce, parentAnn,
+            (parentRec != nullptr) ? parentRec->shift : 0u, anchorDigest);
     score_engine::Rating childRating = score_engine::Rating::worst();
     // A root parent sits at frame 0.
     const unsigned int parentShift = (parentRec != nullptr) ? parentRec->shift : 0u;
@@ -1444,7 +1451,8 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                         if (preParentOk)
                         {
                             const AntColonyBpp9000T::ReplayKey preKey = makeAntReplayKey(
-                                antTx->sourcePublicKey, antTx->nonce, preParentAnn, preAnchorDigest);
+                                antTx->sourcePublicKey, antTx->nonce, preParentAnn,
+                                (preParentRec != nullptr) ? preParentRec->shift : 0u, preAnchorDigest);
                             score_engine::Rating preRating = score_engine::Rating::worst();
                             const unsigned int preParentShift =
                                 (preParentRec != nullptr) ? preParentRec->shift : 0u;
@@ -3477,7 +3485,8 @@ static void processTickTransactionAntColonySolution(
         // Same cache the async path uses. Reached when the pre-scan did not enqueue this one or the
         // queue did not drain in time, which is exactly the catch-up case the cache exists for.
         const AntColonyBpp9000T::ReplayKey replayKey =
-            makeAntReplayKey(transaction->sourcePublicKey, transaction->nonce, parentAnn, anchorDigest);
+            makeAntReplayKey(transaction->sourcePublicKey, transaction->nonce, parentAnn,
+                (parentRec != nullptr) ? parentRec->shift : 0u, anchorDigest);
         // A root parent sits at frame 0.
         const unsigned int parentShift = (parentRec != nullptr) ? parentRec->shift : 0u;
         if (!gAntColony.tryGetReplayScore(replayKey, childRating, childAnnScratch))
