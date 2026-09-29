@@ -530,9 +530,11 @@ TEST(TestAntColonySnapshot, RoundTripRestoresTheStoredNetwork)
 
     AntColonyBpp9000T::Ann after;
     ASSERT_TRUE(colony->annOfNonRoot(*colony->recordAt(0), after));
+    const unsigned char* bPtr = reinterpret_cast<const unsigned char*>(&before);
+    const unsigned char* aPtr = reinterpret_cast<const unsigned char*>(&after);
     for (unsigned long long i = 0; i < sizeof(before); i++)
     {
-        ASSERT_EQ(after.lut[i], before.lut[i]) << "entry " << i;
+        ASSERT_EQ(aPtr[i], bPtr[i]) << "byte " << i;
     }
 }
 
@@ -715,9 +717,11 @@ static AntColonyBpp9000T::Ann makeAnn(unsigned char n)
 
 static bool annEquals(const AntColonyBpp9000T::Ann& a, const AntColonyBpp9000T::Ann& b)
 {
+    const unsigned char* ap = reinterpret_cast<const unsigned char*>(&a);
+    const unsigned char* bp = reinterpret_cast<const unsigned char*>(&b);
     for (unsigned long long i = 0; i < sizeof(a); i++)
     {
-        if (a.lut[i] != b.lut[i])
+        if (ap[i] != bp[i])
         {
             return false;
         }
@@ -1001,9 +1005,11 @@ TEST(TestAntColonyExport, CarriesTheNetworkAndItsDepth)
 
     AntColonyBpp9000T::Ann expected;
     ASSERT_TRUE(colony->annOfNonRoot(*colony->recordAt(1), expected));
+    const unsigned char* ep = reinterpret_cast<const unsigned char*>(&expected);
+    const unsigned char* ap = reinterpret_cast<const unsigned char*>(&entries[0].ann);
     for (unsigned long long i = 0; i < sizeof(expected); i++)
     {
-        ASSERT_EQ(entries[0].ann.lut[i], expected.lut[i]) << "genome byte " << i;
+        ASSERT_EQ(ap[i], ep[i]) << "byte " << i;
     }
 }
 

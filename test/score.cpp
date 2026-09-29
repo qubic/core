@@ -1060,14 +1060,19 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
     AntEngine::ANN afterA;
     f.engine->getBestANN(afterA);
 
-    // L below range, L above range, K above numberOfMutations, wrong algorithm slot.
-    static constexpr unsigned int numberOfBadNonces = 4;
-    m256i bad[numberOfBadNonces];
+    // L below range, L above range, wrong algorithm slot.
+    // K-over-max is only testable when numberOfMutations fits in a byte.
+    static constexpr bool kOverflowTestable = (AntCfg::numberOfMutations <= 255);
+    static constexpr unsigned int numberOfBadNonces = kOverflowTestable ? 4 : 3;
+    m256i bad[4];
     bad[0] = makeAntNonce(0, 0, 64);
     bad[1] = makeAntNonce((unsigned char)(score_engine::BPP9000_MAX_CHANGES_PER_STEP + 1), 0, 65);
-    bad[2] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
-    bad[3] = makeAntNonce(3, 0, 67);
-    bad[3].m256i_u8[0] = (unsigned char)score_engine::AlgoType::Neuraxon;
+    bad[2] = makeAntNonce(3, 0, 67);
+    bad[2].m256i_u8[0] = (unsigned char)score_engine::AlgoType::Neuraxon;
+    if constexpr (kOverflowTestable)
+    {
+        bad[3] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
+    }
 
     for (unsigned int i = 0; i < numberOfBadNonces; i++)
     {
@@ -1105,10 +1110,14 @@ TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 73, score_engine::BPP9000_MODE_START).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 74, score_engine::BPP9000_MODE_WIRING).m256i_u8));
 
-    // L out of range, K over maxK, and mode 0 (the empty mode field) are all rejected.
+    // L out of range, mode 0 (the empty mode field) are all rejected.
+    // K-over-max is only testable when numberOfMutations fits in a byte.
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(0, 0, 75).m256i_u8));
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 76).m256i_u8));
-    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 77).m256i_u8));
+    if constexpr (AntScorer::numberOfMutations <= 255)
+    {
+        EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 77).m256i_u8));
+    }
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 78, 0).m256i_u8));
 }
 
