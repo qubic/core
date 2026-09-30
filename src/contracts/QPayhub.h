@@ -38,7 +38,10 @@ using namespace QPI;
 //   the 1% is not paid to anyone but is not destroyed outright either - it
 //   is what makes QPayhub fund its own execution out of its own revenue
 //   rather than slowly draining a reserve nothing refills. Receipts expire
-//   after QPAY_RECEIPT_RETENTION_EPOCHS epochs.
+//   after QPAY_RECEIPT_RETENTION_EPOCHS epochs. When the receipt map is at
+//   QPAYHUB_RECEIPT_LOAD_LIMIT, a new payment replaces a consumed receipt or
+//   one older than QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS instead of being
+//   refused (see Pay), so filling the map cannot stop payments.
 //
 //   REFUNDS: the fee is NOT returned on a refund. No path pays out of
 //   feePool, and invoice.js validates refunds against the GROSS amount,
@@ -202,7 +205,30 @@ using namespace QPI;
 //     via an intermediate).
 // ============================================================================
 
-constexpr uint64 QPAYHUB_RECEIPT_CAPACITY = 262144; // 2^18 (was 65536) -- ~9.4k/day mainnet headroom
+constexpr uint64 QPAYHUB_RECEIPT_CAPACITY = 262144; // 2^18 (was 65536)
+// The map never holds more than 80% live receipts: at that point a new
+// payment replaces an old receipt instead of adding one. HashMap lookups stay
+// near constant time only below that (doc/contracts.md), and a lookup for a
+// key that is not present scans until it finds an empty slot - so letting
+// the map fill completely would make every later Pay scan the whole table.
+// Removed slots also stay marked until a rebuild, so they are cleared by Pay
+// once they pass QPAYHUB_RECEIPT_REBUILD_PERCENT, and all of them at every
+// END_EPOCH: live receipts plus marks never exceed ~85% of the table.
+// Sustained headroom: a receipt lives at most three epochs (~21 days) with
+// retention 2, so ~10k payments/day before eviction starts.
+constexpr uint64 QPAYHUB_RECEIPT_LOAD_LIMIT = 209715; // 80% of QPAYHUB_RECEIPT_CAPACITY
+// Filling the map costs an attacker only the 100 QU fee floor per receipt,
+// since they can pay a second address of their own. So at the load limit a
+// new payment evicts an existing receipt rather than being refused: from
+// QPAYHUB_RECEIPT_EVICT_SAMPLE consecutive slots starting at a point nobody
+// can choose, it takes a consumed receipt if there is one, else the oldest -
+// but only a consumed receipt or one at least QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS
+// old. A facilitator checks a receipt within seconds or minutes, so a fresh
+// receipt always outlives its check; to keep payments blocked an attacker
+// would have to refill the whole map within that window, over and over.
+constexpr uint32 QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS = 3600; // >= ~15 min at up to 4 ticks/s
+constexpr uint64 QPAYHUB_RECEIPT_EVICT_SAMPLE = 32;
+constexpr uint64 QPAYHUB_RECEIPT_REBUILD_PERCENT = 5; // removed-slot marks Pay tolerates before a rebuild
 constexpr sint64 QPAYHUB_MIN_PAYMENT = 100;        // dust floor, QU - rejects the payment outright
 constexpr uint64 QPAYHUB_FEE_PERMILLE = 75;        // 75 per 10000 = 0.75 percent
 // Floor on the fee itself, not a rejection threshold like MIN_PAYMENT.
@@ -251,6 +277,9 @@ constexpr uint32 QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS = 16u * 60u * 1000u;
 constexpr uint32 QPAYHUB_PRICE_STALE_TICKS = 4000; // roughly 20-25 min at current tick rates
 
 static_assert((QPAYHUB_RECEIPT_CAPACITY & (QPAYHUB_RECEIPT_CAPACITY - 1)) == 0);
+static_assert(QPAYHUB_RECEIPT_LOAD_LIMIT < QPAYHUB_RECEIPT_CAPACITY);
+static_assert(QPAYHUB_RECEIPT_EVICT_SAMPLE > 0 && QPAYHUB_RECEIPT_EVICT_SAMPLE <= QPAYHUB_RECEIPT_CAPACITY);
+static_assert(QPAYHUB_RECEIPT_REBUILD_PERCENT > 0 && QPAYHUB_RECEIPT_REBUILD_PERCENT < 100);
 static_assert(QPAYHUB_FEE_PERMILLE < 10000);
 static_assert(QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE <= 1000);
 // The two fixed slices must leave a non-negative remainder for token holders.
@@ -291,6 +320,15 @@ struct QPAYHUB : public ContractBase
         uint32 epochPaid;
         uint32 tickPaid;
         bit consumed;
+    };
+
+    // Hashed with K12 to pick where Pay starts sampling eviction candidates.
+    // The previous tick's spectrum digest is not known when a transaction is
+    // signed, so a payer cannot steer the sample toward particular receipts.
+    struct ReceiptEvictionSeed
+    {
+        id key;
+        id prevSpectrumDigest;
     };
 
     // Hashed with K12 to derive the receipt key; deterministic, so buyers
@@ -386,6 +424,16 @@ struct QPAYHUB : public ContractBase
         uint64 feePermille; // QPAYHUB_FEE_PERMILLE, or this seller's promo rate if one is set - PROMO RATES ADDITION
         Affiliate aff;      // AFFILIATE ADDITION
         sint64 affiliateCut;
+        // Eviction at the receipt load limit
+        ReceiptEvictionSeed seed;
+        id seedHash;
+        uint64 start;
+        uint64 probe;
+        sint64 idx;
+        Receipt candidate;
+        sint64 victim;
+        uint32 victimTick;
+        bit victimConsumed;
     };
 
     struct Consume_input
@@ -752,19 +800,55 @@ struct QPAYHUB : public ContractBase
         locals.key = qpi.K12(locals.km);
 
         // A duplicate key is a replayed payment attempt, not a new purchase.
+        // The lookup stays cheap: live receipts plus removed-slot marks never
+        // exceed ~85% of the map (see QPAYHUB_RECEIPT_LOAD_LIMIT).
         if (state.get().receipts.contains(locals.key))
         {
             qpi.transfer(qpi.invocator(), locals.amount);
             output.returnCode = QPAYHUB_ERR_DUPLICATE;
             return;
         }
-        // Capacity is checked before any money moves so the receipt insert
-        // below can never fail after the seller has been paid.
-        if (state.get().receipts.population() >= QPAYHUB_RECEIPT_CAPACITY)
+
+        // At the load limit, choose a receipt to replace before any money
+        // moves (see QPAYHUB_RECEIPT_LOAD_LIMIT). Only if every sampled
+        // receipt is fresh and unconsumed is the payment refused - which an
+        // attacker can only keep up by refilling the whole map within
+        // QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS, again and again.
+        locals.victim = NULL_INDEX;
+        if (state.get().receipts.population() >= QPAYHUB_RECEIPT_LOAD_LIMIT)
         {
-            qpi.transfer(qpi.invocator(), locals.amount);
-            output.returnCode = QPAYHUB_ERR_CAPACITY;
-            return;
+            locals.seed.key = locals.key;
+            locals.seed.prevSpectrumDigest = qpi.getPrevSpectrumDigest();
+            locals.seedHash = qpi.K12(locals.seed);
+            locals.start = locals.seedHash.u64._0 & (QPAYHUB_RECEIPT_CAPACITY - 1);
+            for (locals.probe = 0; locals.probe < QPAYHUB_RECEIPT_EVICT_SAMPLE; locals.probe++)
+            {
+                locals.idx = (sint64)((locals.start + locals.probe) & (QPAYHUB_RECEIPT_CAPACITY - 1));
+                if (state.get().receipts.isEmptySlot(locals.idx))
+                {
+                    continue;
+                }
+                locals.candidate = state.get().receipts.value(locals.idx);
+                if (!locals.candidate.consumed
+                    && locals.candidate.tickPaid + QPAYHUB_RECEIPT_EVICT_MIN_AGE_TICKS > qpi.tick())
+                {
+                    continue; // fresh and not yet consumed: its check may still be pending
+                }
+                if (locals.victim == NULL_INDEX
+                    || (locals.candidate.consumed && !locals.victimConsumed)
+                    || (locals.candidate.consumed == locals.victimConsumed && locals.candidate.tickPaid < locals.victimTick))
+                {
+                    locals.victim = locals.idx;
+                    locals.victimTick = locals.candidate.tickPaid;
+                    locals.victimConsumed = locals.candidate.consumed;
+                }
+            }
+            if (locals.victim == NULL_INDEX)
+            {
+                qpi.transfer(qpi.invocator(), locals.amount);
+                output.returnCode = QPAYHUB_ERR_CAPACITY;
+                return;
+            }
         }
 
         // PROMO RATES ADDITION: a seller with an entry in promoFeePermille
@@ -811,7 +895,21 @@ struct QPAYHUB : public ContractBase
         locals.r.epochPaid = (uint32)qpi.epoch();
         locals.r.tickPaid = (uint32)qpi.tick();
         locals.r.consumed = 0;
+        if (locals.victim != NULL_INDEX)
+        {
+            // Counted as purged, so totalPayments == receiptCount + totalPurged
+            // keeps holding.
+            state.mut().receipts.removeByIndex(locals.victim);
+            state.mut().totalPurged = sadd(state.get().totalPurged, (uint64)1);
+        }
         state.mut().receipts.set(locals.key, locals.r);
+        if (locals.victim != NULL_INDEX)
+        {
+            // Each eviction may leave a removed-slot mark; rebuild before they
+            // pile up. Under a sustained attack that is one rebuild per ~13k
+            // evictions, each already paid for with a 100 QU fee.
+            state.mut().receipts.cleanupIfNeeded(QPAYHUB_RECEIPT_REBUILD_PERCENT);
+        }
         state.mut().feePool = sadd(state.get().feePool, locals.fee - locals.affiliateCut);
         state.mut().totalPayments = sadd(state.get().totalPayments, (uint64)1);
         state.mut().totalVolume = sadd(state.get().totalVolume, (uint64)locals.amount);
@@ -918,10 +1016,11 @@ struct QPAYHUB : public ContractBase
             QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS, 1);
         if (output.subscriptionId < 0)
         {
-            // Subscription failed to register - the fee already left the
-            // caller balance; the framework does not refund on this path
-            // (mirrors QUtil.h own handling of the same failure), so
-            // this is intentionally not retried automatically here.
+            // On every failure path the fee is back in this contract's
+            // balance: either SUBSCRIBE_ORACLE never took it, or it took it
+            // and oracleEngine.refundFees() returned it - to the contract,
+            // not to the caller who paid (qpi_oracle_impl.h). Pass it on.
+            qpi.transfer(qpi.invocator(), locals.fee);
             output.returnCode = QPAYHUB_ERR_SUBSCRIBE_FAILED;
             return;
         }
@@ -1240,7 +1339,6 @@ struct QPAYHUB : public ContractBase
         Receipt r;
         Affiliate aff; // AFFILIATE ADDITION
         uint32 cur;
-        uint32 cutoff;
         Entity ent;
         sint64 balance;
         sint64 distributable;
@@ -1258,32 +1356,33 @@ struct QPAYHUB : public ContractBase
     };
     END_EPOCH_WITH_LOCALS()
     {
-        state.mut().receipts.cleanupIfNeeded();
-
         // Purge receipts older than the retention window. A receipt paid in
-        // epoch E survives until END_EPOCH of E + retention, far beyond any
+        // epoch E is purged by END_EPOCH of E + retention, far beyond any
         // payment freshness window a facilitator would accept.
         locals.cur = (uint32)qpi.epoch();
-        if (locals.cur > QPAYHUB_RECEIPT_RETENTION_EPOCHS)
-        {
-            locals.cutoff = locals.cur - QPAYHUB_RECEIPT_RETENTION_EPOCHS;
-        }
-        else
-        {
-            locals.cutoff = 0;
-        }
         for (locals.idx = state.get().receipts.nextElementIndex(NULL_INDEX);
              locals.idx != NULL_INDEX;
              locals.idx = state.get().receipts.nextElementIndex(locals.idx))
         {
             locals.r = state.get().receipts.value(locals.idx);
-            if (locals.r.epochPaid < locals.cutoff)
+            if (locals.cur >= locals.r.epochPaid + QPAYHUB_RECEIPT_RETENTION_EPOCHS)
             {
                 state.mut().receipts.removeByKey(state.get().receipts.key(locals.idx));
                 state.mut().totalPurged = sadd(state.get().totalPurged, (uint64)1);
             }
         }
-        state.mut().receipts.cleanupIfNeeded();
+        // Always rebuild, not cleanupIfNeeded(): removal only marks a slot,
+        // population() stops counting it, yet lookups still scan past it until
+        // a truly empty slot. cleanupIfNeeded() waits for >50% of capacity in
+        // removed marks, so live receipts under QPAYHUB_RECEIPT_LOAD_LIMIT plus
+        // leftover marks could leave no empty slot at all, and every Pay's
+        // duplicate lookup would scan the whole table. During an epoch only
+        // Pay's eviction removes receipts (Consume updates in place), and Pay
+        // rebuilds once its marks pass QPAYHUB_RECEIPT_REBUILD_PERCENT, so
+        // live receipts plus marks stay under ~85% of the map. The purge loop
+        // above is already O(capacity); cleanup() returns at once when
+        // nothing was removed.
+        state.mut().receipts.cleanup();
 
         // AFFILIATE ADDITION: purge referral links past their term, freeing
         // the slot - same purge pattern as receipt retention above. Pay()

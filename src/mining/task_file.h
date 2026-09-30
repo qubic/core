@@ -14,6 +14,10 @@
 namespace score_task_file
 {
 
+// Set to 0 to make loaders ignore the topology block (unused; wiring is pubkey-derived): its hash and the
+// population/numNeighbors header fields go unchecked, so a task loads at any population without regeneration.
+#define BPP9000_TASK_HAS_TOPOLOGY 0
+
 // Magic/version for the Generic LUT task; callers pass these to write/load.
 static constexpr unsigned int MAGIC = 0x5454554CU;
 static constexpr unsigned int VERSION = 1;
