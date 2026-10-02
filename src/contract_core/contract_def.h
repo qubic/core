@@ -145,11 +145,7 @@
 #define CONTRACT_INDEX QSWAP_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
-#ifdef OLD_QSWAP
-#include "contracts/Qswap_old.h"
-#else
 #include "contracts/Qswap.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -301,13 +297,32 @@
 #define CONTRACT_STATE2_TYPE WOLFPACK2
 #include "contracts/GGWP.h"
 
-#ifndef NO_QLOAN
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QPAYHUB_CONTRACT_INDEX 29
+#define CONTRACT_INDEX QPAYHUB_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QPAYHUB
+#define CONTRACT_STATE2_TYPE QPAYHUB2
+#include "contracts/QPayhub.h"
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QLOAN_CONTRACT_INDEX 29
+#define QTREAT_CONTRACT_INDEX 30
+#define CONTRACT_INDEX QTREAT_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QTREAT
+#define CONTRACT_STATE2_TYPE QTREAT2
+#include "contracts/QTREAT.h"
+
+#ifndef NO_QLOAN
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QLOAN_CONTRACT_INDEX 31
 #define CONTRACT_INDEX QLOAN_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QLOAN
 #define CONTRACT_STATE2_TYPE QLOAN2
@@ -430,8 +445,10 @@ constexpr struct ContractDescription
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
+    {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
+    {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
 #ifndef NO_QLOAN
-    {"QLOAN", 228, 10000, sizeof(QLOAN::StateData)}, // proposal in epoch 226, IPO in 227, construction and first use in 228
+    {"QLOAN", 236, 10000, sizeof(QLOAN::StateData)}, // proposal in epoch 234, IPO in 235, construction and first use in 236
 #endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -565,6 +582,8 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPAYHUB);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTREAT);
 #ifndef NO_QLOAN
 	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QLOAN);
 #endif
@@ -600,7 +619,7 @@ struct ContractStateChangeInfo
 // When enabling, replace both lines below, e.g.:
 //constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
 //constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QIP_CONTRACT_INDEX, RESET, 224 }, { RANDOM_CONTRACT_INDEX, PADDING, 224 } };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { NOST_CONTRACT_INDEX, MIGRATE, 230 }, { QUSINO_CONTRACT_INDEX, RESET, 234} };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 

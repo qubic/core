@@ -105,7 +105,7 @@ In order to develop a contract, follow these steps:
 ## Review and tests
 
 Each contract must be validated with the following steps:
-1. The contract is verified with the [Qubic Contract Verification Tool](https://github.com/Franziska-Mueller/qubic-contract-verify), ensuring that it complies with the formal requirements mentioned above, such as no use of [forbidden C++ features](#restrictions-of-c-language-features).
+1. The contract is verified with the [Qubic Contract Verification Tool](https://github.com/qubic/contract-verify), ensuring that it complies with the formal requirements mentioned above, such as no use of [forbidden C++ features](#restrictions-of-c-language-features).
    In the `qubic/core` repository, the tool is run automatically as GitHub workflow for PRs to the `develop` and `main` branches (as well as for commits in these branches).
    However, since workflow runs on PRs require maintainer approval, we highly recommend to either build the tool from source or use the GitHub action provided in the tool's repository to analyze your contract header file before opening your PR.   
 2. The features of the contract have to be extensively tested with automated tests implemented within the Qubic Core's GoogleTest framework.

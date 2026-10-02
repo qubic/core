@@ -1141,13 +1141,15 @@ TEST(ContractQIP, returnFunds)
     QIP.beginEpoch();
     QIP::buyToken_output buyOutput2 = QIP.buyToken(buyer2, 0, buyAmount2, requiredReward2);
     EXPECT_EQ(buyOutput2.returnCode, QIPLogInfo::QIP_success);
-    //QIP.endEpoch();
 
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 0);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer2, buyer2, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 0);
     EXPECT_EQ(getBalance(QIP_testAddress1), 12463110);   // createInput.percent1 * (buyAmount1 * price1 + buyAmount2 * price2)
     EXPECT_EQ(getBalance(QIP_CONTRACT_ID), 24171804);
     EXPECT_EQ(getBalance(QIP_testAddress2), 0);
+
+    QIP::returnFunds_output returnFundsOutput = QIP.returnFunds(buyer, 0);
+    EXPECT_EQ(returnFundsOutput.returnCode, QIPLogInfo::QIP_returnFundsError);
 
     QIP.endEpoch(); // 1
 
@@ -1177,7 +1179,7 @@ TEST(ContractQIP, returnFunds)
     ++system.epoch; // 4
     QIP.beginEpoch();
     EXPECT_EQ(getBalance(buyer), 0);
-    QIP::returnFunds_output returnFundsOutput = QIP.returnFunds(buyer, 0);
+    returnFundsOutput = QIP.returnFunds(buyer, 0);
     EXPECT_EQ(returnFundsOutput.returnCode, QIPLogInfo::QIP_success);
     EXPECT_EQ(getBalance(buyer), 4059429);
     QIP.endEpoch();

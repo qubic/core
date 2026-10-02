@@ -1,0 +1,493 @@
+# Ant Colony Mining
+
+This document has two parts:
+
+- **Part 1 - Overview**: what ant-colony mining is.
+- **Part 2 - Miner / pool integration guide**: the exact on-the-wire contract.
+
+> Config values (threshold, freshness window, child cap) are per-epoch and can change between epochs.
+> Always read the live values from the epoch-context query (Part 2, section 2.7a). Numbers quoted in
+> this document are current defaults, not constants to hard-code.
+
+> **Reading this doc.** Part 1 explains the split between the ant-colony *structure* and the mining
+> *algorithm*. The parts specific to today's algorithm - the score's range and direction, the nonce
+> knobs and their ranges, the mutation walk, and the numeric constants - are labelled **bpp9000** below;
+> do not treat them as fixed ant-colony rules.
+
+---
+
+## Part 1 - Overview
+
+**Ant colony is not a mining algorithm - it is a search *structure*.** It does not decide what a good
+solution looks like or how to score one - a **mining algorithm** does. `nonce[0]` selects which
+algorithm runs; today the only one is **bpp9000**, which the ant colony runs by default. A future
+algorithm could be added the same way, in the same structure. So "ant colony" and "bpp9000" are two
+separate things: the structure, and the algorithm currently running in it.
+
+| The ant-colony **structure** provides (any algorithm) | The **algorithm** provides (bpp9000 today) |
+|---|---|
+| a per-identity tree of solutions, grown from parents | what a solution *is* |
+| the accept rules, the deposit, and the ranking | how to derive a child solution from a parent |
+| the request / response queries | how to score a solution |
+
+With that split in mind: mining is a search for a **solution** that does well on a fixed task, and the
+algorithm defines what a solution is and how it scores. Under **bpp9000** a solution is a neural network
+(an "ANN") that runs on its own from a fixed start state, emitting an output sequence graded against the
+task's target - an **error count** inside one `WINDOW_WIDTH`-wide frame of that target, range
+`[0, WINDOW_WIDTH]`, **lower is better** (a flawless network makes
+zero mistakes). The rest of this overview uses bpp9000's terms, but the tree structure around them is
+identical for any algorithm.
+
+Under bpp9000 a solution has three parts: the **start state** (each neuron's initial trit), the network's
+**wiring** (which neuron reads which), and each neuron's **lookup table (LUT)**, the ternary function it
+computes. All three start from the identity's own root, drawn in one go from the identity's public key
+(the epoch's spectrum digest seeds the random pool the draw reads). The task file supplies only the
+target output sequence the network is graded against; its topology block is not used. A miner picks **one** of three mutation modes for a
+solution and declares it in the nonce - mutate the start state, the wiring, or the LUTs - inheriting all
+three parts from the parent it extends.
+
+Standalone mining searches alone: every attempt starts from scratch. Ant-colony mining searches
+**together, as a tree**:
+
+- Every **mining identity** (a computor or candidate public key) owns its **own tree** - the colony is
+  a per-identity forest. A pool's workers extend the tree of the computor they mine for.
+- Every tree starts from its identity's own **virtual root**: one starting solution per identity per
+  epoch, derived from that identity's **public key** (the epoch's spectrum digest supplies the random
+  bytes), identical every time you derive it, and never stored or submitted. Each identity searches
+  from its own origin.
+- To mine, you pick a **parent** (the root, or any node already in your tree), **inherit** it, vary it
+  under your nonce, and score the result.
+- If the result **strictly beats the parent** and clears the epoch **threshold**, you **submit** it. On
+  acceptance it becomes a new tree node that you - or anyone - can extend further.
+
+So the colony converges toward better solutions: each accepted node beats its parent, and the next
+miner starts from there instead of from scratch. The goal of the epoch is the single best solution
+found anywhere in the forest.
+
+```
+        virtual root (per identity per epoch, not stored)
+                 |
+            +----+----+
+            |         |
+         node A     node B        each node beats its parent on (shift, error)
+            |         |           and clears the threshold
+         node C     node D
+            |
+         node E   <-- best in this tree so far
+```
+
+Concretely, the **rating** `(shift, error)` gates every attachment: it only improves down a branch (a
+child must beat its parent), and every node still at shift 0 must clear the threshold. In practice that
+only bites on a *start* - a depth-1 child of the virtual root - because any deeper child already beats a
+parent that cleared it.
+
+```
+    every number below is illustrative, not a measured value - only the rules are real
+
+    rating = (shift, error)   higher shift wins; at equal shift, lower error wins
+    threshold = 4500          gates shift-0 nodes only; shift > 0 clears it outright
+
+    virtual root        never submitted and never stored; for the beats-parent test it counts
+                        as the WORST possible rating, so any child beats it. Its own network
+                        scores ~5200 here - above the threshold - so a start has to mutate
+                        below 4500 to be accepted at all.
+      |
+      +-- A  (0, 4400)  error <= threshold                        ACCEPT (depth-1 start)
+      |    |
+      |    +-- B  (0, 4250)  same shift, beats A on error         ACCEPT
+      |    |    |
+      |    |    +-- D  (1, 4600)  advanced the frame: beats B on  ACCEPT
+      |    |    |                 shift alone, worse error and
+      |    |    |                 no threshold check
+      |    |    +-- E  (0, 4260)  same shift, not below 4250      REJECT (must beat parent)
+      |    |
+      |    +-- C  (0, 4300)  same shift, beats A on error         ACCEPT
+      |
+      +-- X  (0, 4700)  error above threshold at shift 0          REJECT (over threshold)
+
+    Rating only improves as you go deeper. The epoch winner is the best (shift, error) in
+    any identity's forest: highest shift first, lowest error as the tie-break.
+```
+
+At epoch end the node ranks every identity by its **single best** `(shift, error)` and **harvests the top 676**
+(the number of computors).
+
+**Anti-spam deposit.** Each solution a computor publishes on-chain carries a **refundable
+1000000 QU deposit**, funded by the computor - not the worker. It is returned when the solution is
+accepted **and** its claimed score matches the node's recompute; otherwise it is kept. So a computor
+only publishes solutions it has already validated, and an honest, correct one costs nothing.
+
+---
+
+## Part 2 - Miner / pool integration guide
+
+**In short.** A miner works one identity's tree. It reads the epoch context, takes a **parent** (the
+identity's own virtual root, or a node already in the tree), picks a canonical **nonce**, inherits the
+parent's network, and **mutates and scores** it - reproducing the node's score exactly. If the result
+**beats its parent** and **clears the threshold**, it hands the solution to the **computor**, which
+re-checks it and **publishes it on-chain**; every node then recomputes the score, folds it into
+consensus, attaches the node to the tree, and refunds the deposit. A miner's entire job is an **exact
+scorer** - the tree, gates, deposit, and queries are the wrapper around it.
+
+### 2.1 The mining loop
+
+1. **Epoch context** - `REQUEST_ANT_EPOCH_CONTEXT` (public). Read the threshold, freshness window,
+   epoch spectrum digest, and child cap for this epoch, and **verify your task file** against the
+   returned `topologyHash` / `dataHash` (section 2.7a) before doing any work.
+2. **Get a starting point** - derive the identity's virtual root (from its public key), or
+   fetch an existing node you want to extend (`REQUEST_ANT_PARENT_ANN`).
+3. **Pick a parent** - the root, or any node in your own tree.
+4. **Search** - choose a nonce (section 2.2), inherit the parent's start state, wiring, and LUTs, run the
+   mutation walk, score (section 2.3).
+5. **Submit** - if it passes the local rules (section 2.4), send `AntSolutionBroadcastPayload` to the
+   computor you mine for (section 2.6, stage 1).
+6. **Publish + confirm** - the computor validates and scores it, then publishes it on-chain as an
+   `AntColonyMiningSolutionTransaction` (section 2.6, stage 2). Every node processes that transaction -
+   recompute, fold the digest, commit to the computor's tree, refund the deposit. Query the tree
+   (section 2.7b) to see accepted nodes and extend them.
+
+### 2.2 The nonce (32 bytes)
+
+| Byte(s)     | Meaning | Valid range |
+|-------------|---------|-------------|
+| `nonce[0]`  | algorithm selector (must select bpp9000) | - |
+| `nonce[1]` bits 0-3 | `L` = changes per mutation step | `[1, MAX_CHANGES_PER_STEP]` |
+| `nonce[1]` bits 4-5 | mutation mode: 1 = start state, 2 = wiring, 3 = LUTs (bits 6-7 = 0) | `[1, 3]` |
+| `nonce[2]`  | `K` = number of **explore** steps | `<= NUMBER_OF_MUTATIONS` (a byte, so any value) |
+| `nonce[3..31]` | the walk seed (the actual search space) | any |
+
+**Canonical-nonce rule.** The scorer **refuses** any non-canonical nonce - it returns no score, and the
+node rejects the submission with `RejectNonCanonicalNonce`. For an ant solution the rule is:
+
+```
+algo == bpp9000  &&  L in [1, MAX_CHANGES_PER_STEP]  &&  mode in [1, 3]
+                 &&  nonce[1] bits 6-7 == 0  &&  K <= NUMBER_OF_MUTATIONS
+```
+
+`nonce[0..2]` (the algo / `L` / mode / `K` knobs) are **excluded from the RNG seed** - zeroed before
+hashing - so `L`, the mode, and `K` can be chosen without changing the walk seed. This makes the
+score-relevant bytes equal to the identity/dedup bytes: there is no malleability room, and two nonces
+that differ only in these knobs are not two solutions.
+
+### 2.3 Scoring - bpp9000 (must be bit-exact)
+
+Throughout, `publicKey` is the **mining identity you are extending** - the computor you mine for, which
+becomes the transaction's `sourcePublicKey`. The **mutation seed** derives from **that** key, not your
+worker key, or the node's recompute will not match yours. The **root** derives from that same key -
+see below.
+
+**Root.** `deriveRootANN(publicKey, epochPool)`: the root **wiring**, **start state** and **LUTs** all
+come from `K12(publicKey)`, drawn from the epoch's random pool. The pool itself is seeded from the
+epoch-start spectrum digest in the epoch context, so every identity draws from the same pool but at its
+own position. The task file's topology block is **not** loaded. No mutation walk. Never stored.
+**One root per identity per epoch**, so two identities start from different networks.
+
+**Child.** `computeScoreFromParent(parentANN, publicKey, nonce, anchorTickDigest)`:
+
+1. Inherit the parent's start state, wiring, and LUTs.
+2. `mutationSeed = K12(publicKey || nonce || anchorTickDigest)` with `nonce[0..2]` zeroed in place
+   (the full 32-byte nonce is hashed, its first 3 bytes set to 0, not dropped) - still keyed by the
+   mining identity, so different identities walk differently and from different roots.
+3. Walk `numberOfMutations` steps. Each step applies `L` mutations of the mode declared in the
+   nonce - `L` start-state trits, `L` links, or `L` LUT entries. For the first `K` steps accept a
+   worse-or-equal result (**explore**); after that accept only better-or-equal (**exploit**); one-step
+   rollback on reject. Keep and return the **best** score seen. The best is seeded with the inherited
+   network's own score, so a child that fails to improve on its parent is rejected (see `RejectLeParent`).
+
+**Anchor digest.** `anchorTickDigest = K12(anchorTick || transactionDigest)`, where `transactionDigest`
+is `K12(TickData)` of the anchor tick's `TickData` (`REQUEST_TICK_DATA`). This binds a solution to a tick.
+
+**Empty ticks carry no anchor.** A tick without `TickData` records no anchor digest, and a published
+solution whose `anchorTick` is an empty tick is rejected (`RejectStale`) with the **deposit
+forfeited**. Anchor only on ticks that have `TickData`, make sure select a non-empty tick as an anchor tick.
+
+**Shift.** The frame graded is not fixed: `shift` is where it starts in the task data, and a score is the
+error count over `[shift, shift + WINDOW_WIDTH)`. When a frame is scored at or below
+`WINDOW_WIDTH / 3`, the network has mastered it: `shift` advances by one and the frame is re-scored at
+the new position, repeating until it fails or reaches `SHIFT_CAP`. A solution therefore reports a
+**pair** - the shift it reached and the error in that frame.
+
+`shift` is **inherited**: a child's walk starts at its parent's shift, not at 0, so a lineage
+accumulates shift and depth buys frame position as well as a lower error. Only a child of the virtual
+root starts at 0, once per epoch. It never moves backwards, and an inherited shift above `SHIFT_CAP`
+is rejected. A node with `shift > 0` also **bypasses the epoch threshold** entirely - the threshold
+gates frame-0 solutions only.
+
+Score is an error count in `[0, WINDOW_WIDTH]` for the frame at that shift; lower is better. Between
+two solutions the **higher shift always wins** and error only breaks a tie at equal shift - a better
+error can never make up for a lower shift.
+
+### 2.4 Accept rules
+
+A submission is accepted (`Valid` or `ValidNotStored`) only if **all** of these hold. On failure the
+reject reason names the rule the node found violated (the exact evaluation order is an internal
+detail and can change):
+
+| Check | Reject reason if it fails |
+|-------|---------------------------|
+| Parent record exists | `RejectParentNotRegistered` |
+| Parent is in the **same** identity's tree (the tx `sourcePublicKey`) | `RejectWrongTree` |
+| Nonce is canonical | `RejectNonCanonicalNonce` |
+| Anchor not in the future, published within `freshnessWindow` ticks of it | `RejectStale` / `RejectTickOutOfRange` |
+| Clears the floor: `error <= threshold`, **or** `shift > 0` (an advanced frame bypasses it) | `RejectBelowThreshold` |
+| **Beats the parent** on `(shift, error)`: higher shift, or equal shift and strictly lower error | `RejectLeParent` |
+| Parent holds fewer than `maxChildrenPerParent` children (`0` = unbounded) | `RejectMaxChildrenPerParent` |
+| `(publicKey, parentRef, nonce)` not already committed this epoch | `RejectReplay` |
+| Store and miner index not full | `RejectDedupFull` / `RejectMinerIndexFull` |
+
+Separately, the **claimed score must equal the node's recompute** - if not, the solution may still be
+recorded but the **deposit is kept** and the miner is **not ranked**.
+
+**Starting a tree.** The root's record score is the worst possible value, so a first (depth-1) child
+passes the "beats parent" check trivially - the **threshold is the only score gate** for starting a
+tree. A root scores far above the threshold, so a start still requires real mutation.
+
+**`ValidNotStored`.** Accepted, refunded, and ranked exactly like `Valid`, but the per-epoch store was
+full so the node was not persisted for others to extend. Ranking and refund are unaffected.
+
+### 2.5 The deposit
+
+Every on-chain `AntColonyMiningSolutionTransaction` carries a **1000000 QU** deposit
+(`SOLUTION_SECURITY_DEPOSIT`), funded by the **computor** that publishes it - not the miner (see 2.6).
+It is refunded **iff** the solution is accepted (`Valid` / `ValidNotStored`) **and** the claimed score
+equals the node's recompute; otherwise it is kept. So a computor risks its own deposit and therefore
+pre-validates each solution before publishing; a worker posts nothing on-chain. Keep the computor
+identity funded above the deposit.
+
+### 2.6 Submission: broadcast (off-chain), then transaction (on-chain)
+
+A solution travels in two stages - an off-chain hand-off to a computor, then the on-chain transaction
+that is the actual consensus record.
+
+**Stage 1 - P2P broadcast (`AntSolutionBroadcastPayload`, 48 bytes).** The miner hands its solution to
+the computor it mines for, inside the standard `BroadcastMessage` envelope (network type
+`BROADCAST_MESSAGE`), message type `MESSAGE_TYPE_ANT_SOLUTION` (`3`):
+
+```
+BroadcastMessage {              // 96-byte envelope
+    m256i sourcePublicKey;      // the worker key - pool off-chain accounting only, NOT the tree
+    m256i destinationPublicKey; // the COMPUTOR you mine for - THIS identity owns the tree and funds the deposit
+    m256i gammingNonce;         // first gamming byte selects MESSAGE_TYPE_ANT_SOLUTION (3)
+}
+// then the payload:
+AntSolutionBroadcastPayload {   // 48 bytes
+    unsigned int parentTick;      // ABSOLUTE tick of the parent node; the virtual root is (0, 0xFFFFFFFF)
+    unsigned int parentSolutionIndexInTick;  // parent's index within its tick; 0xFFFFFFFF with parentTick 0 = root
+    unsigned int anchorTick;      // ABSOLUTE tick number
+    unsigned int claimedScore;
+    m256i        nonce;           // the 32-byte nonce from 2.2
+}
+```
+
+The computor scores and validates on receipt (a non-canonical or already-seen solution is dropped for
+free). Nothing is on-chain yet.
+
+**Stage 2 - on-chain transaction (`AntColonyMiningSolutionTransaction`, `inputType` 12).** When the
+computor publishes, it emits a standard transaction into tick data under **its own** key and funds the
+deposit from **its own** balance - the computor pays, not the miner. This transaction is the consensus
+record: every node processes it in `processTick`, recomputes the score, folds it into
+`resourceTestingDigest`, commits the node to the computor's tree, and refunds or keeps the deposit.
+
+```
+AntColonyMiningSolutionTransaction : Transaction {  // 80-byte header + 48-byte payload + 64-byte signature
+    // --- Transaction header ---
+    m256i          sourcePublicKey;      // the COMPUTOR (tree owner); signs the tx and funds the deposit
+    m256i          destinationPublicKey; // zero (NULL_ID)
+    long long      amount;               // SOLUTION_SECURITY_DEPOSIT = 1000000 QU
+    unsigned int   tick;                 // publish tick
+    unsigned short inputType;            // ANT_COLONY_MINING_SOLUTION_INPUT_TYPE = 12
+    unsigned short inputSize;            // 48
+    // --- payload (48 bytes) ---
+    unsigned int   parentTick;           // ABSOLUTE tick of the parent node
+    unsigned int   parentSolutionIndexInTick;
+    unsigned int   anchorTick;           // ABSOLUTE
+    unsigned int   claimedScore;
+    m256i          nonce;
+    // --- 64-byte signature over header + payload ---
+}
+```
+
+`parentRef = (parentTick, parentSolutionIndexInTick) = (0, 0xFFFFFFFF)` means the **virtual root**
+(a depth-1 child).
+
+**Every tick in the protocol is absolute.** `parentTick`, `selfTick` and `anchorTick` are all real
+system tick numbers - the same values `getCurrentTick` or a tick-data query returns. A parent is named
+by the absolute tick it was committed in (plus its index within that tick), so the ref you copy from
+the identity tree is used verbatim - there is no epoch-relative offset to convert.
+
+**For a pool.** The tree belongs to the **computor** - `destinationPublicKey` of the broadcast, which
+becomes `sourcePublicKey` of the transaction. Workers hold no tree and post no on-chain deposit; they
+hand solutions to the pool's computor, which pre-validates them and risks its own deposit only on
+solutions it expects to be accepted and refunded. Fund the computor identity, not the workers.
+
+### 2.6a Submitting a root (depth-1) solution
+
+A root solution starts a tree: its parent is this identity's virtual root, which is derived rather
+than stored, so you never fetch it. This is the first solution every identity submits, and it differs
+from extending an existing node only in how the parent is named and scored.
+
+1. **Parent is the root.** Set `parentRef = (parentTick = 0, parentSolutionIndexInTick = 0xFFFFFFFF)`.
+   Both fields are load-bearing: `(0, 0xFFFFFFFF)` is the only value the node reads as root; a `0`
+   tick with any other index is treated as a normal parent, found nowhere, and rejected with
+   `RejectParentNotRegistered`.
+2. **Derive the parent yourself.** `deriveRootANN(publicKey, epochPool)` - the seed is the mining
+   identity's **public key**, and the pool comes from the epoch's spectrum digest (section 2.3). Do
+   **not** call `REQUEST_ANT_PARENT_ANN` for the root; it answers `status = IS_ROOT` with no ANN
+   payload precisely so you derive it locally. Each identity has its own root, so deriving it from
+   the spectrum digest instead of the public key yields a parent the node will not agree with.
+3. **Search.** Pick a canonical nonce (section 2.2), inherit the derived root start state, wiring, and
+   LUTs, run the walk, and take the best score - exactly as for any parent.
+4. **The only score gate is the threshold.** The root's record score is the worst possible value, so
+   the "strictly beats the parent" rule passes trivially; a root child is accepted on score iff its
+   score is `<=` the epoch threshold. A root scores far above the threshold, so a valid start still
+   requires real mutation.
+5. **Anchor and submit.** Choose a non-empty anchor tick within `freshnessWindow` of the publish tick
+   (section 2.3), fill the payload with the root `parentRef` above, and hand it to your computor
+   (section 2.6, stage 1). The computor publishes it as the usual `AntColonyMiningSolutionTransaction`.
+
+On the node, a root submission is recognized by `parentRef.isRoot()`: the parent lookup returns a
+null record (root is not a stored solution), the node derives that identity's root itself to recompute
+your `claimedScore`, and root children are de-duplicated on `(pubkey, nonce, parentRef)` like any other
+solution. Once accepted, the node becomes a normal parent - extend it by copying its `selfTick` /
+`selfSolutionIndexInTick` from the identity-tree query (section 2.7b) into a child's `parentRef`.
+
+### 2.7 Read queries
+
+Three request/response pairs. **Identity tree** and **parent ANN** are **operator-signed**; **epoch
+context** is **public**.
+
+Operator signing: the request payload is followed by a **64-byte signature** over `K12(payload)`,
+verified against the node's configured **operator public key**. This lets a pool route and filter its
+own miners' reads while keeping untrusted parties from spamming the node. There is no monotonic nonce -
+replaying a read only costs a duplicate answer.
+
+```
+digest    = K12(requestPayload)
+signature = sign(operatorSubseed, operatorPublicKey, digest)   // 64 bytes, appended to the payload
+```
+
+**(a) Epoch context** - `REQUEST_ANT_EPOCH_CONTEXT` (76) / `RESPOND_ANT_EPOCH_CONTEXT` (77). **Public.**
+
+Request: empty. Response `RespondAntEpochContext` (120 bytes, packed):
+
+```
+m256i          spectrumDigest;       // epoch-start spectrum digest; IS the root seed (and seeds the pool)
+m256i          topologyHash;         // canonical task topology-block hash (BPP9000_TOPOLOGY_HASH)
+m256i          dataHash;             // canonical task data-block hash (BPP9000_DATA_HASH)
+unsigned int   threshold;            // per-epoch accept bound
+unsigned int   freshnessWindow;      // publish within this many ticks of the anchor
+unsigned int   solutionCount;        // accepted solutions so far this epoch
+unsigned int   freeAnnSlotsCount;    // free slots in the live ANN pool
+unsigned int   maxChildrenPerParent; // per-parent child cap; 0 = unbounded
+unsigned short epoch;
+unsigned short padding;
+```
+
+`topologyHash` / `dataHash` identify the exact task the node scores against. After loading your task
+file, recompute K12 over your own topology and data blocks and compare against these. If either
+differs you are holding the wrong task: **stop**. Mining a stale task wastes work, and the mismatched
+score forfeits the computor's deposit on every submission (the node scores with *its* task, so your
+claimed score never matches).
+
+**(b) Identity tree** - `REQUEST_ANT_IDENTITY_TREE` (72) / `RESPOND_ANT_IDENTITY_TREE` (73).
+**Operator-signed.** Paginated.
+
+Request `RequestAntIdentityTree` (40 bytes) + 64-byte signature:
+
+```
+m256i        pubkey;    // whose tree to report (usually your own)
+unsigned int fromIndex; // resume cursor, 0 on the first call
+unsigned int padding;
+```
+
+Response: `RespondAntIdentityTreeHeader` (12 bytes: `count`, `itemSize`, `nextIndex`) followed by
+`count` x `AntIdentityTreeNode`. Up to 64 nodes per response; page with `nextIndex` until it is `0`.
+
+```
+AntIdentityTreeNode {                     // 36 bytes
+    unsigned int selfTick;                // ABSOLUTE; set these two as your parentRef to extend THIS node
+    unsigned int selfSolutionIndexInTick;
+    unsigned int parentTick;              // this node's own parent (ABSOLUTE); (0, 0xFFFFFFFF) = root
+    unsigned int parentSolutionIndexInTick;
+    unsigned int score;                   // error count inside this node's frame
+    unsigned int shift;                   // this node's frame position; your walk starts here
+    unsigned int childCount;              // children already attached (compare vs maxChildrenPerParent)
+    unsigned int anchorTick;
+    unsigned int depth;
+}
+```
+
+Paging every node of a pubkey reconstructs the whole tree, edges included, with no further fetches.
+
+**(c) Parent ANN** - `REQUEST_ANT_PARENT_ANN` (74) / `RESPOND_ANT_PARENT_ANN` (75). **Operator-signed.**
+
+Request `RequestAntParentAnn` (8 bytes) + 64-byte signature:
+
+```
+unsigned int parentRefTick;
+unsigned int parentRefSolutionIndexInTick;
+```
+
+Response `RespondAntParentAnnHeader` (16 bytes), then `annSizeBytes` of the **ANN** (the wiring, start
+state, and LUTs, the exact form the scorer consumes - no unpacking needed):
+
+```
+unsigned int  parentRefTick;
+unsigned int  parentRefSolutionIndexInTick;
+unsigned int  annSizeBytes;   // sizeof(ANN) when status is OK, else 0
+unsigned char status;         // 0 = OK, 1 = NOT_FOUND, 2 = IS_ROOT (derive your own root instead)
+unsigned char padding[3];
+```
+
+**ANN layout.** The same byte form is used everywhere ANN bytes leave the node: this response, the snapshot pool, and the epoch export. Its size follows the parameters: `P*K*2` wiring + `P` start state + `P*lutSize` LUT, contiguous in that
+order, where `P` = POPULATION_THRESHOLD, `K` = NUMBER_OF_NEIGHBORS (3) and `lutSize` = 27.
+
+```
+wiring: neighbor[P*K]  P*K uint16 link targets = P neurons x K neighbours; neighbor[n*K + k]
+                       is neuron n's k-th neighbour (any neuron index in [0, P))
+
+start state: P bytes   initialNeuronValues[n] is neuron n's initial trit {0,1,2}; every neuron
+                       starts the rollout from this value
+
+lut: P*lutSize bytes = P rows of lutSize:
+row n, n = 0..P-1      neuron n's LUT, at its absolute neuron index (every neuron computes;
+                       bpp9000 has no input neurons)
+
+byte[line] of a row, line = t0 + 3*t1 + 9*t2
+                       the neuron's next trit for that neighbor state; t0, t1, t2 are the
+                       current trits {0,1,2} of its three wired neighbors (2 = UNKNOWN is
+                       an ordinary value)
+```
+
+Each neuron's LUT sits at its absolute index, so a miner or tool that keeps the ANN by absolute neuron number uses these bytes directly.
+
+### 2.8 Network message + transaction types
+
+| Type | Value | Signed | Direction |
+|------|-------|--------|-----------|
+| `BROADCAST_MESSAGE` + `MESSAGE_TYPE_ANT_SOLUTION` | `3` | envelope-signed | miner -> computor (submit) |
+| `AntColonyMiningSolutionTransaction` (`inputType`) | `12` | computor-signed | computor -> tick data (consensus) |
+| `REQUEST_ANT_IDENTITY_TREE` / `RESPOND_ANT_IDENTITY_TREE` | `72` / `73` | operator | read tree |
+| `REQUEST_ANT_PARENT_ANN` / `RESPOND_ANT_PARENT_ANN` | `74` / `75` | operator | read one node's ANN |
+| `REQUEST_ANT_EPOCH_CONTEXT` / `RESPOND_ANT_EPOCH_CONTEXT` | `76` / `77` | public | read epoch params |
+
+## Part 3 - Node files
+
+The ant colony adds the following files on the node's disk. File names are defined in
+`public_settings.h`; `{epoch}` is the epoch number.
+
+| File | Content | Handling |
+|------|---------|----------|
+| `snapshotAntColonyHeader.{epoch}` | colony meta + anchor ring + export set | snapshot set |
+| `snapshotAntColonyRecords.{epoch}` | accepted solution records | snapshot set |
+| `snapshotAntColonyPool.{epoch}` | packed ANN pool | snapshot set |
+| `snapshotAntSolutionFlag` | ant solution flags bitmap | snapshot set |
+| `antColonyReplayCache.{epoch}` | score cache | optional, recommended |
+| `antColonySolutions.eoe` | end-of-epoch export: best 676 networks (pubkey, score, depth, ANN) | output only |
+| `bpp9000.task` | the epoch's pinned task | required at boot |
+
+**Snapshot set**: the four snapshot files are part of the node snapshot. When you back up, copy, or restore node state, take them TOGETHER with the other snapshot files (spectrum, universe, contracts, system) from the same point. On load the node cross-checks the colony snapshot's rootSeed and initial tick against the restored node state, plus the record and ANN sizes the build lays out; a colony snapshot from a different moment or a different build is refused and the node will not start from it. The error threshold is logged when it differs but not enforced, so a snapshot still loads after a mid-epoch threshold change.
+
+**Replay cache**: a score memo, not consensus state, same behavior with standalone score. Without it a restart recomputes every stored solution, so keep it for fast restarts; losing it only costs time.
+
+**Export**: written at the epoch transition for offline analysis. It is not read back by the node and is not needed for a restart.

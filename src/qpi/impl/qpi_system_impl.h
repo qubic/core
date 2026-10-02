@@ -12,3 +12,8 @@ unsigned int QPI::QpiContextFunctionCall::tick() const
 {
     return system.tick;
 }
+
+unsigned int QPI::QpiContextFunctionCall::initialTick() const
+{
+	return system.initialTick;
+}

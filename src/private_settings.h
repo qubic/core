@@ -43,6 +43,8 @@ static const unsigned char ocMachineIPs[][4] = {
 
 #define ENABLE_QUBIC_LOGGING_EVENT 0 // turn on logging events
 
+#define USE_PARALLEL_SIGN_VOTES 1
+
 // Virtual memory settings for logging
 #define LOG_BUFFER_PAGE_SIZE 300000000ULL
 #define PMAP_LOG_PAGE_SIZE 30000000ULL

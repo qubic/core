@@ -6,9 +6,10 @@
 #include "contract_testing.h"
 
 // Test-local expectation for the asset-raffle creator share. The contract derives the
-// creator payout implicitly by subtracting the 20% fee split (5% burn + 1% charity +
-// 8% shareholder + 5% register + 1% fee), so 80% is the expected creator percentage.
-static constexpr uint32 QRAFFLE_TEST_ASSET_RAFFLE_CREATOR_PCT = 80;
+// creator payout implicitly by subtracting the 21% fee split (5% burn + 1% charity +
+// 8% shareholder + 5% register + 1% fee + 1% entropy reserve), so 79% is the expected
+// creator percentage.
+static constexpr uint32 QRAFFLE_TEST_ASSET_RAFFLE_CREATOR_PCT = 79;
 
 static std::mt19937_64 rand64;
 
@@ -297,6 +298,11 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+        // RANDOM must be constructed before QRAFFLE so END_EPOCH's cross-contract
+        // BuyEntropy call has an active contract to invoke.
+        system.epoch = contractDescriptions[RANDOM_CONTRACT_INDEX].constructionEpoch;
+        INIT_CONTRACT(RANDOM);
+        callSystemProcedure(RANDOM_CONTRACT_INDEX, INITIALIZE);
         system.epoch = contractDescriptions[QRAFFLE_CONTRACT_INDEX].constructionEpoch;
         INIT_CONTRACT(QRAFFLE);
         callSystemProcedure(QRAFFLE_CONTRACT_INDEX, INITIALIZE);
@@ -307,6 +313,26 @@ public:
     QRaffleChecker* getState()
     {
         return (QRaffleChecker*)contractStates[QRAFFLE_CONTRACT_INDEX];
+    }
+
+    RANDOM::StateData* randomState()
+    {
+        return reinterpret_cast<RANDOM::StateData*>(contractStates[RANDOM_CONTRACT_INDEX]);
+    }
+
+    // Seeds RANDOM's finalized entropy for the stream BuyEntropy will read when called at the
+    // *next* endEpoch() (mirrors the +2 offset BuyEntropy itself uses to read the last-finalized
+    // stream). Lets tests make the entropy purchase deterministically succeed with a known value.
+    QPI::bit_4096 seedRandomEntropy(uint64 seed)
+    {
+        QPI::bit_4096 entropy{};
+        for (uint64 i = 0; i < QRAFFLE_RANDOM_ENTROPY_BITS; ++i)
+        {
+            entropy.set(i, ((seed + i) & 1ULL) != 0);
+        }
+        const uint32 stream = (system.tick + 2u) % 3u;
+        randomState()->entropy.set(stream * 10u + QRAFFLE_RANDOM_COLLATERAL_TIER, entropy);
+        return entropy;
     }
 
     void endEpoch(bool expectSuccess = true)
@@ -1174,11 +1200,15 @@ TEST(ContractQraffle, GetFunctions)
     }
 
     // Deposit in QuRaffle
+    // Captured once, before END_EPOCH resets/recalculates it for the next epoch, so the
+    // expected-value math below reflects whatever amount members actually deposited at
+    // (rather than hardcoding QRAFFLE_DEFAULT_QRAFFLE_AMOUNT's current value, which drifts).
+    const uint64 actualQREAmount = qraffle.getState()->getQuRaffleEntryAmount();
     uint32 memberCount = 0;
     for (size_t i = 0; i < users.size() / 3; ++i)
     {
-        increaseEnergy(users[i], qraffle.getState()->getQuRaffleEntryAmount());
-        auto result = qraffle.depositInQuRaffle(users[i], qraffle.getState()->getQuRaffleEntryAmount());
+        increaseEnergy(users[i], actualQREAmount);
+        auto result = qraffle.depositInQuRaffle(users[i], actualQREAmount);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         memberCount++;
     }
@@ -1284,18 +1314,20 @@ TEST(ContractQraffle, GetFunctions)
         
         // Calculate expected values from QuRaffle (if any members participated)
         if (memberCount > 0) {
-            uint64 qREAmount = 10000000; // initial entry amount
-            uint64 totalQuRaffleAmount = qREAmount * memberCount;
+            uint64 totalQuRaffleAmount = actualQREAmount * memberCount;
             
             expectedTotalBurnAmount += (totalQuRaffleAmount * QRAFFLE_BURN_FEE) / 100;
             expectedTotalCharityAmount += (totalQuRaffleAmount * QRAFFLE_CHARITY_FEE) / 100;
             expectedTotalShareholderAmount += ((totalQuRaffleAmount * QRAFFLE_SHAREHOLDER_FEE) / 100) / 676 * 676;
             expectedTotalRegisterAmount += ((totalQuRaffleAmount * QRAFFLE_REGISTER_FEE) / 100) / registerCount * registerCount;
             expectedTotalFeeAmount += (totalQuRaffleAmount * QRAFFLE_FEE) / 100;
-            
-            // Winner amount calculation (after all fees)
-            uint64 winnerAmount = totalQuRaffleAmount - expectedTotalBurnAmount - expectedTotalCharityAmount 
-                                - expectedTotalShareholderAmount - expectedTotalRegisterAmount - expectedTotalFeeAmount;
+            uint64 expectedTotalEntropyAmount = (totalQuRaffleAmount * QRAFFLE_ENTROPY_FEE) / 100;
+
+            // Winner amount calculation (after all fees, including the entropy reserve
+            // carve-out that funds RANDOM entropy purchases -- retained, not transferred)
+            uint64 winnerAmount = totalQuRaffleAmount - expectedTotalBurnAmount - expectedTotalCharityAmount
+                                - expectedTotalShareholderAmount - expectedTotalRegisterAmount - expectedTotalFeeAmount
+                                - expectedTotalEntropyAmount;
             expectedTotalWinnerAmount += winnerAmount;
             expectedLargestWinnerAmount = winnerAmount; // First winner sets the largest
         }
@@ -1374,7 +1406,7 @@ TEST(ContractQraffle, GetFunctions)
         {
             EXPECT_NE(endedQuRaffle.epochWinner, id(0, 0, 0, 0));
             EXPECT_GT(endedQuRaffle.receivedAmount, 0);
-            EXPECT_EQ(endedQuRaffle.entryAmount, 10000000);
+            EXPECT_EQ(endedQuRaffle.entryAmount, actualQREAmount);
         }
         
         // Test with future epoch
@@ -4206,4 +4238,150 @@ TEST(ContractQraffle, AssetRaffle_MultipleEpochs_PerCreatorCounterReset)
                                            makeBundle(t201, 100));
         EXPECT_EQ(r.returnCode, QRAFFLE_SUCCESS) << "epoch 201 raffle " << i;
     }
+}
+
+// ---------------------------------------------------------------------------
+// RANDOM entropy mixing: END_EPOCH buys a small amount of entropy from the
+// RANDOM smart contract and mixes it into the digest-based winner-selection
+// seed. The purchase is additive (never blocks settlement) and is funded by
+// a 1% reserve carved out of QuRaffle/AssetRaffle pools -- retained in the
+// contract's own balance, never transferred out. TokenRaffle pools are
+// token-denominated, not Qu, so they don't fund the reserve.
+// ---------------------------------------------------------------------------
+
+TEST(ContractQraffle, EntropyReserveAccumulatesFromQuRaffleSettlement)
+{
+    ContractTestingQraffle qraffle;
+    const id qraffleSelf = id(QRAFFLE_CONTRACT_INDEX, 0, 0, 0);
+    id registerUser = getUser(50001);
+    increaseEnergy(registerUser, QRAFFLE_REGISTER_AMOUNT);
+    qraffle.registerInSystem(registerUser, QRAFFLE_REGISTER_AMOUNT, 0);
+
+    // Snapshot after registration: registerInSystem's fee is retained in the contract's own
+    // balance too, so it must not be mistaken for the entropy reserve carve-out below.
+    const long long contractBalanceBefore = getBalance(qraffleSelf);
+
+    const uint64 entryAmount = qraffle.getState()->getQuRaffleEntryAmount();
+    const uint32 memberCount = 3;
+    for (uint32 i = 0; i < memberCount; ++i)
+    {
+        id member = getUser(50100 + i);
+        increaseEnergy(member, entryAmount);
+        EXPECT_EQ(qraffle.depositInQuRaffle(member, entryAmount).returnCode, QRAFFLE_SUCCESS);
+    }
+
+    const uint64 earnedBefore = qraffle.randomState()->earnedAmount;
+
+    qraffle.endEpoch();
+
+    // No prior reserve was funded, so the purchase must not have been attempted.
+    EXPECT_EQ(qraffle.randomState()->earnedAmount, earnedBefore)
+        << "with zero reserve, END_EPOCH must not attempt a BuyEntropy purchase";
+
+    const uint64 pool = entryAmount * memberCount;
+    const uint64 expectedEntropyReserve = (pool * QRAFFLE_ENTROPY_FEE) / 100;
+    EXPECT_EQ(getBalance(qraffleSelf), contractBalanceBefore + (long long)expectedEntropyReserve)
+        << "the entropy reserve carve-out must be retained in the contract's own balance, "
+           "not transferred, netting out to just the reserve once the rest of the pool is paid out";
+}
+
+TEST(ContractQraffle, BuyEntropyPurchaseSucceedsWhenReserveFunded)
+{
+    ContractTestingQraffle qraffle;
+
+    id registerUser = getUser(50002);
+    increaseEnergy(registerUser, QRAFFLE_REGISTER_AMOUNT);
+    qraffle.registerInSystem(registerUser, QRAFFLE_REGISTER_AMOUNT, 0);
+
+    const uint64 entryAmount = qraffle.getState()->getQuRaffleEntryAmount();
+    id member = getUser(50200);
+    increaseEnergy(member, entryAmount);
+    EXPECT_EQ(qraffle.depositInQuRaffle(member, entryAmount).returnCode, QRAFFLE_SUCCESS);
+
+    // Pre-fund the reserve directly (bypasses needing several epochs to accumulate it
+    // organically) and seed RANDOM with a known, non-zero entropy value.
+    increaseEnergy(id(QRAFFLE_CONTRACT_INDEX, 0, 0, 0), QRAFFLE_RANDOM_ENTROPY_FEE);
+    qraffle.seedRandomEntropy(0xA11CE);
+
+    const uint64 earnedBefore = qraffle.randomState()->earnedAmount;
+
+    qraffle.endEpoch();
+
+    EXPECT_EQ(qraffle.randomState()->earnedAmount, earnedBefore + QRAFFLE_RANDOM_ENTROPY_FEE)
+        << "with a funded reserve and available RANDOM entropy, END_EPOCH must complete the purchase";
+
+    auto ended = qraffle.getEndedQuRaffle((uint16)contractDescriptions[QRAFFLE_CONTRACT_INDEX].constructionEpoch);
+    EXPECT_EQ(ended.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(ended.epochWinner, member);
+}
+
+TEST(ContractQraffle, EndEpochSettlesNormallyWhenEntropyReserveIsEmpty)
+{
+    ContractTestingQraffle qraffle;
+
+    id registerUser = getUser(50003);
+    increaseEnergy(registerUser, QRAFFLE_REGISTER_AMOUNT);
+    qraffle.registerInSystem(registerUser, QRAFFLE_REGISTER_AMOUNT, 0);
+
+    const uint64 entryAmount = qraffle.getState()->getQuRaffleEntryAmount();
+    id member = getUser(50300);
+    increaseEnergy(member, entryAmount);
+    EXPECT_EQ(qraffle.depositInQuRaffle(member, entryAmount).returnCode, QRAFFLE_SUCCESS);
+
+    // No reserve funding at all -- purchase must be skipped, not block settlement.
+    const uint64 earnedBefore = qraffle.randomState()->earnedAmount;
+
+    qraffle.endEpoch();
+
+    EXPECT_EQ(qraffle.randomState()->earnedAmount, earnedBefore);
+
+    auto ended = qraffle.getEndedQuRaffle((uint16)contractDescriptions[QRAFFLE_CONTRACT_INDEX].constructionEpoch);
+    EXPECT_EQ(ended.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(ended.epochWinner, member)
+        << "raffle settlement must proceed normally even when the entropy purchase is skipped";
+}
+
+TEST(ContractQraffle, EndEpochFallsBackGracefullyWhenRandomPoolIsEmpty)
+{
+    ContractTestingQraffle qraffle;
+    const id qraffleSelf = id(QRAFFLE_CONTRACT_INDEX, 0, 0, 0);
+
+    id registerUser = getUser(50004);
+    increaseEnergy(registerUser, QRAFFLE_REGISTER_AMOUNT);
+    qraffle.registerInSystem(registerUser, QRAFFLE_REGISTER_AMOUNT, 0);
+
+    // Snapshot after registration: registerInSystem's fee is retained in the contract's own
+    // balance too, so it must not be mistaken for the entropy reserve carve-out below.
+    const long long contractBalanceBefore = getBalance(qraffleSelf);
+
+    const uint64 entryAmount = qraffle.getState()->getQuRaffleEntryAmount();
+    id member = getUser(50400);
+    increaseEnergy(member, entryAmount);
+    EXPECT_EQ(qraffle.depositInQuRaffle(member, entryAmount).returnCode, QRAFFLE_SUCCESS);
+
+    // Fund the reserve so the balance check passes, but leave RANDOM's entropy pool at
+    // its default zero state so BuyEntropy itself refunds instead of delivering entropy.
+    increaseEnergy(qraffleSelf, QRAFFLE_RANDOM_ENTROPY_FEE);
+
+    const uint64 earnedBefore = qraffle.randomState()->earnedAmount;
+
+    qraffle.endEpoch();
+
+    // BuyEntropy refunds the full invocation reward when its entropy pool is empty, so
+    // RANDOM must not have earned anything from this attempt.
+    EXPECT_EQ(qraffle.randomState()->earnedAmount, earnedBefore);
+
+    // Net balance: +QRAFFLE_RANDOM_ENTROPY_FEE (pre-funded, refunded back unspent)
+    // +entropyReserveAmount (this epoch's carve-out) -pool +pool (paid out to winner/fees,
+    // net of the reserve) -- collapses to just the pre-funded fee plus the reserve.
+    const uint64 pool = entryAmount;
+    const uint64 expectedEntropyReserve = (pool * QRAFFLE_ENTROPY_FEE) / 100;
+    EXPECT_EQ(getBalance(qraffleSelf),
+              contractBalanceBefore + (long long)QRAFFLE_RANDOM_ENTROPY_FEE + (long long)expectedEntropyReserve)
+        << "a failed BuyEntropy purchase (empty RANDOM pool) must refund in full, "
+           "leaving only the pre-funded fee and the entropy reserve carve-out as the net change";
+
+    auto ended = qraffle.getEndedQuRaffle((uint16)contractDescriptions[QRAFFLE_CONTRACT_INDEX].constructionEpoch);
+    EXPECT_EQ(ended.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(ended.epochWinner, member);
 }
