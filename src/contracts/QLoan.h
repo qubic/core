@@ -725,6 +725,7 @@ public:
 
     struct GetAllLoanReqs_input
     {
+        sint64 offset;
     };
 
     struct GetAllLoanReqs_output
@@ -753,15 +754,22 @@ public:
 
         while (locals.activeLoanReqsIdx != NULL_INDEX && locals.outputLoanReqsIdx < QLOAN_MAX_OUTPUT_NUM)
         {
-            locals.tmpLoanReqInfo = state.get()._loanReqs.value(locals.activeLoanReqsIdx);
+            if (input.offset > 0)
+            {
+                input.offset--;
+            }
+            else
+            {
+                locals.tmpLoanReqInfo = state.get()._loanReqs.value(locals.activeLoanReqsIdx);
 
-            locals.fillLoanReqForOutputInput.loanReqId = state.get()._loanReqs.key(locals.activeLoanReqsIdx);
-            locals.fillLoanReqForOutputInput.loanReqInfo = locals.tmpLoanReqInfo;
-            CALL(_FillLoanReqForOutput, locals.fillLoanReqForOutputInput, locals.fillLoanReqForOutputOutput);
+                locals.fillLoanReqForOutputInput.loanReqId = state.get()._loanReqs.key(locals.activeLoanReqsIdx);
+                locals.fillLoanReqForOutputInput.loanReqInfo = locals.tmpLoanReqInfo;
+                CALL(_FillLoanReqForOutput, locals.fillLoanReqForOutputInput, locals.fillLoanReqForOutputOutput);
 
-            output.reqs.set(locals.outputLoanReqsIdx, locals.fillLoanReqForOutputOutput.loanOutputInfo);
-            locals.outputLoanReqsIdx++;
-            output.reqsAmount++;
+                output.reqs.set(locals.outputLoanReqsIdx, locals.fillLoanReqForOutputOutput.loanOutputInfo);
+                locals.outputLoanReqsIdx++;
+                output.reqsAmount++;
+            }
 
             locals.activeLoanReqsIdx = state.get()._loanReqs.nextElementIndex(locals.activeLoanReqsIdx);
         }
