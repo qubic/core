@@ -317,6 +317,19 @@
 #define CONTRACT_STATE2_TYPE QTREAT2
 #include "contracts/QTREAT.h"
 
+#ifndef NO_QLOAN
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QLOAN_CONTRACT_INDEX 31
+#define CONTRACT_INDEX QLOAN_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QLOAN
+#define CONTRACT_STATE2_TYPE QLOAN2
+#include "contracts/Qloan.h"
+
+#endif
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -434,6 +447,9 @@ constexpr struct ContractDescription
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
     {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
+#ifndef NO_QLOAN
+    {"QLOAN", 236, 10000, sizeof(QLOAN::StateData)}, // proposal in epoch 234, IPO in 235, construction and first use in 236
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -561,13 +577,16 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
-	  REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
+	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPAYHUB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTREAT);
+#ifndef NO_QLOAN
+	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QLOAN);
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
