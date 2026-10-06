@@ -9,30 +9,64 @@
 #include <unistd.h>
 #endif
 
-// Compile the untouched baseline with the same QPI types and compiler as the patch.
+// Frozen state layout from Core develop 33561bd7, before the LP-key conversion.
+// Keep these definitions independent of the patched QSWAP types and constants.
 namespace LegacyQswap
 {
-#define CONTRACT_INDEX QSWAP_CONTRACT_INDEX
-#define CONTRACT_STATE_TYPE QSWAP
-#define CONTRACT_STATE2_TYPE QSWAP2
-// contract_def.h undefines the non-locals system macros after compiling contracts.
-#define INITIALIZE() NO_IO_SYSTEM_PROC(INITIALIZE, __initialize, NoData, NoData)
-#define PRE_ACQUIRE_SHARES() \
-    NO_IO_SYSTEM_PROC(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, PreManagementRightsTransfer_output)
-#include "data/qswap_legacy.h"
-#undef INITIALIZE
-#undef PRE_ACQUIRE_SHARES
-#undef CONTRACT_INDEX
-#undef CONTRACT_STATE_TYPE
-#undef CONTRACT_STATE2_TYPE
+    using namespace QPI;
+
+    constexpr uint64 maxPools = 8192 * X_MULTIPLIER;
+    constexpr uint64 maxUsersPerPool = 256;
+
+    struct PoolBasicState
+    {
+        id poolID;
+        sint64 reservedQuAmount;
+        sint64 reservedAssetAmount;
+        sint64 totalLiquidity;
+        uint128 accFeePerLPX64;
+    };
+
+    struct LiquidityInfo
+    {
+        sint64 liquidity;
+        uint128 feeDebtX64;
+        uint64 accumulatedFee;
+    };
+
+    struct StateData
+    {
+        uint32 swapFeeRate;
+        uint32 investRewardsFeeRate;
+        uint32 shareholderFeeRate;
+        uint32 poolCreationFeeRate;
+
+        id investRewardsId;
+        uint64 investRewardsEarnedFee;
+        uint64 investRewardsDistributedAmount;
+        uint64 shareholderEarnedFee;
+        uint64 shareholderDistributedAmount;
+
+        Array<PoolBasicState, maxPools> mPoolBasicStates;
+        Collection<LiquidityInfo, maxPools * maxUsersPerPool> mLiquidities;
+
+        uint32 qxFeeRate;
+        uint32 burnFeeRate;
+        uint64 qxEarnedFee;
+        uint64 qxDistributedAmount;
+        uint64 burnEarnedFee;
+        uint64 burnedAmount;
+        uint32 cachedIssuanceFee;
+        uint32 cachedTransferFee;
+    };
 }
 
-static_assert(sizeof(QSWAP::StateData) == sizeof(LegacyQswap::QSWAP::StateData) + sizeof(id));
-static_assert(offsetof(QSWAP::StateData, liquidityKeyFormat) == sizeof(LegacyQswap::QSWAP::StateData));
-static_assert(sizeof(QSWAP::LiquidityInfo) == sizeof(LegacyQswap::QSWAP::LiquidityInfo));
+static_assert(sizeof(QSWAP::StateData) == sizeof(LegacyQswap::StateData) + sizeof(id));
+static_assert(offsetof(QSWAP::StateData, liquidityKeyFormat) == sizeof(LegacyQswap::StateData));
+static_assert(sizeof(QSWAP::LiquidityInfo) == sizeof(LegacyQswap::LiquidityInfo));
 
 #define CHECK_LEGACY_OFFSET(field) \
-    static_assert(offsetof(QSWAP::StateData, field) == offsetof(LegacyQswap::QSWAP::StateData, field))
+    static_assert(offsetof(QSWAP::StateData, field) == offsetof(LegacyQswap::StateData, field))
 CHECK_LEGACY_OFFSET(swapFeeRate);
 CHECK_LEGACY_OFFSET(investRewardsFeeRate);
 CHECK_LEGACY_OFFSET(shareholderFeeRate);
@@ -56,10 +90,10 @@ CHECK_LEGACY_OFFSET(cachedTransferFee);
 
 TEST(ContractSwap, LiquidityKeyFormatIncreasesStateSize)
 {
-    EXPECT_EQ(sizeof(QSWAP::StateData), sizeof(LegacyQswap::QSWAP::StateData) + 32);
+    EXPECT_EQ(sizeof(QSWAP::StateData), sizeof(LegacyQswap::StateData) + 32);
     EXPECT_EQ(contractDescriptions[QSWAP_CONTRACT_INDEX].stateSize, sizeof(QSWAP::StateData));
     printf("QSWAP state bytes: legacy=%zu patched=%zu marker_offset=%zu\n",
-        sizeof(LegacyQswap::QSWAP::StateData), sizeof(QSWAP::StateData),
+        sizeof(LegacyQswap::StateData), sizeof(QSWAP::StateData),
         offsetof(QSWAP::StateData, liquidityKeyFormat));
 }
 
@@ -85,11 +119,11 @@ TEST(ContractSwap, UnconvertedLegacySizeFileFailsPatchedLoad)
     // A sparse file exercises the real loader's size handling without needing live state.
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     ASSERT_TRUE(file.is_open());
-    file.seekp(static_cast<std::streamoff>(sizeof(LegacyQswap::QSWAP::StateData) - 1));
+    file.seekp(static_cast<std::streamoff>(sizeof(LegacyQswap::StateData) - 1));
     file.put(0);
     file.close();
     ASSERT_TRUE(file);
-    ASSERT_EQ(std::filesystem::file_size(path), sizeof(LegacyQswap::QSWAP::StateData));
+    ASSERT_EQ(std::filesystem::file_size(path), sizeof(LegacyQswap::StateData));
 
     std::vector<unsigned char> buffer(sizeof(QSWAP::StateData));
     // This Linux fixture's temporary filename is ASCII. Encode it for the node's CHAR16 ABI.
@@ -97,8 +131,8 @@ TEST(ContractSwap, UnconvertedLegacySizeFileFailsPatchedLoad)
     for (const char character : path.string())
         filename.push_back(static_cast<CHAR16>(character));
     filename.push_back(0);
-    EXPECT_EQ(load(filename.data(), sizeof(LegacyQswap::QSWAP::StateData), buffer.data()),
-        sizeof(LegacyQswap::QSWAP::StateData));
+    EXPECT_EQ(load(filename.data(), sizeof(LegacyQswap::StateData), buffer.data()),
+        sizeof(LegacyQswap::StateData));
     EXPECT_EQ(load(filename.data(), sizeof(QSWAP::StateData), buffer.data()), -1);
     EXPECT_TRUE(std::filesystem::remove(path));
 }
