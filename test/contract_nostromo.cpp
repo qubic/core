@@ -64,10 +64,10 @@ public:
 		}
 	}
 
-	void beginEpoch()
+	void beginEpoch(uint16 epoch = 0)
 	{
 		system.initialTick = system.tick;
-		++system.epoch;
+		system.epoch = epoch ? epoch : system.epoch + 1;
 		callSystemProcedure(NOST_CONTRACT_INDEX, BEGIN_EPOCH);
 	}
 
@@ -1862,10 +1862,12 @@ TEST(ContractNostromoAuction, CreateAuctionRejectsInvalidInputsAuction)
 	nostromo.seedUser(seller, NOST_DEFAULT_PRIVATE_AUCTION_FEE);
 	const sint64 sellerBalanceBeforeInvalidCalls = getBalance(seller);
 	const sint64 contractBalanceBeforeInvalidCalls = getBalance(NOST_CONTRACT_ID);
-	const auto invokeRejectedPublicAuction = [&nostromo, &seller](const NOST::CreateAuction_input& input) {
+	const auto invokeRejectedPublicAuction = [&nostromo, &seller](const NOST::CreateAuction_input& input)
+	{
 		return nostromo.createAuctionWithFundedReward(seller, input, NOST_PUBLIC_AUCTION_CREATION_FEE);
 	};
-	const auto invokeRejectedPrivateAuction = [&nostromo, &seller](const NOST::CreateAuction_input& input) {
+	const auto invokeRejectedPrivateAuction = [&nostromo, &seller](const NOST::CreateAuction_input& input)
+	{
 		return nostromo.createAuctionWithFundedReward(seller, input, NOST_DEFAULT_PRIVATE_AUCTION_FEE);
 	};
 
@@ -2888,6 +2890,166 @@ TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionWithoutBidAuction)
 	EXPECT_EQ(nostromo.managedShares(asset, seller), 1);
 }
 
+TEST(ContractNostromoAuction, EndTickReturnsUnsoldStandardLotWithFullPayoutQueueAuction)
+{
+	ContractTestingNOST nostromo;
+	const id seller(211, 212, 213, 214);
+	const Asset assets[] = {
+	    {seller, assetNameFromString("NOBIDA")},
+	    {seller, assetNameFromString("NOBIDB")},
+	    {seller, assetNameFromString("NOBIDC")},
+	    {seller, assetNameFromString("NOBIDD")},
+	};
+	for (const auto& asset : assets)
+	{
+		ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, 3), 3);
+		ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 3), 3);
+	}
+	const auto createOutput = nostromo.createAuction(seller, ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeLot(
+	                                                             {{assets[0], 3}, {assets[1], 3}, {assets[2], 3}, {assets[3], 3}})));
+	ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
+	for (const auto& asset : assets)
+	{
+		ASSERT_EQ(nostromo.managedShares(asset, seller), 0);
+		ASSERT_EQ(nostromo.managedShares(asset, NOST_CONTRACT_ID), 3);
+	}
+
+	for (uint64 recipientIndex = 0; recipientIndex < NOST_PENDING_PAYOUT_NUM; ++recipientIndex)
+	{
+		const id recipient(20000 + recipientIndex, 30000 + recipientIndex, 40000 + recipientIndex, 50000 + recipientIndex);
+		ASSERT_NE(nostromo.stateData().pendingQuPayouts.set(recipient, 1ULL), NULL_INDEX);
+		++nostromo.stateData().totalPendingQuPayouts;
+	}
+	const sint64 sellerBalanceBefore = getBalance(seller);
+	const sint64 contractBalanceBefore = getBalance(NOST_CONTRACT_ID);
+
+	nostromo.advanceAndEndTick((NOST_SECONDS_PER_DAY + 1ULL) * 1000ULL);
+
+	const auto auctionOutput = nostromo.getAuction(createOutput.auctionIndex);
+	ASSERT_EQ(auctionOutput.found, 1);
+	EXPECT_EQ(auctionOutput.auction.core.status, NOST::EAuctionStatus::Finalized);
+	EXPECT_EQ(auctionOutput.auction.core.allocatedQuantity, 0ULL);
+	EXPECT_TRUE(isZero(auctionOutput.auction.core.highestBidder));
+	EXPECT_EQ(nostromo.stateData().auctionList.population(), 0ULL);
+	EXPECT_EQ(nostromo.stateData().totalFinalizedAuctions, 1ULL);
+	EXPECT_EQ(nostromo.stateData().closedAuctionHistoryCounter, 1ULL);
+	for (const auto& asset : assets)
+	{
+		EXPECT_EQ(nostromo.managedShares(asset, seller), 3);
+		EXPECT_EQ(nostromo.managedShares(asset, NOST_CONTRACT_ID), 0);
+	}
+	EXPECT_EQ(getBalance(seller), sellerBalanceBefore);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBalanceBefore);
+	EXPECT_EQ(nostromo.stateData().pendingQuPayouts.population(), NOST_PENDING_PAYOUT_NUM);
+	EXPECT_EQ(nostromo.stateData().totalPendingQuPayouts, NOST_PENDING_PAYOUT_NUM);
+
+	nostromo.advanceAndEndTick(1000ULL);
+	EXPECT_EQ(nostromo.stateData().totalFinalizedAuctions, 1ULL);
+	EXPECT_EQ(nostromo.stateData().closedAuctionHistoryCounter, 1ULL);
+	for (const auto& asset : assets)
+	{
+		EXPECT_EQ(nostromo.managedShares(asset, seller), 3);
+		EXPECT_EQ(nostromo.managedShares(asset, NOST_CONTRACT_ID), 0);
+	}
+}
+
+TEST(ContractNostromoAuction, EndTickDefersStandardSaleWithFullPayoutQueueAuction)
+{
+	ContractTestingNOST nostromo;
+	const id seller(211, 212, 213, 214);
+	const id bidder(215, 216, 217, 218);
+	const Asset asset{seller, assetNameFromString("FULLSAL")};
+	ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, 3), 3);
+	ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 3), 3);
+	const auto created = nostromo.createAuction(seller, ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 3)));
+	ASSERT_EQ(created.errorCode, NOST::EAuctionError::Success);
+	ASSERT_EQ(nostromo.placeBid(bidder, created.auctionIndex, 1, NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE).errorCode,
+	          NOST::EAuctionError::Success);
+
+	for (uint64 recipientIndex = 0; recipientIndex < NOST_PENDING_PAYOUT_NUM; ++recipientIndex)
+	{
+		const id recipient(20000 + recipientIndex, 30000 + recipientIndex, 40000 + recipientIndex, 50000 + recipientIndex);
+		ASSERT_NE(nostromo.stateData().pendingQuPayouts.set(recipient, 1ULL), NULL_INDEX);
+		++nostromo.stateData().totalPendingQuPayouts;
+	}
+	const sint64 sellerBalanceBefore = getBalance(seller);
+	const sint64 bidderBalanceBefore = getBalance(bidder);
+	const sint64 contractBalanceBefore = getBalance(NOST_CONTRACT_ID);
+
+	nostromo.advanceAndEndTick((NOST_SECONDS_PER_DAY + 1ULL) * 1000ULL);
+
+	const auto auction = nostromo.getAuction(created.auctionIndex);
+	ASSERT_EQ(auction.found, 1);
+	EXPECT_EQ(auction.auction.core.status, NOST::EAuctionStatus::Active);
+	const auto participant = nostromo.getParticipant(created.auctionIndex, bidder);
+	ASSERT_EQ(participant.found, 1);
+	EXPECT_EQ(participant.participantData.escrowedAmount, NOST_STANDARD_MIN_PRICE);
+	EXPECT_EQ(participant.participantData.allocatedQuantity, 0ULL);
+	EXPECT_EQ(nostromo.managedShares(asset, seller), 0);
+	EXPECT_EQ(nostromo.managedShares(asset, bidder), 0);
+	EXPECT_EQ(nostromo.managedShares(asset, NOST_CONTRACT_ID), 3);
+	EXPECT_EQ(getBalance(seller), sellerBalanceBefore);
+	EXPECT_EQ(getBalance(bidder), bidderBalanceBefore);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBalanceBefore);
+}
+
+TEST(ContractNostromoAuction, Epoch234RepairsOnlyFirstTwoAuctionDeadlinesAuction)
+{
+	for (const uint16 epoch : {233, 234, 235})
+	{
+		SCOPED_TRACE(epoch);
+		ContractTestingNOST nostromo;
+		const id seller(301, 302, 303, 304);
+		const id bidder(305, 306, 307, 308);
+		const Asset asset{seller, assetNameFromString("REPAIR")};
+		nostromo.setNow(2026, 10, 6, 9, 0, 0);
+		ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, 9), 9);
+		ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 9), 9);
+		for (uint64 index = 0; index < 3; ++index)
+		{
+			const auto input = index == 1 ? ContractTestingNOST::makeBatchAuctionInput(asset, 3, 10)
+			                              : ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 3));
+			const auto created = nostromo.createAuction(seller, input);
+			ASSERT_EQ(created.errorCode, NOST::EAuctionError::Success);
+			ASSERT_EQ(created.auctionIndex, index);
+			NOST::AuctionData auction;
+			ASSERT_TRUE(nostromo.stateData().auctionList.get(index, auction));
+			auction.core.auctionDurationSeconds = 282620369ULL;
+			nostromo.stateData().auctionList.replace(index, auction);
+		}
+		ASSERT_EQ(nostromo.placeBatchBidWithRequiredReward(bidder, 1, 1, 10).errorCode, NOST::EAuctionError::Success);
+		const auto escrowBefore = nostromo.getParticipant(1, bidder).participantData.escrowedAmount;
+		nostromo.setNow(2022, 4, 13, 12, 0, 0);
+		nostromo.beginEpoch(epoch);
+		// The fixed deadline is 39 hours after October 6 at 09:00, regardless of bootstrap time.
+		EXPECT_EQ(nostromo.getAuction(0).auction.core.auctionDurationSeconds, epoch == 234 ? 140400ULL : 282620369ULL);
+		EXPECT_EQ(nostromo.getAuction(1).auction.core.auctionDurationSeconds, epoch == 234 ? 140400ULL : 282620369ULL);
+		EXPECT_EQ(nostromo.getAuction(2).auction.core.auctionDurationSeconds, 282620369ULL);
+		EXPECT_EQ(nostromo.getParticipant(1, bidder).participantData.escrowedAmount, escrowBefore);
+		nostromo.advanceTicks(500, 0);
+		nostromo.setNow(2026, 10, 7, 23, 59, 59);
+		nostromo.advanceAndEndTick(0);
+		EXPECT_EQ(nostromo.getAuction(0).auction.core.status, NOST::EAuctionStatus::Active);
+		EXPECT_EQ(nostromo.getAuction(1).auction.core.status, NOST::EAuctionStatus::Active);
+		nostromo.setNow(2026, 10, 8, 0, 0, 0);
+		nostromo.advanceAndEndTick(0);
+		EXPECT_EQ(nostromo.getAuction(2).auction.core.status, NOST::EAuctionStatus::Active);
+		if (epoch == 234)
+		{
+			EXPECT_EQ(nostromo.getAuction(0).auction.core.status, NOST::EAuctionStatus::Finalized);
+			EXPECT_EQ(nostromo.getAuction(1).auction.core.status, NOST::EAuctionStatus::Finalized);
+			EXPECT_EQ(nostromo.managedShares(asset, seller), 5);
+			EXPECT_EQ(nostromo.managedShares(asset, bidder), 1);
+			EXPECT_EQ(nostromo.managedShares(asset, NOST_CONTRACT_ID), 3);
+		}
+		else
+		{
+			EXPECT_EQ(nostromo.getAuction(0).auction.core.status, NOST::EAuctionStatus::Active);
+			EXPECT_EQ(nostromo.getAuction(1).auction.core.status, NOST::EAuctionStatus::Active);
+		}
+	}
+}
+
 TEST(ContractNostromoAuction, WeeklyPauseShiftsActiveAuctionDeadlineAuction)
 {
 	ContractTestingNOST nostromo;
@@ -2941,6 +3103,158 @@ TEST(ContractNostromoAuction, EndTickSkipsAuctionProcessingAtBootstrapTimeAuctio
 	EXPECT_EQ(nostromo.managedShares(asset, seller), 0);
 }
 
+TEST(ContractNostromoAuction, UnsoldStandardLotReturnsAtDeadlineAfterBootstrapEpochAuction)
+{
+	ContractTestingNOST nostromo;
+	const id seller(215, 216, 217, 218);
+	const Asset asset{seller, assetNameFromString("EPOCHRT")};
+	nostromo.setNow(2026, 9, 22, 14, 44, 32);
+	ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, 7), 7);
+	ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 7), 7);
+	auto input = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 7));
+	input.durationDays = 1;
+	const auto created = nostromo.createAuction(seller, input);
+	ASSERT_EQ(created.errorCode, NOST::EAuctionError::Success);
+	ASSERT_EQ(nostromo.managedShares(asset, seller), 0);
+	ASSERT_EQ(nostromo.managedShares(asset, NOST_CONTRACT_ID), 7);
+
+	nostromo.setNow(2026, 9, 23, 11, 30, 0);
+	nostromo.advanceAndEndTick(0);
+	nostromo.endEpoch();
+	nostromo.setNow(2022, 4, 13, 12, 0, 0);
+	nostromo.beginEpoch();
+	nostromo.advanceAndEndTick(0);
+	nostromo.setNow(2026, 9, 23, 12, 0, 0);
+	nostromo.advanceAndEndTick(0);
+	nostromo.setNow(2026, 9, 23, 12, 8, 20);
+	nostromo.advanceTicks(500, 0);
+
+	// One day plus the real 11:30:00--12:08:20 pause ends at 15:22:52, independent of stored duration.
+	nostromo.setNow(2026, 9, 23, 15, 22, 51);
+	nostromo.advanceAndEndTick(0);
+	EXPECT_EQ(nostromo.getAuction(created.auctionIndex).auction.core.status, NOST::EAuctionStatus::Active);
+	EXPECT_EQ(nostromo.managedShares(asset, seller), 0);
+
+	nostromo.setNow(2026, 9, 23, 15, 22, 52);
+	nostromo.advanceAndEndTick(0);
+	const auto settled = nostromo.getAuction(created.auctionIndex);
+	ASSERT_EQ(settled.found, 1);
+	EXPECT_EQ(settled.auction.core.status, NOST::EAuctionStatus::Finalized);
+	EXPECT_EQ(settled.auction.core.highestBidAmount, 0ULL);
+	EXPECT_EQ(settled.auction.core.allocatedQuantity, 0ULL);
+	EXPECT_EQ(nostromo.managedShares(asset, seller), 7);
+	EXPECT_EQ(nostromo.managedShares(asset, NOST_CONTRACT_ID), 0);
+}
+
+TEST(ContractNostromoAuction, BootstrapDateDoesNotExtendAuctionByYearsAuction)
+{
+	for (const uint32 pauseCase : {0U, 1U, 2U, 3U})
+	{
+		SCOPED_TRACE(pauseCase);
+		const bool hasPreEpochPause = (pauseCase & 1U) != 0;
+		const bool hasEmergencyPause = (pauseCase & 2U) != 0;
+		ContractTestingNOST nostromo;
+		const id seller(215, 216, 217, 218);
+		const id bidder(219, 220, 221, 222);
+		const Asset asset{seller, assetNameFromString("BOOTRET")};
+		nostromo.setNow(2026, 1, 6, 13, 0, 0);
+		ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, 1), 1);
+		ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 1), 1);
+		const auto created =
+		    nostromo.createAuction(seller, ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 1)));
+		ASSERT_EQ(created.errorCode, NOST::EAuctionError::Success);
+
+		if (hasPreEpochPause)
+		{
+			nostromo.setNow(2026, 1, 7, 11, 30, 0);
+			nostromo.advanceAndEndTick(0);
+		}
+		const auto pauseStartBefore = nostromo.stateData().auctionTimerPauseStartedAt;
+		const auto pauseEndBefore = nostromo.stateData().auctionTimerPauseEndsAt;
+		const auto reserveBaselineBefore = nostromo.stateData().feeReserveBaselineAt;
+
+		nostromo.setNow(2022, 4, 13, 12, 0, 0);
+		// Bootstrap blocks user procedures even before a tick hook observes the placeholder date.
+		EXPECT_EQ(nostromo.placeBid(bidder, created.auctionIndex, 1, NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE).errorCode,
+		          NOST::EAuctionError::AuctionPaused);
+		nostromo.beginEpoch();
+		EXPECT_EQ(nostromo.getCachedQxTransferFee(), nostromo.qxStateData()._transferFee);
+		EXPECT_EQ(nostromo.getContractStats().stats.isAuctionTimerPaused, 1);
+		EXPECT_EQ(nostromo.getContractStats().stats.isPostBeginEpochPauseArmed, 1);
+		nostromo.advanceAndEndTick(0);
+		EXPECT_EQ(nostromo.stateData().auctionTimerPauseStartedAt, pauseStartBefore);
+		EXPECT_EQ(nostromo.stateData().auctionTimerPauseEndsAt, pauseEndBefore);
+		EXPECT_EQ(nostromo.stateData().feeReserveBaselineAt, reserveBaselineBefore);
+		EXPECT_EQ(nostromo.getAuction(created.auctionIndex).auction.core.auctionDurationSeconds, NOST_SECONDS_PER_DAY);
+
+		nostromo.setNow(2026, 1, 7, 12, 0, 0);
+		if (hasEmergencyPause)
+		{
+			ASSERT_EQ(nostromo.setEmergencyPause(ContractTestingNOST::managementWallet(), true).errorCode, NOST::EAuctionError::Success);
+		}
+		nostromo.advanceAndEndTick(0);
+		nostromo.setNow(2026, 1, 7, 12, 1, 0);
+		nostromo.advanceAndEndTick(0);
+		nostromo.advanceTicks(nostromo.getTicksBeforeAuctionLaunch().ticks, 0);
+		if (hasEmergencyPause)
+		{
+			EXPECT_EQ(nostromo.getAuction(created.auctionIndex).auction.core.auctionDurationSeconds, NOST_SECONDS_PER_DAY);
+			ASSERT_EQ(nostromo.setEmergencyPause(ContractTestingNOST::managementWallet(), false).errorCode, NOST::EAuctionError::Success);
+			nostromo.advanceAndEndTick(0);
+		}
+
+		const uint64 expectedPauseSeconds = hasPreEpochPause ? 31ULL * 60ULL : 60ULL;
+		const auto auction = nostromo.getAuction(created.auctionIndex).auction;
+		ASSERT_EQ(auction.core.status, NOST::EAuctionStatus::Active);
+		EXPECT_EQ(auction.core.auctionDurationSeconds, NOST_SECONDS_PER_DAY + expectedPauseSeconds);
+		EXPECT_FALSE(nostromo.stateData().isAuctionTimerPaused);
+		EXPECT_FALSE(nostromo.stateData().isPostBeginEpochPauseArmed);
+		nostromo.advanceAndEndTick(0);
+		EXPECT_EQ(nostromo.getAuction(created.auctionIndex).auction.core.auctionDurationSeconds, NOST_SECONDS_PER_DAY + expectedPauseSeconds);
+
+		auto deadline = auction.core.createdAt;
+		deadline.add(0, 0, 0, 0, 0, NOST_SECONDS_PER_DAY + expectedPauseSeconds);
+		nostromo.setNow(deadline.getYear(), deadline.getMonth(), deadline.getDay(), deadline.getHour(), deadline.getMinute(), deadline.getSecond());
+		nostromo.advanceAndEndTick(0);
+		EXPECT_EQ(nostromo.getAuction(created.auctionIndex).auction.core.status, NOST::EAuctionStatus::Finalized);
+		EXPECT_EQ(nostromo.managedShares(asset, seller), 1);
+		EXPECT_EQ(nostromo.managedShares(asset, NOST_CONTRACT_ID), 0);
+	}
+}
+
+TEST(ContractNostromoAuction, BootstrapTimeOutlastsLaunchPauseAuction)
+{
+	for (const uint32 bootstrapTicks : {NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS - 1U, NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS})
+	{
+		SCOPED_TRACE(bootstrapTicks);
+		ContractTestingNOST nostromo;
+		const id seller(215, 216, 217, 218);
+		const id bidder(219, 220, 221, 222);
+		const Asset asset{seller, assetNameFromString("LATECLK")};
+		ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, 1), 1);
+		ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 1), 1);
+		const auto created =
+		    nostromo.createAuction(seller, ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 1)));
+		ASSERT_EQ(created.errorCode, NOST::EAuctionError::Success);
+
+		nostromo.setNow(2022, 4, 13, 12, 0, 0);
+		nostromo.beginEpoch();
+		nostromo.advanceTicks(bootstrapTicks, 0);
+		nostromo.setNow(2026, 1, 1, 10, 0, 0);
+		EXPECT_EQ(nostromo.placeBid(bidder, created.auctionIndex, 1, NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE).errorCode,
+		          NOST::EAuctionError::AuctionPaused);
+
+		// The first valid END_TICK is at offset 500 or 501; no real pause interval was recorded.
+		nostromo.advanceAndEndTick(0);
+		EXPECT_EQ(nostromo.getTicksBeforeAuctionLaunch().ticks, 0U);
+		EXPECT_EQ(nostromo.getContractStats().stats.isAuctionTimerPaused, 0);
+		EXPECT_EQ(nostromo.getContractStats().stats.isPostBeginEpochPauseArmed, 0);
+		EXPECT_EQ(nostromo.getAuction(created.auctionIndex).auction.core.auctionDurationSeconds, NOST_SECONDS_PER_DAY);
+		EXPECT_EQ(nostromo.placeBid(bidder, created.auctionIndex, 1, NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE).errorCode,
+		          NOST::EAuctionError::Success);
+	}
+}
+
 TEST(ContractNostromoAuction, PauseShiftsSellerDecisionDeadlineAuction)
 {
 	ContractTestingNOST nostromo;
@@ -2968,11 +3282,12 @@ TEST(ContractNostromoAuction, PauseShiftsSellerDecisionDeadlineAuction)
 	EXPECT_EQ(auction.core.sellerDecisionDeadline.getMinute(), 0);
 	EXPECT_EQ(auction.core.sellerDecisionDeadline.getSecond(), 0);
 
-	nostromo.setNow(2026, 1, 9, 8, 59, 50);
+	nostromo.setNow(2022, 4, 13, 12, 0, 0);
 	nostromo.beginEpoch();
 	const uint32 launchPauseTicksAfterBeginEpoch = nostromo.getTicksBeforeAuctionLaunch().ticks;
 	EXPECT_EQ(launchPauseTicksAfterBeginEpoch, NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS);
 
+	nostromo.setNow(2026, 1, 9, 8, 59, 50);
 	nostromo.advanceAndEndTick(1000);
 	EXPECT_EQ(nostromo.getTicksBeforeAuctionLaunch().ticks, launchPauseTicksAfterBeginEpoch - 1);
 

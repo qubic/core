@@ -1716,6 +1716,11 @@ struct NOST : public ContractBase
 		uint8 isPaused;
 	};
 
+	struct IsAuctionInteractionPaused_locals
+	{
+		uint32 currentDateStamp;
+	};
+
 	/** @brief Internal input used to resolve the currently active global auction pause interval. */
 	struct GetAuctionPauseState_input
 	{
@@ -1737,9 +1742,7 @@ struct NOST : public ContractBase
 	/** @brief Internal locals used to resolve the currently active global auction pause interval. */
 	struct GetAuctionPauseState_locals
 	{
-		/** @brief Compact current date marker used to detect the bootstrap default time sentinel. */
 		DateAndTime currentDate;
-		uint32 currentDateStamp;
 	};
 
 	using SyncAuctionPauseState_input = NoData;
@@ -2339,6 +2342,9 @@ struct NOST : public ContractBase
 
 	struct BEGIN_EPOCH_locals
 	{
+		AuctionData auction;
+		DateAndTime recoveryDeadline;
+		uint64 auctionIndex;
 		QX::Fees_input feesInput;
 		QX::Fees_output feesOutput;
 	};
@@ -2521,6 +2527,20 @@ struct NOST : public ContractBase
 	 */
 	BEGIN_EPOCH_WITH_LOCALS()
 	{
+		if (qpi.epoch() == 234)
+		{
+			// Repair the two inflated timers using a fixed UTC deadline, independent of bootstrap time.
+			locals.recoveryDeadline.set(2026, 10, 8, 0, 0, 0);
+			for (locals.auctionIndex = 0; locals.auctionIndex < 2; ++locals.auctionIndex)
+			{
+				if (state.get().auctionList.get(locals.auctionIndex, locals.auction) && locals.auction.core.status == EAuctionStatus::Active)
+				{
+					diffDateInSecond(locals.auction.core.createdAt, locals.recoveryDeadline, locals.auction.core.auctionDurationSeconds);
+					state.mut().auctionList.replace(locals.auctionIndex, locals.auction);
+				}
+			}
+		}
+
 		// Refresh the QX fee cache once per epoch so share transfers can expose current cost guidance.
 		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
 		// Preserve the previous cache when QX is temporarily unavailable; a failed call must not install an undefined fee.
@@ -2529,24 +2549,10 @@ struct NOST : public ContractBase
 			state.mut().qxTransferFee = locals.feesOutput.transferFee;
 		}
 
-		// Freeze auction timers across the epoch boundary; END_TICK later accounts this pause back into deadlines.
+		// BEGIN_EPOCH has bootstrap time; END_TICK anchors the pause once network time is initialized.
+		// Keep any real pre-epoch pause boundaries so synchronization can merge both windows.
 		state.mut().isPostBeginEpochPauseArmed = 1;
-		if (!state.get().isAuctionTimerPaused)
-		{
-			state.mut().isAuctionTimerPaused = 1;
-			state.mut().auctionTimerPauseStartedAt = qpi.now();
-			state.mut().auctionTimerPauseEndsAt = qpi.now();
-			return;
-		}
-
-		if (!state.get().auctionTimerPauseStartedAt.isValid() || qpi.now() < state.get().auctionTimerPauseStartedAt)
-		{
-			state.mut().auctionTimerPauseStartedAt = qpi.now();
-		}
-		if (!state.get().auctionTimerPauseEndsAt.isValid() || qpi.now() > state.get().auctionTimerPauseEndsAt)
-		{
-			state.mut().auctionTimerPauseEndsAt = qpi.now();
-		}
+		state.mut().isAuctionTimerPaused = 1;
 	}
 
 	/**
@@ -2568,6 +2574,12 @@ struct NOST : public ContractBase
 	END_TICK_WITH_LOCALS()
 	{
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+		if (locals.currentDateStamp == NOST_DEFAULT_INIT_TIME)
+		{
+			// Wait for network time before sampling the reserve guard or updating auction timers.
+			return;
+		}
+
 		locals.currentDate = qpi.now();
 
 		// The reserve guard converts a sudden execution-fee reserve drop into an emergency pause.
@@ -2731,18 +2743,7 @@ struct NOST : public ContractBase
 		output.pauseStartedAt.setInvalid();
 		output.pauseEndsAt.setInvalid();
 
-		// The initial runtime date is treated as a full-day launch pause.
 		locals.currentDate = qpi.now();
-		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
-		if (locals.currentDateStamp == NOST_DEFAULT_INIT_TIME)
-		{
-			output.isPaused = 1;
-			output.pauseStartedAt = locals.currentDate;
-			output.pauseStartedAt.setTime(0, 0, 0, 0, 0);
-			output.pauseEndsAt = output.pauseStartedAt;
-			output.pauseEndsAt.addDays(1);
-			return;
-		}
 
 		// Scheduled pre-epoch pauses keep auctions from expiring during the transition window.
 		if (qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day()) == NOST_PRE_EPOCH_PAUSE_DAY_OF_WEEK && qpi.hour() == NOST_PRE_EPOCH_PAUSE_HOUR &&
@@ -2759,8 +2760,15 @@ struct NOST : public ContractBase
 	/**
 	 * @brief Reports whether user-facing auction interactions are currently paused.
 	 */
-	PRIVATE_FUNCTION(IsAuctionInteractionPaused)
+	PRIVATE_FUNCTION_WITH_LOCALS(IsAuctionInteractionPaused)
 	{
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+		if (locals.currentDateStamp == NOST_DEFAULT_INIT_TIME)
+		{
+			output.isPaused = 1;
+			return;
+		}
+
 		// Emergency pause takes precedence over scheduled and post-epoch launch pauses.
 		if (state.get().isEmergencyPaused)
 		{
@@ -2787,16 +2795,15 @@ struct NOST : public ContractBase
 		// While emergency pause is active, keep extending the timer pause window.
 		if (state.get().isEmergencyPaused)
 		{
-			if (!state.get().isAuctionTimerPaused)
+			state.mut().isAuctionTimerPaused = 1;
+
+			if (!state.get().auctionTimerPauseStartedAt.isValid())
 			{
-				state.mut().isAuctionTimerPaused = 1;
+				// BEGIN_EPOCH can arm the timer before a real timestamp is available.
 				state.mut().auctionTimerPauseStartedAt = locals.currentDate;
-				state.mut().auctionTimerPauseEndsAt = locals.currentDate;
 			}
-			else
-			{
-				state.mut().auctionTimerPauseEndsAt = locals.currentDate;
-			}
+
+			state.mut().auctionTimerPauseEndsAt = locals.currentDate;
 			return;
 		}
 
@@ -4411,10 +4418,6 @@ struct NOST : public ContractBase
 		{
 			return;
 		}
-		if (state.get().pendingQuPayouts.population() > state.get().pendingQuPayouts.capacity() - NOST_STANDARD_FINALIZATION_MAX_PAYOUT_RECIPIENTS)
-		{
-			return;
-		}
 
 		locals.highestBidderSlotIndex = locals.auction.core.highestBidSlotIndex;
 		if (locals.highestBidderSlotIndex < state.get().participants.capacity())
@@ -4427,6 +4430,13 @@ struct NOST : public ContractBase
 		// A valid highest bid transfers the whole standard lot and treats escrow as gross proceeds.
 		if (locals.highestBidderExists && locals.highestBidderData.escrowedAmount > 0)
 		{
+			// Returning an unsold lot needs no QU payout slots and must not wait for the payout queue to drain.
+			if (state.get().pendingQuPayouts.population() >
+			    state.get().pendingQuPayouts.capacity() - NOST_STANDARD_FINALIZATION_MAX_PAYOUT_RECIPIENTS)
+			{
+				return;
+			}
+
 			locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
 			locals.rollbackAuctionLotAssetsInput.recipient = locals.highestBidderData.participant;
 			CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
