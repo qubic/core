@@ -127,6 +127,8 @@
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contracts\QTREAT.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\QPayhub.h">
       <Filter>contracts</Filter>
     </ClInclude>

@@ -1040,6 +1040,45 @@ TEST(ContractQtreat, GeneralAssetCustodyIsAdminGatedAndRoundTrips)
     EXPECT_EQ(backInWallet, 5000);
 }
 
+TEST(ContractQtreat, ContractSharesCanBeDepositedAndWithdrawn)
+{
+    // Contract shares are issued by NULL_ID and managed by QX (see ipo.h), so their Asset has
+    // issuer == NULL_ID. DepositGeneralAsset used to reject that issuer outright, which made
+    // every contract share undepositable. QX's own contract shares stand in for any of them.
+    ContractTestingQtreat t;
+    std::vector<std::pair<m256i, unsigned int>> owners{ { t.adminAddress, NUMBER_OF_COMPUTORS } };
+    issueContractShares(QX_CONTRACT_INDEX, owners);
+
+    Asset asset; asset.issuer = NULL_ID; asset.assetName = assetNameFromString("QX");
+    const id self(QTREAT_CONTRACT_INDEX, 0, 0, 0);
+
+    // Deposit: management rights to QTREAT through QX, then DepositGeneralAsset.
+    EXPECT_EQ(t.xferManagementRights(NULL_ID, asset.assetName, QTREAT_CONTRACT_INDEX, 16, t.adminAddress), 16);
+    EXPECT_EQ(t.depositGeneralAssetRaw(t.adminAddress, asset, 16), QTREAT_OK);
+    EXPECT_EQ(t.getState()->generalAssetBalanceOf(NULL_ID, asset.assetName), 16u);
+    EXPECT_EQ(numberOfPossessedShares(asset.assetName, NULL_ID, self, self, QTREAT_CONTRACT_INDEX, QTREAT_CONTRACT_INDEX), 16);
+
+    // Dropping the issuer check does not let a nonexistent asset through: it has no shares to
+    // count, so the deposit still fails and nothing is recorded.
+    Asset bogus; bogus.issuer = NULL_ID; bogus.assetName = assetNameFromString("NOSUCH");
+    EXPECT_EQ(t.depositGeneralAssetRaw(t.adminAddress, bogus, 1), QTREAT_ERR_ACQUIRE_FAILED);
+    EXPECT_EQ(t.getState()->generalAssetBalanceOf(NULL_ID, bogus.assetName), 0u);
+
+    // Withdraw through the multisig: proposal, two more signers, 72h, execute.
+    t.setClock(2026, 10, 7, 12);
+    auto prop = t.proposeRevoke(t.adminAddress, asset, 16, t.adminAddress);
+    EXPECT_EQ(prop.returnCode, QTREAT_OK);
+    EXPECT_EQ(t.approveRevoke(t.signerWallet(1), prop.proposalId).returnCode, QTREAT_OK);
+    EXPECT_EQ(t.approveRevoke(t.signerWallet(2), prop.proposalId).returnCode, QTREAT_OK);
+    t.setClock(2026, 10, 10, 12);
+    increaseEnergy(t.adminAddress, QTREAT_QX_TRANSFER_FEE * 2);
+    EXPECT_EQ(t.executeRevoke(t.adminAddress, prop.proposalId, QTREAT_QX_TRANSFER_FEE), QTREAT_OK);
+    EXPECT_EQ(t.getState()->generalAssetBalanceOf(NULL_ID, asset.assetName), 0u);
+
+    // All of them are back with the admin and managed by QX again.
+    EXPECT_EQ(numberOfPossessedShares(asset.assetName, NULL_ID, t.adminAddress, t.adminAddress, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), NUMBER_OF_COMPUTORS);
+}
+
 TEST(ContractQtreat, MultisigSignersAreConfigured)
 {
     ContractTestingQtreat t;
