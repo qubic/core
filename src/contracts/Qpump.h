@@ -1847,7 +1847,9 @@ struct QPUMP : public ContractBase
         locals.log.code = locals.coin.status;
         LOG_INFO(locals.log);
 
-        locals.empty = {};
+        // setMemory, not `= {}`: the brace form compiles to a memset call,
+        // which the EFI build has no CRT to link against.
+        setMemory(locals.empty, 0);
         state.mut().coins.set(input.slot, locals.empty);
     }
 
@@ -2782,7 +2784,7 @@ struct QPUMP : public ContractBase
             return;
         }
 
-        locals.coin = {};
+        setMemory(locals.coin, 0);
         locals.coin.creator = qpi.invocator();
         locals.coin.metaDigest = input.metaDigest;
         locals.coin.coinId = state.get().nextCoinId;
