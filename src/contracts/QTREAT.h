@@ -673,7 +673,10 @@ struct QTREAT : public ContractBase
     {
         if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
         if (qpi.invocator() != state.get().adminAddress) { output.returnCode = QTREAT_ERR_ACCESS_DENIED; return; }
-        if (input.amount == 0 || input.asset.issuer == NULL_ID) { output.returnCode = QTREAT_ERR_INVALID_INPUT; return; }
+        // No check on input.asset.issuer: contract shares are issued by NULL_ID (see ipo.h), so
+        // rejecting a NULL_ID issuer would make every contract share undepositable. A bogus or
+        // nonexistent asset is still rejected below, because it has no shares to count.
+        if (input.amount == 0) { output.returnCode = QTREAT_ERR_INVALID_INPUT; return; }
 
         locals.managed = qpi.numberOfShares(input.asset,
             { qpi.invocator(), SELF_INDEX }, { qpi.invocator(), SELF_INDEX });
