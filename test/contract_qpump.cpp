@@ -14,6 +14,20 @@ static const id WHALE(44, 44, 44, 44);
 static const id QPUMP_CONTRACT_ID(QPUMP_CONTRACT_INDEX, 0, 0, 0);
 static const id QX_CONTRACT_ID(QX_CONTRACT_INDEX, 0, 0, 0);
 static const id QSWAP_CONTRACT_ID(QSWAP_CONTRACT_INDEX, 0, 0, 0);
+static const id QPAYHUB_CONTRACT_ID(QPAYHUB_CONTRACT_INDEX, 0, 0, 0);
+
+// The charity identity Qpump.h hardcodes for the graduation donation:
+// DPQRLSZSSCXIYFIQGBFBXXISDDEBEGQNWNTQUEIFSCUWGHVXJPLFGMYDONIM.
+// Copied verbatim so the tests check the exact destination, not just that
+// some QU left the contract.
+static const id QPUMP_CHARITY_ID = ID(
+    _D, _P, _Q, _R, _L, _S, _Z, _S,
+    _S, _C, _X, _I, _Y, _F, _I, _Q,
+    _G, _B, _F, _B, _X, _X, _I, _S,
+    _D, _D, _E, _B, _E, _G, _Q, _N,
+    _W, _N, _T, _Q, _U, _E, _I, _F,
+    _S, _C, _U, _W, _G, _H, _V, _X,
+    _J, _P, _L, _F, _G, _M, _Y, _D);
 
 static constexpr uint64 NAME_PEPE = 1162888528ULL;   // PEPE
 static constexpr uint64 NAME_MOON = 1313820493ULL;   // MOON
@@ -72,7 +86,7 @@ public:
     // Sum of QU the contract owes to coins plus the undistributed fee pots.
     sint64 obligations() const
     {
-        sint64 total = shareholderPot + burnPot + qdogePot;
+        sint64 total = shareholderPot + burnPot + qdogePot + qpayhubPot;
         for (uint32 slot = 0; slot < QPUMP_MAX_COINS; ++slot)
         {
             const QPUMP::Coin& coin = coins.get(slot);
@@ -366,6 +380,12 @@ TEST(ContractQpump, GetFeesReflectsConstantsAndCachedExternalFees)
     const auto fees = qp.getFees();
     EXPECT_EQ(fees.launchFee, 25000000LL);
     EXPECT_EQ(fees.graduationReward, 50000000LL);
+    EXPECT_EQ(fees.graduationDonation, 10000000LL);
+    EXPECT_EQ(fees.tradeFeeBps, 100ULL);
+    EXPECT_EQ(fees.feeShareholderShareBps, 6000ULL);
+    EXPECT_EQ(fees.feeQdogeShareBps, 2000ULL);
+    EXPECT_EQ(fees.feeQpayhubShareBps, 2000ULL);
+    EXPECT_EQ(fees.feeShareholderShareBps + fees.feeQdogeShareBps + fees.feeQpayhubShareBps, 10000ULL);
     EXPECT_EQ(fees.curveRaise, 3905000000LL);
     EXPECT_EQ(fees.openingQuCap, 377187500LL);
     EXPECT_EQ(fees.qxIssuanceFee, 1000000000LL);
@@ -476,15 +496,19 @@ TEST(ContractQpump, CurveBuyAndSellMatchTheIntegerFormulas)
     sint64 shareholderBefore = qp.state()->shareholderPot;
     sint64 burnBefore = qp.state()->burnPot;
     sint64 qdogeBefore = qp.state()->qdogePot;
+    sint64 qpayhubBefore = qp.state()->qpayhubPot;
     sint64 before = getBalance(BUYER3);
     const auto bought = qp.buy(BUYER3, NAME_PEPE, 10000000LL, 200000000LL);
     EXPECT_EQ(bought.returnCode, QPUMP_OK);
     EXPECT_EQ(bought.tokens, 10000000LL);
     EXPECT_EQ(bought.quSpent, 21798735LL);
     EXPECT_EQ(getBalance(BUYER3), before - 21798735LL);
-    EXPECT_EQ(qp.state()->shareholderPot - shareholderBefore, 151081LL);
-    EXPECT_EQ(qp.state()->burnPot - burnBefore, 21583LL);
+    // 215,830 QU of fee splits 60/20/20, shareholders taking the remainder.
+    EXPECT_EQ(qp.state()->shareholderPot - shareholderBefore, 129498LL);
     EXPECT_EQ(qp.state()->qdogePot - qdogeBefore, 43166LL);
+    EXPECT_EQ(qp.state()->qpayhubPot - qpayhubBefore, 43166LL);
+    // Trading no longer burns any part of the fee.
+    EXPECT_EQ(qp.state()->burnPot, burnBefore);
 
     const auto sellQuote = qp.quoteSell(NAME_PEPE, 4000000LL);
     EXPECT_EQ(sellQuote.gross, 8785274LL);
@@ -590,6 +614,7 @@ TEST(ContractQpump, GraduationSeedsQswapAndDeliversEveryHolder)
     const QPUMP::Coin completed = qp.state()->coinOf(NAME_PEPE);
     sint64 creatorBefore = getBalance(CREATOR1);
     sint64 qxBefore = getBalance(QX_CONTRACT_ID);
+    sint64 charityBefore = getBalance(QPUMP_CHARITY_ID);
 
     const auto graduated = qp.process(BUYER2, NAME_PEPE);
     EXPECT_EQ(graduated.returnCode, QPUMP_OK);
@@ -602,11 +627,14 @@ TEST(ContractQpump, GraduationSeedsQswapAndDeliversEveryHolder)
     // The pool opens at exactly 10 QU per token, up to integer rounding of the token count.
     EXPECT_GE(coin.poolQu, coin.poolTokens * 10);
     EXPECT_LT(coin.poolQu, coin.poolTokens * 10 + 10);
-    EXPECT_EQ(coin.poolQu, completed.realQu - QPUMP_DEFAULT_QX_ISSUANCE_FEE - QPUMP_GRADUATION_REWARD - QPUMP_GRADUATION_BURN
+    EXPECT_EQ(coin.poolQu, completed.realQu - QPUMP_DEFAULT_QX_ISSUANCE_FEE - QPUMP_GRADUATION_REWARD - QPUMP_GRADUATION_DONATION
         - qp.state()->cachedQswapPoolFee - QPUMP_QSWAP_LIQUIDITY_FEE - static_cast<sint64>(completed.holders) * QPUMP_DEFAULT_QX_TRANSFER_FEE * QPUMP_DELIVERY_BUDGET_FACTOR);
 
     EXPECT_EQ(getBalance(CREATOR1), creatorBefore + QPUMP_GRADUATION_REWARD);
     EXPECT_EQ(getBalance(QX_CONTRACT_ID), qxBefore + QPUMP_DEFAULT_QX_ISSUANCE_FEE);
+    // The graduation donation leaves for the charity identity, not the burn pot.
+    EXPECT_EQ(getBalance(QPUMP_CHARITY_ID), charityBefore + QPUMP_GRADUATION_DONATION);
+    EXPECT_EQ(qp.state()->totalDonated, QPUMP_GRADUATION_DONATION);
 
     const auto pool = qp.poolState(NAME_PEPE);
     EXPECT_NE(pool.poolExists, 0LL);
@@ -706,20 +734,30 @@ TEST(ContractQpump, ExpiredCoinRefundsHoldersProRata)
     qp.checkSolvent();
 }
 
-TEST(ContractQpump, EndEpochPaysDividendsAndBurnsPots)
+TEST(ContractQpump, EndEpochPaysDividendsBurnsPotsAndFundsQpayhub)
 {
     ContractTestingQpump qp;
     qp.launchPepeWithBatch();
     qp.fund(BUYER3, 1000000000LL);
     EXPECT_EQ(qp.buy(BUYER3, NAME_PEPE, 10000000LL, 200000000LL).returnCode, QPUMP_OK);
 
+    // Only the launch fee still feeds the burn pot; trades no longer do.
     sint64 burnPot = qp.state()->burnPot;
-    EXPECT_GT(burnPot, 0LL);
+    EXPECT_EQ(burnPot, QPUMP_LAUNCH_FEE_BURN);
+    sint64 qpayhubPot = qp.state()->qpayhubPot;
+    EXPECT_GT(qpayhubPot, 0LL);
+    sint64 qpayhubBefore = getBalance(QPAYHUB_CONTRACT_ID);
 
     qp.endEpoch();
     EXPECT_EQ(qp.state()->burnPot, 0LL);
     EXPECT_EQ(qp.state()->totalBurned, burnPot);
     EXPECT_LT(qp.state()->shareholderPot, static_cast<sint64>(NUMBER_OF_COMPUTORS));
+    // The QPayhub share leaves for that contract's address, where its own
+    // POST_INCOMING_TRANSFER books it into its fee pool. QPayhub is not
+    // initialized in this fixture, so only the QU movement is checked here.
+    EXPECT_EQ(qp.state()->qpayhubPot, 0LL);
+    EXPECT_EQ(qp.state()->totalToQpayhub, qpayhubPot);
+    EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID), qpayhubBefore + qpayhubPot);
     qp.checkSolvent();
 }
 
