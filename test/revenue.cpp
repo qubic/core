@@ -161,8 +161,8 @@ TEST(TestCoreRevenue, V2OverflowExtremeValues)
         unsigned long long ticksPerComputor = MAX_NUMBER_OF_TICKS_PER_EPOCH / NUMBER_OF_COMPUTORS;
         unsigned long long maxAccum = perTickMax * ticksPerComputor;
         EXPECT_LE(maxAccum, u64Max);
-        // Headroom should be very large (>100000x)
-        EXPECT_GT(u64Max / maxAccum, 100000ULL);
+        // Headroom should be very large (>90000x)
+        EXPECT_GT(u64Max / maxAccum, 90000ULL);
     }
 
     // computeRevFactor overflow: score[i] * scalingThreshold

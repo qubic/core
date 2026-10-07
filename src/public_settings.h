@@ -63,7 +63,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 0
+#define START_NETWORK_FROM_SCRATCH 1
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -73,12 +73,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 304
-#define VERSION_C 1
+#define VERSION_B 306
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 231
-#define TICK 80371514
+#define EPOCH 233
+#define TICK 82400000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -121,20 +121,19 @@ static constexpr unsigned char BPP9000_TOPOLOGY_HASH[32] =
     { 0x1d, 0xcc, 0x19, 0x94, 0x1b, 0xb5, 0x25, 0xe8, 0xa8, 0x1f, 0xbd, 0xac, 0x61, 0x2d, 0x3d, 0xa9,
       0x2a, 0xba, 0x06, 0xe8, 0x75, 0x3a, 0xfb, 0x29, 0x74, 0xbc, 0xbe, 0xa6, 0xa6, 0x86, 0xd5, 0xda };
 static constexpr unsigned char BPP9000_DATA_HASH[32] =
-    { 0x97, 0x9c, 0xdc, 0x22, 0x47, 0xd2, 0xca, 0x4e, 0xd3, 0xd6, 0x14, 0xbf, 0x27, 0x89, 0x63, 0x84,
-      0xcb, 0x1c, 0x9c, 0x3d, 0x80, 0x4a, 0xf6, 0xed, 0xe6, 0xb5, 0x9f, 0xc5, 0x2c, 0x0e, 0x3d, 0xfa };
+    { 0xe8, 0x35, 0x13, 0x0d, 0x75, 0x54, 0x6c, 0xa3, 0xe7, 0xcb, 0xfc, 0x12, 0x80, 0xe7, 0x34, 0x5d,
+      0x6f, 0x92, 0xb9, 0x1d, 0x0f, 0x6e, 0x7b, 0xb1, 0xa3, 0xed, 0xf7, 0x45, 0xd3, 0xef, 0x03, 0xb3 };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
-static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
-static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 28;
-static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
-static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
 static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 64;
-static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
-// Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
-// better, and a solution passes when score <= threshold.
-static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
-static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4000;
+static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
+static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
+static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
+static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365 + 24 * 7;
+static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 365;
+// How far the frame may slide: production predicts one week ahead.
+static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4350;
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
 static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;

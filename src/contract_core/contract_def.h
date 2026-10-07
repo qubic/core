@@ -311,13 +311,17 @@
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QPUMP_CONTRACT_INDEX 30
+#define QTREAT_CONTRACT_INDEX 30
+#define CONTRACT_INDEX QTREAT_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QTREAT
+#define CONTRACT_STATE2_TYPE QTREAT2
+#include "contracts/QTREAT.h"
+
+#define QPUMP_CONTRACT_INDEX 31
 #define CONTRACT_INDEX QPUMP_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QPUMP
 #define CONTRACT_STATE2_TYPE QPUMP2
 #include "contracts/Qpump.h"
-
-
 
 // new contracts should be added above this line
 
@@ -435,7 +439,8 @@ constexpr struct ContractDescription
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
-    {"QPUMP", 234, 10000, sizeof(QPUMP::StateData)}, // PLACEHOLDER: proposal in epoch 232, IPO in 233, construction and first use in 234
+    {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
+    {"QPUMP", 235, 10000, sizeof(QPUMP::StateData)}, // PLACEHOLDER: proposal in epoch 233, IPO in 234, construction and first use in 235
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -563,12 +568,13 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
-	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
+	  REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPAYHUB);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTREAT);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPUMP);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -602,7 +608,7 @@ struct ContractStateChangeInfo
 // When enabling, replace both lines below, e.g.:
 //constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
 //constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { NOST_CONTRACT_INDEX, MIGRATE, 230 }};
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { NOST_CONTRACT_INDEX, MIGRATE, 230 }, { QUSINO_CONTRACT_INDEX, RESET, 234} };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 
