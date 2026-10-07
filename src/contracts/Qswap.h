@@ -123,9 +123,6 @@ public:
 
 		uint32 cachedIssuanceFee;
 		uint32 cachedTransferFee;
-
-		// Rejects original legacy-size files at load. The offline converter sets this format marker.
-		id liquidityKeyFormat;
 	};
 
 	struct FindPoolSlotReadOnly_input
@@ -2420,7 +2417,6 @@ protected:
 
 	INITIALIZE()
 	{
-		state.mut().liquidityKeyFormat = id(QSWAP_LIQUIDITY_KEY_DOMAIN, 0, 0, 0);
 		state.mut().swapFeeRate = 30; 			// 0.3%, must be less than 10000
 		state.mut().poolCreationFeeRate = 20; 	// 20%, must be less than 100
 

@@ -1002,7 +1002,6 @@ TEST(ContractSwap, LiquidityKeyEncodingMatchesIndependentK12Vector)
 	EXPECT_NE(referenceLiquidityKey(account, poolID), expected);
 	EXPECT_NE(referenceLiquidityKey(poolID, id::zero()), expected);
 	EXPECT_NE(referenceLiquidityKey(poolID, QSWAP_CONTRACT_ID), expected);
-	EXPECT_EQ(qswap.stateData()->liquidityKeyFormat, id(0x31504c5041575351ULL, 0, 0, 0));
 
 	// Every byte of both IDs participates, including the issuer words and account's last word.
 	for (unsigned int i = 0; i < 64; ++i)
