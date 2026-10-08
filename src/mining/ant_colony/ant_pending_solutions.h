@@ -155,7 +155,7 @@ public:
         unsigned int anchorTick, const score_engine::Rating& rating, const m256i& nonce)
     {
         LockGuard guard(_lock);
-        const unsigned int slot = indexSlotFor(computorPublicKey, parentRef, nonce);
+        unsigned int slot = indexSlotFor(computorPublicKey, parentRef, nonce);
         unsigned int entryIdx = NO_ENTRY;
         if (_index[slot] != INDEX_EMPTY)
         {
@@ -177,6 +177,10 @@ public:
                 _stats.droppedFull++;
                 return false;
             }
+            // findFreeEntry() can call indexRemove(), which re-places the probe run and may
+            // move an earlier slot in this key's chain. Recompute the slot so the entry is
+            // written where indexSlotFor() will later reach it.
+            slot = indexSlotFor(computorPublicKey, parentRef, nonce);
         }
 
         AntPendingSolution& e = _entries[entryIdx];
@@ -248,7 +252,7 @@ public:
     {
         LockGuard guard(_lock);
 
-        const unsigned int slot = indexSlotFor(computorPublicKey, parentRef, nonce);
+        unsigned int slot = indexSlotFor(computorPublicKey, parentRef, nonce);
         if (_index[slot] != INDEX_EMPTY)
         {
             _publicationTick[_index[slot]] = RECORDED;
@@ -262,6 +266,10 @@ public:
             // Nothing to reclaim
             return;
         }
+
+        // findFreeEntry() may have rehashed the probe run (see add()); recompute the slot so
+        // the entry is reachable via indexSlotFor().
+        slot = indexSlotFor(computorPublicKey, parentRef, nonce);
 
         AntPendingSolution& e = _entries[entryIdx];
         e.computorPublicKey = computorPublicKey;
