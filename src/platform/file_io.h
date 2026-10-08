@@ -630,14 +630,13 @@ protected:
             for (unsigned int i = 0; i < processedItemsCount; i++)
             {
                 FileItem& item = mFileItems[mPriorityArray[i]._key];
-                long long sts = 0;
                 if (isSave)
                 {
-                    sts = save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+                    save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
                 }
                 else
                 {
-                    sts = load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+                    load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
                 }
                 item.markAsDone();
             }
@@ -676,14 +675,13 @@ protected:
         if (maxIdx >= 0)
         {
             FileItem& item = mFileItems[maxIdx];
-            long long sts = 0;
             if (isSave)
             {
-                sts = save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+                save(item.mFileName, item.mSize, item.mpConstBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
             }
             else
             {
-                sts = load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+                load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
             }
             item.markAsDone();
         }
@@ -909,7 +907,6 @@ public:
             return kStop;
         }
 
-        int sts = kUnknown;
         bool mainThread = isMainThread();
         FileItem* pFileItem = mFileBlockingReadQueue.requestFreeSlot(totalSize);
 
