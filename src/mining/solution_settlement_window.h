@@ -25,7 +25,7 @@
 //  - tick processor   append(): record fields, then the tick index entry's count last.
 //                     settleTick(): _head, the index entry's count (cleared), _settledThroughTick.
 //  - any worker       result, then scored last. Never write a record field.
-//  - any thread       lookup(), waitScored(), unscoredCount(): read only.
+//  - any thread       lookup(), unscoredCount(): read only.
 //
 // A settled slot is released, not scrubbed: lookup() stops returning it, but a pointer taken
 // earlier reads the same bytes until the physical slot is reused, which takes as many appends as
@@ -179,34 +179,6 @@ public:
 
     // Any thread. nullptr once the tick is settled or if (tick, txIndex) was never appended.
     const SettlementSlot* lookup(unsigned int tick, unsigned int txIndex) const;
-    // Returns when the slot is scored, when its tick is settled, or at once if it is absent.
-    void waitScored(unsigned int tick, unsigned int txIndex) const;
-
-    // Any thread. Visits up to `budget` unsettled slots, NEWEST FIRST, for node-local queries only -
-    // never settlement or scoring, whose inputs must be deterministic. Newest first because the
-    // backlog far exceeds any sane budget and callers want the freshest parents. Visitor returns
-    // false to stop early. _head/_tail are snapshotted under _lock so a concurrent append() or
-    // settleTick() cannot shift the range mid-scan.
-    template<typename Visitor>
-    void forEachUnsettled(unsigned int budget, Visitor&& visit)
-    {
-        unsigned long long head;
-        unsigned long long tail;
-        {
-            LockGuard guard(_lock);
-            head = _head;
-            tail = _tail;
-        }
-        unsigned int visited = 0;
-        for (unsigned long long i = tail; i > head && visited < budget; visited++)
-        {
-            i--;
-            if (!visit(slotAt(i)))
-            {
-                break;
-            }
-        }
-    }
 
     // Phase 2, tick processor. Settles every unsettled tick up to and including `tick`, ascending;
     // no-op when tick <= settledThroughTick.
@@ -527,20 +499,6 @@ inline const SettlementSlot* SolutionSettlementWindow::lookup(unsigned int tick,
         return nullptr;
     }
     return &found;
-}
-
-inline void SolutionSettlementWindow::waitScored(unsigned int tick, unsigned int txIndex) const
-{
-    const SettlementSlot* slot = lookup(tick, txIndex);
-    if (slot == nullptr)
-    {
-        return;
-    }
-    // A score can take seconds, so this is a plain spin rather than WAIT_WHILE and its long-wait log.
-    while (!slot->scored && tick > _settledThroughTick)
-    {
-        _mm_pause();
-    }
 }
 
 inline void SolutionSettlementWindow::settleTick(unsigned int tick, unsigned long long processorNumber)

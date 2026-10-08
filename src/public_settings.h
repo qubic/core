@@ -158,7 +158,11 @@ static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
 // Solution settlement window: a mining solution recorded at tick T is verified off the tick path and
 // settled (digest fold, tree commit, refund, ranking) at tick T + SOLUTION_SETTLEMENT_WINDOW_TICKS in
 // (tick, txIndex) order. Consensus: every node settles the same tick at the same tick number.
-static constexpr unsigned int SOLUTION_SETTLEMENT_WINDOW_TICKS = 676;
+//
+// A parent is mineable only once committed, so this is also the cadence between ant generations, and
+// one anchor covers ANT_PUBLISH_WINDOW_TICKS / SOLUTION_SETTLEMENT_WINDOW_TICKS of them before a miner
+// must re-anchor. The width therefore trades settlement slack against that depth.
+static constexpr unsigned int SOLUTION_SETTLEMENT_WINDOW_TICKS = 64;
 // Bytes a kind may capture from its transaction at record time, and bytes a worker may produce.
 static constexpr unsigned int MAX_SOLUTION_RECORD_BYTES = 128;
 static constexpr unsigned int MAX_SOLUTION_RESULT_BYTES = 576;

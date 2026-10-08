@@ -22,10 +22,8 @@ static m256i makeKey(unsigned long long n)
 
 // Appends an ant solution record directly (bypassing recordAntSolution()'s own dedup/future-parent
 // checks, which live in qubic.cpp, not here). claimedScore doubles as this test's control for what
-// the stub scoreFn below produces: 0 means "scores invalid" (an unscorable ring parent),
-// ENCODING_DOOMED means "scores valid but will fail commit()", anything else becomes that Rating's
-// error at shift 0 with wouldCommit set.
-static constexpr unsigned int ENCODING_DOOMED = 0xFFFFFFFEU;
+// the stub scoreFn below produces: 0 means "scores invalid", anything else becomes that Rating's
+// error at shift 0.
 static bool appendAntSlot(SolutionSettlementWindow& window, unsigned int tick, unsigned int txIndex,
     const m256i& sourcePublicKey, unsigned int claimedScoreEncoding)
 {
@@ -48,20 +46,12 @@ static void testAntScore(SettlementSlot& slot, unsigned long long)
     setMem(&result, sizeof(result), 0);
     if (record.claimedScore == 0)
     {
-        result.rating = score_engine::Rating::worst();   // invalid: an unscorable ring parent
-    }
-    else if (record.claimedScore == ENCODING_DOOMED)
-    {
-        // Scored fine, but predicted to fail commit(): a real ANN nobody may build on.
-        result.rating = score_engine::Rating{ TEST_THRESHOLD, 0 };
-        result.depth = 1;
-        result.wouldCommit = 0;
+        result.rating = score_engine::Rating::worst();   // unscorable
     }
     else
     {
         result.rating = score_engine::Rating{ record.claimedScore, 0 };
         result.depth = 1;
-        result.wouldCommit = 1;
     }
     copyMem(slot.result, &result, sizeof(result));
 }
@@ -147,6 +137,9 @@ static long long commitRootChild(AntColonyBpp9000T& colony, const m256i& owner, 
 
 // ---------------------------------------------------------------------------------------------
 // resolveAntParent() status matrix
+//
+// Two sources answer Ready - the derived ROOT and the settled tree. Everything else is Absent,
+// including a reference into a slot still inside the settlement window.
 
 TEST(TestResolveAntParent, RootIsReadyWithWorstRatingAndNoAnn)
 {
@@ -154,13 +147,12 @@ TEST(TestResolveAntParent, RootIsReadyWithWorstRatingAndNoAnn)
     ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
 
     AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ROOT_REF, /*allowUnsettled=*/false, view);
+    resolveAntParent(fx->colony, fx->scratchAnn, ROOT_REF, view);
 
     EXPECT_EQ(view.status, AntParentReady);
     EXPECT_EQ(view.ann, nullptr);
     EXPECT_EQ(view.treeRecord, nullptr);
     EXPECT_EQ(view.depth, 0u);
-    EXPECT_TRUE(view.wouldCommit);
     EXPECT_FALSE(view.rating.isValid());
 }
 
@@ -174,7 +166,7 @@ TEST(TestResolveAntParent, TreeParentResolvesFromTheRecord)
     const SolutionRef ref{ TEST_TICK, 0 };
 
     AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ref, /*allowUnsettled=*/false, view);
+    resolveAntParent(fx->colony, fx->scratchAnn, ref, view);
 
     EXPECT_EQ(view.status, AntParentReady);
     ASSERT_NE(view.ann, nullptr);
@@ -183,110 +175,40 @@ TEST(TestResolveAntParent, TreeParentResolvesFromTheRecord)
     EXPECT_EQ(view.rating.error, 3800u);
     EXPECT_EQ(view.shift, 0u);
     EXPECT_EQ(view.depth, 1u);
-    EXPECT_TRUE(view.wouldCommit);
     EXPECT_TRUE(view.pubkey == owner);
 }
 
-TEST(TestResolveAntParent, RingScoredParentResolvesFromItsResult)
+// The rule that makes every node answer alike: a slot in the window is not a parent, scored or not.
+// Whether a worker has reached a given slot depends on this node's own timing, so any answer drawn
+// from one would differ between nodes.
+TEST(TestResolveAntParent, UnsettledSlotIsAbsentWhetherScoredOrNot)
 {
     GlueFixture* fx = freshFixture();
     ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
 
-    const m256i owner = makeKey(2);
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, owner, 4200));
-    ASSERT_TRUE(fx->window.workerStep(1));   // runs testAntScore, rating = {4200, 0}, wouldCommit = true
-    const SolutionRef ref{ TEST_TICK, 0 };
+    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, makeKey(2), 4200));
+    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 1, makeKey(3), 4300));
+    ASSERT_TRUE(fx->window.workerStep(1));   // scores (TEST_TICK, 0); (TEST_TICK, 1) stays unscored
+    ASSERT_NE(fx->window.lookup(TEST_TICK, 0), nullptr);
+    EXPECT_TRUE(fx->window.lookup(TEST_TICK, 0)->scored);
+    EXPECT_FALSE(fx->window.lookup(TEST_TICK, 1)->scored);
 
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ref, /*allowUnsettled=*/true, view);
+    AntParentView scored;
+    resolveAntParent(fx->colony, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 }, scored);
+    EXPECT_EQ(scored.status, AntParentAbsent);
 
-    EXPECT_EQ(view.status, AntParentReady);
-    ASSERT_NE(view.ann, nullptr);
-    EXPECT_EQ(view.treeRecord, nullptr);   // ring-pending, not yet a real record
-    EXPECT_EQ(view.rating.error, 4200u);
-    EXPECT_EQ(view.depth, 1u);
-    EXPECT_TRUE(view.wouldCommit);
-    EXPECT_TRUE(view.pubkey == owner);
+    AntParentView unscored;
+    resolveAntParent(fx->colony, fx->scratchAnn, SolutionRef{ TEST_TICK, 1 }, unscored);
+    EXPECT_EQ(unscored.status, AntParentAbsent);
 }
 
-TEST(TestResolveAntParent, RingUnscoredParentIsPending)
+TEST(TestResolveAntParent, MissingParentIsAbsent)
 {
     GlueFixture* fx = freshFixture();
     ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, makeKey(3), 4200));
-    const SolutionRef ref{ TEST_TICK, 0 };
 
     AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ref, /*allowUnsettled=*/true, view);
-
-    EXPECT_EQ(view.status, AntParentPending);
-}
-
-TEST(TestResolveAntParent, RingParentThatScoredInvalidIsAbsent)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    // claimedScore == 0 is this test's encoding for "the stub scorer produced an invalid rating" -
-    // a timed-out or non-canonical walk, same as a genuinely unscorable solution.
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, makeKey(4), 0));
-    ASSERT_TRUE(fx->window.workerStep(1));
-    const SolutionRef ref{ TEST_TICK, 0 };
-
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ref, /*allowUnsettled=*/true, view);
-
-    EXPECT_EQ(view.status, AntParentAbsent);
-}
-
-TEST(TestResolveAntParent, MissingParentIsAbsentWhetherOrNotRingIsAllowed)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    const SolutionRef ref{ TEST_TICK, 0 };   // never appended, never committed
-
-    AntParentView viewRing;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ref, /*allowUnsettled=*/true, viewRing);
-    EXPECT_EQ(viewRing.status, AntParentAbsent);
-
-    AntParentView viewNoRing;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ref, /*allowUnsettled=*/false, viewNoRing);
-    EXPECT_EQ(viewNoRing.status, AntParentAbsent);
-}
-
-// resolveAntParent must not return Pending at settlement. Settlement
-// always passes allowUnsettled = false, so a slot that WOULD be Pending with the ring allowed must
-// instead fall through to the tree - and since this ref is not there either, Absent, never Pending.
-TEST(TestResolveAntParent, NeverReturnsPendingWithAllowRingFalse)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, makeKey(5), 4200));   // left unscored
-    const SolutionRef ref{ TEST_TICK, 0 };
-
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ref, /*allowUnsettled=*/false, view);
-
-    EXPECT_NE(view.status, AntParentPending);
-    EXPECT_EQ(view.status, AntParentAbsent);
-}
-
-// A slot of a different kind at the same (tick, txIndex) must not be mistaken for an ant parent.
-TEST(TestResolveAntParent, SlotOfAnotherKindAtTheSameRefIsNotAMatch)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    unsigned char otherRecord[8];
-    setMem(otherRecord, sizeof(otherRecord), 0);
-    ASSERT_TRUE(fx->window.append(TEST_TICK, 0, OTHER_KIND, otherRecord, sizeof(otherRecord)));
-    const SolutionRef ref{ TEST_TICK, 0 };
-
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ref, /*allowUnsettled=*/true, view);
+    resolveAntParent(fx->colony, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 }, view);
 
     EXPECT_EQ(view.status, AntParentAbsent);
 }
@@ -294,196 +216,40 @@ TEST(TestResolveAntParent, SlotOfAnotherKindAtTheSameRefIsNotAMatch)
 // ---------------------------------------------------------------------------------------------
 // antParentRecordForValidation()
 
-// The bar every node-local reader applies before treating a parent as buildable. Ready is not it:
-// a scored parent predicted to fail commit() has a real ANN, and a child of it would cost this
-// computor a deposit settlement is going to reject.
-TEST(TestAntParentMineable, TrueForRootTreeAndRingParentsThatWouldCommit)
+TEST(TestAntParentRecordForValidation, UsesTheTreeRecord)
 {
     GlueFixture* fx = freshFixture();
     ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
 
-    AntParentView root;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ROOT_REF, /*allowUnsettled=*/false, root);
-    EXPECT_TRUE(antParentMineable(root));
-
-    const m256i treeOwner = makeKey(20);
-    ASSERT_NE(commitRootChild(fx->colony, treeOwner, 3800, TEST_TICK, 0, 500), ANT_INVALID_INDEX);
-    AntParentView tree;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 },
-        /*allowUnsettled=*/false, tree);
-    EXPECT_TRUE(antParentMineable(tree));
-
-    const m256i ringOwner = makeKey(21);
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK + 1, 0, ringOwner, 3700));
-    ASSERT_TRUE(fx->window.workerStep(1));
-    AntParentView ring;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK + 1, 0 },
-        /*allowUnsettled=*/true, ring);
-    ASSERT_EQ(ring.status, AntParentReady);
-    EXPECT_TRUE(antParentMineable(ring));
-}
-
-TEST(TestAntParentMineable, FalseForAScoredParentThatWouldNotCommit)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    const m256i owner = makeKey(22);
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, owner, ENCODING_DOOMED));
-    ASSERT_TRUE(fx->window.workerStep(1));
-
+    ASSERT_NE(commitRootChild(fx->colony, makeKey(6), 3800, TEST_TICK, 0, 501), ANT_INVALID_INDEX);
     AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 },
-        /*allowUnsettled=*/true, view);
-
-    EXPECT_EQ(view.status, AntParentReady);   // scored, with a usable ANN
-    EXPECT_TRUE(view.rating.isValid());
-    EXPECT_FALSE(view.wouldCommit);
-    EXPECT_FALSE(antParentMineable(view));    // but nothing may be built on it
-}
-
-TEST(TestAntParentMineable, FalseForPendingAndAbsentParents)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    const m256i owner = makeKey(23);
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, owner, 4000));   // appended, not scored
-
-    AntParentView pending;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 },
-        /*allowUnsettled=*/true, pending);
-    ASSERT_EQ(pending.status, AntParentPending);
-    EXPECT_FALSE(antParentMineable(pending));
-
-    AntParentView absent;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK + 99, 7 },
-        /*allowUnsettled=*/true, absent);
-    ASSERT_EQ(absent.status, AntParentAbsent);
-    EXPECT_FALSE(antParentMineable(absent));
-}
-
-TEST(TestAntParentRecordForValidation, UsesTheTreeRecordDirectlyWhenPresent)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    const m256i owner = makeKey(6);
-    ASSERT_NE(commitRootChild(fx->colony, owner, 3800, TEST_TICK, 0, 501), ANT_INVALID_INDEX);
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 },
-        /*allowUnsettled=*/false, view);
+    resolveAntParent(fx->colony, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 }, view);
     ASSERT_EQ(view.status, AntParentReady);
 
-    AntSolutionRecord scratch;
-    const AntSolutionRecord* used = antParentRecordForValidation(view, scratch);
-    EXPECT_EQ(used, view.treeRecord);
+    EXPECT_EQ(antParentRecordForValidation(view), view.treeRecord);
 }
 
-TEST(TestAntParentRecordForValidation, BuildsAScratchRecordForARingPendingParent)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    const m256i owner = makeKey(7);
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, owner, 4200));
-    ASSERT_TRUE(fx->window.workerStep(1));
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 },
-        /*allowUnsettled=*/true, view);
-    ASSERT_EQ(view.status, AntParentReady);
-    EXPECT_EQ(view.treeRecord, nullptr);
-
-    AntSolutionRecord scratch;
-    const AntSolutionRecord* used = antParentRecordForValidation(view, scratch);
-    ASSERT_EQ(used, &scratch);
-    EXPECT_TRUE(scratch.pubkey == owner);
-    EXPECT_EQ(scratch.score, 4200u);
-    EXPECT_EQ(scratch.shift, 0u);
-}
-
+// ROOT is derived, so there is no record to validate against and commit() takes nullptr for it.
 TEST(TestAntParentRecordForValidation, RootHasNoRecordToValidateAgainst)
 {
     GlueFixture* fx = freshFixture();
     ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
 
     AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ROOT_REF, /*allowUnsettled=*/false, view);
+    resolveAntParent(fx->colony, fx->scratchAnn, ROOT_REF, view);
     ASSERT_EQ(view.status, AntParentReady);
 
-    AntSolutionRecord scratch;
-    EXPECT_EQ(antParentRecordForValidation(view, scratch), nullptr);
+    EXPECT_EQ(antParentRecordForValidation(view), nullptr);
 }
 
-// ---------------------------------------------------------------------------------------------
-// computeAntWouldCommit()
-
-TEST(TestComputeAntWouldCommit, TrueWhenTheParentCommitsAndTheChildValidates)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    const m256i owner = makeKey(8);
-    ASSERT_NE(commitRootChild(fx->colony, owner, 3800, TEST_TICK, 0, 502), ANT_INVALID_INDEX);
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 },
-        /*allowUnsettled=*/false, view);
-    ASSERT_EQ(view.status, AntParentReady);
-
-    const ChildCandidate child{ owner, score_engine::Rating{ 3700, 0 }, TEST_TICK, TEST_TICK };
-    EXPECT_TRUE(computeAntWouldCommit(view, child, /*childCount=*/0, TEST_THRESHOLD));
-}
-
-// A parent that is itself still only a node-local prediction to fail commit() (wouldCommit = false)
-// must veto every child's prediction too, regardless of how good the child's own score is - this is
-// the whole point of propagating wouldCommit down a chain rather than checking only the immediate
-// parent (an honest computor must not fund a doomed grandchild's deposit either).
-TEST(TestComputeAntWouldCommit, FalseWhenTheParentItselfWouldNotCommit)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    const m256i owner = makeKey(9);
-    ASSERT_TRUE(appendAntSlot(fx->window, TEST_TICK, 0, owner, 3800));
-    ASSERT_TRUE(fx->window.workerStep(1));
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 },
-        /*allowUnsettled=*/true, view);
-    ASSERT_EQ(view.status, AntParentReady);
-    EXPECT_EQ(view.treeRecord, nullptr);
-    ASSERT_TRUE(view.wouldCommit);   // the stub scorer sets this true; override it for the test below
-    view.wouldCommit = false;
-
-    const ChildCandidate child{ owner, score_engine::Rating{ 3700, 0 }, TEST_TICK, TEST_TICK };
-    EXPECT_FALSE(computeAntWouldCommit(view, child, /*childCount=*/0, TEST_THRESHOLD));
-}
-
-TEST(TestComputeAntWouldCommit, FalseWhenTheChildDoesNotStrictlyBeatTheParent)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    const m256i owner = makeKey(10);
-    ASSERT_NE(commitRootChild(fx->colony, owner, 3800, TEST_TICK, 0, 503), ANT_INVALID_INDEX);
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 },
-        /*allowUnsettled=*/false, view);
-    ASSERT_EQ(view.status, AntParentReady);
-
-    // Same error as the parent: RejectLeParent, not a strict improvement.
-    const ChildCandidate child{ owner, score_engine::Rating{ 3800, 0 }, TEST_TICK, TEST_TICK };
-    EXPECT_FALSE(computeAntWouldCommit(view, child, /*childCount=*/0, TEST_THRESHOLD));
-}
-
-TEST(TestComputeAntWouldCommit, FalseWhenTheChildIsAboveThreshold)
+TEST(TestAntParentRecordForValidation, AbsentHasNoRecord)
 {
     GlueFixture* fx = freshFixture();
     ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
 
     AntParentView view;
-    resolveAntParent(fx->colony, fx->window, ANT_KIND, fx->scratchAnn, ROOT_REF, /*allowUnsettled=*/false, view);
-    ASSERT_EQ(view.status, AntParentReady);
+    resolveAntParent(fx->colony, fx->scratchAnn, SolutionRef{ TEST_TICK + 99, 7 }, view);
+    ASSERT_EQ(view.status, AntParentAbsent);
 
-    const ChildCandidate child{ makeKey(11), score_engine::Rating{ TEST_THRESHOLD + 1, 0 }, TEST_TICK, TEST_TICK };
-    EXPECT_FALSE(computeAntWouldCommit(view, child, /*childCount=*/0, TEST_THRESHOLD));
+    EXPECT_EQ(antParentRecordForValidation(view), nullptr);
 }

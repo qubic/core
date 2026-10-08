@@ -437,15 +437,15 @@ static void computeAntAnchorDigest(unsigned int tick, const m256i& transactionDi
 // Thin wrappers binding this node's globals to the parameterized helpers in
 // mining/solution_settlement_kinds.h.
 //
-// The tree at tick T is settled only through T-W-1; that gap is the settlement window.
-// Every reader of a parent reference goes through resolveAntParent().
+// Every reader of a parent reference goes through resolveAntParent(), which answers from the settled
+// tree alone. A solution recorded at tick T joins the tree at T + SOLUTION_SETTLEMENT_WINDOW_TICKS, so
+// that width is also the cadence at which one generation can build on the last.
 static SolutionSettlementWindow gSettlementWindow;
 
-static void resolveAntParent(const SolutionRef& parentRef, bool allowUnsettled, unsigned long long processorNumber,
+static void resolveAntParent(const SolutionRef& parentRef, unsigned long long processorNumber,
     AntParentView& out)
 {
-    ::resolveAntParent(gAntColony, gSettlementWindow, AntColonyMiningSolutionTransaction::transactionType(),
-        gAntParentAnnScratch[processorNumber], parentRef, allowUnsettled, out);
+    ::resolveAntParent(gAntColony, gAntParentAnnScratch[processorNumber], parentRef, out);
 }
 
 // A pool miner's solution, arriving over BroadcastMessage
@@ -486,12 +486,11 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
         return;
     }
 
-    // Ring-first: a parent that landed since the last settlement is still in the window, not yet
-    // the tree. Pending, Absent and a parent predicted to fail commit() all drop as
-    // parentUnknown; the miner retries.
+    // Only a committed parent can be built on, so one still inside the settlement window answers
+    // Absent and the child drops as parentUnknown; the miner retries once the parent has settled.
     AntParentView parentView;
-    resolveAntParent(parentRef, /*allowUnsettled=*/true, processorNumber, parentView);
-    if (!antParentMineable(parentView))
+    resolveAntParent(parentRef, processorNumber, parentView);
+    if (parentView.status != AntParentReady)
     {
         antDebugPoolDrop(L"parentUnknown", payload);
         gAntPendingSolutions.noteDroppedParentUnknown();
@@ -530,8 +529,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     // publisher re-checks. Failing now is final enough to refuse the slot.
     const unsigned int childCount = gAntColony.childCountForQuery(parentRef, computorPublicKey);
     const ChildCandidate candidate{ computorPublicKey, childRating, payload.anchorTick, system.tick };
-    AntSolutionRecord validationScratch;
-    const AntSolutionRecord* parentForValidation = antParentRecordForValidation(parentView, validationScratch);
+    const AntSolutionRecord* parentForValidation = antParentRecordForValidation(parentView);
     if (AntColonyBpp9000T::validateChild(candidate, parentForValidation, childCount,
         gAntColony.errorThreshold()) != ValidityResult::Valid)
     {
@@ -750,9 +748,9 @@ static void scoreStandaloneSolution(SettlementSlot& slot, unsigned long long pro
     copyMem(slot.result, &result, sizeof(result));
 }
 
-// Registered scoreFn for ant solutions: resolve the parent, unsettled first, score the child,
-// wouldCommit. Writes an invalid rating for any unscorable outcome; settlement resolves the
-// same dependencies the same way and rejects identically.
+// Registered scoreFn for ant solutions: resolve the parent, then score the child. Writes an invalid
+// rating for any unscorable outcome; settlement resolves the same dependencies the same way and
+// rejects identically.
 static void scoreAntSolution(SettlementSlot& slot, unsigned long long processorNumber)
 {
     AntSolutionRecordCapture record;
@@ -762,24 +760,17 @@ static void scoreAntSolution(SettlementSlot& slot, unsigned long long processorN
     setMem(&result, sizeof(result), 0);
     result.rating = score_engine::Rating::worst();
 
-    // A parent is always in a strictly earlier tick. Without this check a record naming its own
-    // slot would leave this worker waiting on a result only it can write, and settlement waiting
-    // on the same slot.
+    // A parent is always in a strictly earlier tick. Phase 1 already refused anything else, so this
+    // is the same rule restated where the score depends on it.
     if (!record.parentRef.isRoot() && record.parentRef.tick >= slot.tick)
     {
         copyMem(slot.result, &result, sizeof(result));
         return;
     }
 
+    // The tree only, so no slot depends on another slot and workers may score in any order.
     AntParentView parentView;
-    resolveAntParent(record.parentRef, /*allowUnsettled=*/true, processorNumber, parentView);
-    if (parentView.status == AntParentPending)
-    {
-        // The parent is in flight, pulled by the shared cursor before this child - the wait is one
-        // score at most, never a spin on a rejected parent.
-        gSettlementWindow.waitScored(record.parentRef.tick, record.parentRef.solutionIndexInTick);
-        resolveAntParent(record.parentRef, /*allowUnsettled=*/true, processorNumber, parentView);
-    }
+    resolveAntParent(record.parentRef, processorNumber, parentView);
     if (parentView.status != AntParentReady)
     {
         copyMem(slot.result, &result, sizeof(result));
@@ -812,20 +803,14 @@ static void scoreAntSolution(SettlementSlot& slot, unsigned long long processorN
     KangarooTwelve(&childAnn, sizeof(childAnn), &result.annHash, sizeof(result.annHash));
     result.depth = parentView.depth + 1;
 
-    // slot.tick is this child's own tick, the same "now" settlement uses, not system.tick.
-    // childCount counts tree children only, which is moot at ANT_MAX_CHILDREN_PER_PARENT == 0.
-    const unsigned int childCount = gAntColony.childCountForQuery(record.parentRef, record.sourcePublicKey);
-    const ChildCandidate candidate{ record.sourcePublicKey, result.rating, record.anchorTick, slot.tick };
-    result.wouldCommit = computeAntWouldCommit(parentView, candidate, childCount, gAntColony.errorThreshold());
-
     copyMem(slot.result, &result, sizeof(result));
 }
 
 // Registered settleFn: the verdict tail, at T+W on the tick processor. Uses slot.tick as "now"
 // throughout, never system.tick, which is W ticks ahead of this solution's freshness window.
-// Re-reads the parent from the tree and the anchor from the anchor ring, because the worker's own
-// read of both was node-local. Takes the rating and network from the worker's result, which every
-// node computes identically. depth feeds the debug line only; wouldCommit is not read here.
+// Re-reads the parent from the tree and the anchor from the anchor ring, because the worker read both
+// on its own schedule. Takes the rating and network from the worker's result, which every node
+// computes identically. depth feeds the debug line only.
 static void settleAntSolution(const SettlementSlot& slot, unsigned long long processorNumber)
 {
     AntSolutionRecordCapture record;
@@ -834,8 +819,7 @@ static void settleAntSolution(const SettlementSlot& slot, unsigned long long pro
     copyMem(&result, slot.result, sizeof(result));
 
     AntParentView parentView;
-    resolveAntParent(record.parentRef, /*allowUnsettled=*/false, processorNumber, parentView);
-    ASSERT(parentView.status != AntParentPending);   // by T+W the parent is settled or gone
+    resolveAntParent(record.parentRef, processorNumber, parentView);
     if (parentView.status != AntParentReady)
     {
         gAntColony.recordReject(ValidityResult::RejectParentNotRegistered);
@@ -2259,59 +2243,16 @@ static void processRequestAntIdentityTree(unsigned long long processorNumber, Pe
         idx++;
     }
 
-    // Tree exhausted and there is still room: a parent becomes mineable once scored && wouldCommit,
-    // up to a window-width before it settles into the tree, so the identity-tree listing must
-    // also report scored-but-still-pending nodes of this identity or a miner would only ever see
-    // parents up to W ticks stale. No wire change - AntIdentityTreeNode cannot tell tree from pending
-    // apart, and a pending node genuinely has zero SETTLED children yet (nothing can settle ahead of
-    // its own still-pending parent), so childCount = 0 is exact, not a simplification.
-    bool pendingScanned = false;
-    if (idx >= total && response.header.count < ANT_IDENTITY_TREE_NODES_PER_RESPONSE)
-    {
-        pendingScanned = true;
-        gSettlementWindow.forEachUnsettled(ANT_IDENTITY_TREE_SCAN_BUDGET,
-            [&response, request](const SettlementSlot& slot) -> bool
-            {
-                if (slot.inputType == AntColonyMiningSolutionTransaction::transactionType() && slot.scored)
-                {
-                    AntSolutionRecordCapture record;
-                    copyMem(&record, slot.record, sizeof(record));
-                    if (record.sourcePublicKey == request->pubkey)
-                    {
-                        AntSolutionResult result;
-                        copyMem(&result, slot.result, sizeof(result));
-                        // Same bar as every other reader: scored and predicted to commit.
-                        if (result.rating.isValid() && result.wouldCommit != 0)
-                        {
-                            AntIdentityTreeNode& item = response.items[response.header.count];
-                            item.selfTick = slot.tick;
-                            item.selfSolutionIndexInTick = slot.txIndex;
-                            item.parentTick = record.parentRef.tick;
-                            item.parentSolutionIndexInTick = record.parentRef.solutionIndexInTick;
-                            item.score = result.rating.error;
-                            item.shift = result.rating.shift;
-                            item.childCount = 0;
-                            item.anchorTick = record.anchorTick;
-                            item.depth = result.depth;
-                            response.header.count++;
-                        }
-                    }
-                }
-                return response.header.count < ANT_IDENTITY_TREE_NODES_PER_RESPONSE;
-            });
-    }
-
-    // Zero means the caller reached the end of what this node holds. A tree page that filled
-    // exactly as the tree ran out left no room for the pending scan, so point the caller at total
-    // once to collect it; that return call finds nothing left in the tree, runs the scan, and
-    // answers zero. The scan itself is a single page by construction, so it never asks twice.
+    // Zero means the caller reached the end of what this node holds. Only settled nodes are listed,
+    // so every node answers this query identically for a given identity, give or take the tick each
+    // has settled through.
     if (idx < total)
     {
         response.header.nextIndex = idx;
     }
     else
     {
-        response.header.nextIndex = pendingScanned ? 0 : total;
+        response.header.nextIndex = 0;
     }
 
     enqueueResponse(peer,
@@ -2355,12 +2296,11 @@ static void processRequestAntParentAnn(unsigned long long processorNumber, Peer*
         return;
     }
 
-    // Ring-first: a parent scored since the last settlement is a real network to mine on even
-    // though it is not in the tree yet. Pending, Absent, and a parent predicted to fail commit() all
-    // answer not-found.
+    // Only a committed parent is served. One still inside the settlement window answers not-found,
+    // so the networks this node hands out are the ones every node agrees on.
     AntParentView parentView;
-    resolveAntParent(ref, /*allowUnsettled=*/true, processorNumber, parentView);
-    if (!antParentMineable(parentView))
+    resolveAntParent(ref, processorNumber, parentView);
+    if (parentView.status != AntParentReady)
     {
         response.header.status = ANT_PARENT_ANN_STATUS_NOT_FOUND;
         enqueueResponse(peer, sizeof(response.header), RespondAntParentAnnHeader::type(), header->dejavu(), &response);
@@ -4117,17 +4057,11 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
         return;
     }
 
-    // Ring-first: a parent that landed since the last settlement is still in the window. Pending
-    // keeps the entry as-is - selectForPublish() only read it, never consumed it - for a later tick
-    // to try again once the parent is scored.
+    // A parent still inside the settlement window answers Absent, and so does one that was never
+    // registered. Either way this entry cannot land, because phase 1 would refuse it.
     AntParentView parentView;
-    resolveAntParent(entry.parentRef, /*allowUnsettled=*/true, processorNumber, parentView);
-    if (parentView.status == AntParentPending)
-    {
-        return;   // still in flight, retried later
-    }
-    // Absent, or scored and predicted to fail commit(): either way this entry can never land.
-    if (!antParentMineable(parentView))
+    resolveAntParent(entry.parentRef, processorNumber, parentView);
+    if (parentView.status != AntParentReady)
     {
         gAntPendingSolutions.markObsoleteParentGone(idx);
         antDebugPending(L"retire parentGone", entry, 0);
@@ -4162,8 +4096,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
     const unsigned int childCount = gAntColony.childCountForQuery(entry.parentRef,
         entry.computorPublicKey);
     const ChildCandidate candidate{ entry.computorPublicKey, entry.rating, entry.anchorTick, publishTick };
-    AntSolutionRecord validationScratch;
-    const AntSolutionRecord* parentForValidation = antParentRecordForValidation(parentView, validationScratch);
+    const AntSolutionRecord* parentForValidation = antParentRecordForValidation(parentView);
     if (AntColonyBpp9000T::validateChild(candidate, parentForValidation, childCount,
         gAntColony.errorThreshold()) != ValidityResult::Valid)
     {
