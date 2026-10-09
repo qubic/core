@@ -404,6 +404,16 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
 
 OPTIMIZE_OFF()
 
+// Log a file I/O failure (failed read/write) with the file name, so a failure leaves a
+// trace even when a caller does not act on the returned status.
+static void logFileIOFailure(bool isSave, const CHAR16* fileName)
+{
+    CHAR16 message[256];
+    setText(message, isSave ? L"[file_io] failed to write file: " : L"[file_io] failed to read file: ");
+    appendText(message, fileName);
+    logToConsole(message);
+}
+
 struct FileItem
 {
     enum ItemState
@@ -424,6 +434,7 @@ struct FileItem
     char mState;
     unsigned long long mReservedSize;
     long long mAge;
+    long long mResult; // last save()/load() result (<0 = failure), read by blocking callers
 
     void set(const CHAR16* fileName, unsigned long long fileSize, const CHAR16* directory)
     {
@@ -435,6 +446,7 @@ struct FileItem
             mHaveDirectory = true;
         }
         mSize = fileSize;
+        mResult = 0;
     }
 
     void setState(char val)
@@ -639,6 +651,11 @@ protected:
                 {
                     sts = load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
                 }
+                item.mResult = sts;
+                if (sts < 0)
+                {
+                    logFileIOFailure(isSave, item.mFileName);
+                }
                 item.markAsDone();
             }
         }
@@ -684,6 +701,11 @@ protected:
             else
             {
                 sts = load(item.mFileName, item.mSize, item.mpBuffer, item.mHaveDirectory ? item.mDirectory : NULL);
+            }
+            item.mResult = sts;
+            if (sts < 0)
+            {
+                logFileIOFailure(isSave, item.mFileName);
             }
             item.markAsDone();
         }
@@ -888,7 +910,7 @@ public:
         if (isMainThread())
         {
             mFileBlockingWriteQueue.flushWrite();
-            return (long long)totalSize;
+            return pFileItem->mResult;
         }
 
         // Blocking wait for the save operator finish
@@ -896,8 +918,9 @@ public:
         {
             sleep(1000);
         }
+        const long long result = pFileItem->isProcessed() ? pFileItem->mResult : (long long)kStop;
         pFileItem->mState = FileItem::kFree;
-        return (long long)totalSize;
+        return result;
     }
 
     // Function to schedule load. Buffer will be filled data, make sure the buffer is untouched until this function done
@@ -927,7 +950,7 @@ public:
         if (mainThread)
         {
             mFileBlockingReadQueue.flushRead();
-            return (long long)totalSize;
+            return pFileItem->mResult;
         }
 
         // Wait for data is processed
@@ -935,8 +958,9 @@ public:
         {
             sleep(1000);
         }
+        const long long result = pFileItem->isProcessed() ? pFileItem->mResult : (long long)kStop;
         pFileItem->mState = FileItem::kFree;
-        return (long long)totalSize;
+        return result;
     }
 
     void flushRem()
