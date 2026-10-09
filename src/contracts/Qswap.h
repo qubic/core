@@ -19,6 +19,7 @@ constexpr sint64 QSWAP_MIN_LIQUIDITY = 1000;
 constexpr sint64 QSWAP_ADDITIONAL_FEE = 100000;
 constexpr uint32 QSWAP_SWAP_FEE_BASE = 10000;
 constexpr uint32 QSWAP_FEE_BASE_100 = 100;
+constexpr uint64 QSWAP_LIQUIDITY_KEY_DOMAIN = 0x31504C5041575351ULL; // QSWAPLP1 in little-endian bytes
 
 struct QSWAP2
 {
@@ -85,6 +86,14 @@ public:
 		uint128 feeDebtX64;
 		uint64 accumulatedFee;
 	};
+
+	struct LiquidityKeyInput
+	{
+		uint64 domain;
+		uint64 pool0, pool1, pool2, pool3;
+		uint64 account0, account1, account2, account3;
+	};
+	STATIC_ASSERT(sizeof(LiquidityKeyInput) == 72, LiquidityKeyInputMustHaveNoPadding);
 
 	struct StateData
 	{
@@ -370,15 +379,21 @@ protected:
 		return (a < b) ? a : b;
 	}
 
-	// Collection PoV must be unique per (pool, LP). Using poolID alone forced O(#LPs) scans; one PoV per pair yields headIndex ~ O(1).
-	inline static id liquidityPov(const id& poolID, const id& entity, id& r)
+	// Security: LP records store no owner or pool; this domain-separated K12 key binds the position to its pool and account.
+	// Never weaken it to XOR or truncation. Any encoding change requires conversion of existing records.
+	// Hash exactly 72 bytes: QSWAPLP1, pool ID, account; all words are little-endian under the Core ABI.
+	inline static const LiquidityKeyInput& liquidityKeyInput(const id& poolID, const id& account, LiquidityKeyInput& input)
 	{
-		r = entity;
-		r.u64._0 ^= poolID.u64._0;
-		r.u64._1 ^= poolID.u64._1;
-		r.u64._2 ^= poolID.u64._2;
-		r.u64._3 ^= poolID.u64._3;
-		return r;
+		input.domain = QSWAP_LIQUIDITY_KEY_DOMAIN;
+		input.pool0 = poolID.u64._0;
+		input.pool1 = poolID.u64._1;
+		input.pool2 = poolID.u64._2;
+		input.pool3 = poolID.u64._3;
+		input.account0 = account.u64._0;
+		input.account1 = account.u64._1;
+		input.account2 = account.u64._2;
+		input.account3 = account.u64._3;
+		return input;
 	}
 
 	// find the sqrt of a*b
@@ -618,7 +633,7 @@ protected:
 		id poolID;
 		id liqPov;
 		sint64 liqElementIndex;
-		id r;
+		LiquidityKeyInput keyInput;
 		sint64 poolSlot;
 		LiquidityInfo li;
 		uint128 pendingFeeX64;
@@ -639,7 +654,7 @@ protected:
 		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
 		locals.poolSlot = locals.fsRoOut.poolSlot;
 
-		locals.liqPov = liquidityPov(locals.poolID, input.account, locals.r);
+		locals.liqPov = qpi.K12(liquidityKeyInput(locals.poolID, input.account, locals.keyInput));
 		locals.liqElementIndex = state.get().mLiquidities.headIndex(locals.liqPov, 0);
 		if (locals.liqElementIndex == NULL_INDEX)
 		{
@@ -1029,7 +1044,8 @@ protected:
 		AddLiquidityMessage addLiquidityMessage;
 		id poolID;
 		sint64 poolSlot;
-		id r;
+		id liquidityKey;
+		LiquidityKeyInput keyInput;
 		PoolBasicState poolBasicState;
 		LiquidityInfo tmpLiquidity;
 
@@ -1187,6 +1203,13 @@ protected:
 				return;
 			}
 
+			// The initial mint stores both the permanent lock and the depositor's position.
+			if (state.get().mLiquidities.capacity() - state.get().mLiquidities.population() < 2)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				return;
+			}
+
 			locals.reservedAssetAmountBefore = qpi.numberOfPossessedShares(
 				input.assetName,
 				input.assetIssuer,
@@ -1223,10 +1246,12 @@ protected:
 
 			// permanently lock the first MINIMUM_LIQUIDITY tokens
 			locals.tmpLiquidity.liquidity = QSWAP_MIN_LIQUIDITY;
-			state.mut().mLiquidities.add(liquidityPov(locals.poolID, SELF, locals.r), locals.tmpLiquidity, 0);
+			locals.liquidityKey = qpi.K12(liquidityKeyInput(locals.poolID, SELF, locals.keyInput));
+			state.mut().mLiquidities.add(locals.liquidityKey, locals.tmpLiquidity, 0);
 
 			locals.tmpLiquidity.liquidity = locals.increaseLiquidity - QSWAP_MIN_LIQUIDITY;
-			state.mut().mLiquidities.add(liquidityPov(locals.poolID, qpi.invocator(), locals.r), locals.tmpLiquidity, 0);
+			locals.liquidityKey = qpi.K12(liquidityKeyInput(locals.poolID, qpi.invocator(), locals.keyInput));
+			state.mut().mLiquidities.add(locals.liquidityKey, locals.tmpLiquidity, 0);
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
@@ -1266,7 +1291,8 @@ protected:
 				return;
 			}
 
-			locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(liquidityPov(locals.poolID, qpi.invocator(), locals.r), 0);
+			locals.liquidityKey = qpi.K12(liquidityKeyInput(locals.poolID, qpi.invocator(), locals.keyInput));
+			locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(locals.liquidityKey, 0);
 
 			// no more space for new liquidity item
 			if ((locals.userLiquidityElementIndex == NULL_INDEX) && ( state.get().mLiquidities.population() == state.get().mLiquidities.capacity()))
@@ -1315,7 +1341,7 @@ protected:
 			{
 				locals.tmpLiquidity.liquidity = locals.increaseLiquidity;
 				locals.tmpLiquidity.feeDebtX64 = locals.poolBasicState.accFeePerLPX64;
-				state.mut().mLiquidities.add(liquidityPov(locals.poolID, qpi.invocator(), locals.r), locals.tmpLiquidity, 0);
+				state.mut().mLiquidities.add(locals.liquidityKey, locals.tmpLiquidity, 0);
 			}
 			else
 			{
@@ -1359,7 +1385,8 @@ protected:
 		RemoveLiquidityMessage removeLiquidityMessage;
 		id poolID;
 		PoolBasicState poolBasicState;
-		id r;
+		id liquidityKey;
+		LiquidityKeyInput keyInput;
 		sint64 userLiquidityElementIndex;
 		sint64 poolSlot;
 		LiquidityInfo userLiquidity;
@@ -1411,7 +1438,8 @@ protected:
 
 		locals.poolBasicState = state.get().mPoolBasicStates.get(locals.poolSlot);
 
-		locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(liquidityPov(locals.poolID, qpi.invocator(), locals.r), 0);
+		locals.liquidityKey = qpi.K12(liquidityKeyInput(locals.poolID, qpi.invocator(), locals.keyInput));
+		locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(locals.liquidityKey, 0);
 
 		if (locals.userLiquidityElementIndex == NULL_INDEX)
 		{
