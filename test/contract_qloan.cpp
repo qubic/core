@@ -130,6 +130,7 @@ public:
     {
         QLOAN::GetAllLoanReqs_input input;
         QLOAN::GetAllLoanReqs_output output;
+        input.offset = 0;
         callFunction(QLOAN_CONTRACT_INDEX, 1, input, output);
         return output;
     }
@@ -320,7 +321,7 @@ TEST(ContractQLoan, EpochDebtCalculation)
     EXPECT_EQ(reqs.reqs.get(0).epochsLeft, 0);
 }
 
-TEST(ContractQLoan, LoanExpiration)
+TEST(ContractQLoan, LoanDefault)
 {
     ContractTestingQLoan qloan;
 
@@ -345,6 +346,37 @@ TEST(ContractQLoan, LoanExpiration)
 
     EXPECT_EQ(qloan.getState()->_loanReqs.population(), 0);
     EXPECT_EQ(qloan.getState()->_totalReqs, 0);
+}
+
+TEST(ContractQLoan, LoanExpiration)
+{
+    ContractTestingQLoan qloan;
+
+    increaseEnergy(testAddress1, 105000);
+    increaseEnergy(testAddress2, 100000);
+
+    std::string assetName = "ABCG";
+    qloan.placeLoanReq(testAddress1, assetName, testAddress2, 300, 2000, 10, 2, false, false, QLOAN_PLACE_LOAN_REQ_FEE + 2000);
+
+    EXPECT_EQ(qloan.getState()->_loanReqs.population(), 1);
+    EXPECT_EQ(qloan.getState()->_totalReqs, 1);
+    EXPECT_EQ(getBalance(testAddress1), 3000);
+
+    for (int i = 0; i < QLOAN_REQ_EXISTENCE_EPOCH_COUNT; i++)
+    {
+        system.epoch++;
+        qloan.beginEpoch();
+    }
+
+    EXPECT_EQ(qloan.getState()->_loanReqs.population(), 1);
+    EXPECT_EQ(qloan.getState()->_totalReqs, 1);
+    EXPECT_EQ(getBalance(testAddress1), 3000);
+
+    system.epoch++;
+    qloan.beginEpoch();
+    EXPECT_EQ(qloan.getState()->_loanReqs.population(), 0);
+    EXPECT_EQ(qloan.getState()->_totalReqs, 0);
+    EXPECT_EQ(getBalance(testAddress1), 5000);
 }
 
 TEST(ContractQLoan, PayLoanDebt)

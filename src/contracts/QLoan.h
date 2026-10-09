@@ -11,8 +11,9 @@ constexpr uint64 QLOAN_MAX_LOAN_PERIOD_IN_EPOCHS = 52;
 constexpr uint64 QLOAN_MAX_INTEREST_RATE = 100;
 constexpr uint64 QLOAN_MAX_ASSETS_NUM = 2;
 constexpr uint64 QLOAN_MAX_OUTPUT_NUM = 128;
+constexpr uint64 QLOAN_REQ_EXISTENCE_EPOCH_COUNT = 5;
 
-constexpr uint64 QLOAN_MAX_LOAN_REQS_NUM = 1024;
+constexpr uint64 QLOAN_MAX_LOAN_REQS_NUM = 32768;
 
 struct QLOAN2
 {
@@ -23,9 +24,7 @@ struct QLOAN : public ContractBase
     enum LoanReqState : uint8
     {
         IDLE = 1,
-        ACTIVE = 2,
-        PAYED = 3,
-        EXPIRED = 4,
+        ACTIVE = 2
     };
 
     struct LoanOutputInfo
@@ -255,7 +254,7 @@ struct QLOAN : public ContractBase
         output.loanOutputInfo.debtAmount = input.loanReqInfo.debtAmount;
         output.loanOutputInfo.returnPeriodInEpochs = input.loanReqInfo.returnPeriodInEpochs;
         output.loanOutputInfo.epochsLeft = input.loanReqInfo.epochsLeft;
-        output.loanOutputInfo.creationEpoch= input.loanReqInfo.creationEpoch;
+        output.loanOutputInfo.creationEpoch = input.loanReqInfo.creationEpoch;
         output.loanOutputInfo.assetsToCreditor = input.loanReqInfo.assetsToCreditor;
         output.loanOutputInfo.state = input.loanReqInfo.state;
     }
@@ -936,7 +935,6 @@ public:
         _TransferAssetsFromTo_output transferAssetsFromToOutput;
     };
 
-
     BEGIN_EPOCH_WITH_LOCALS()
     {
         locals.activeLoanReqsIdx = state.get()._loanReqs.nextElementIndex(NULL_INDEX);
@@ -976,9 +974,21 @@ public:
 
                 state.mut()._loanReqs.replace(state.get()._loanReqs.key(locals.activeLoanReqsIdx), locals.tmpLoanReqInfo);
             }
+            else if (locals.tmpLoanReqInfo.state == LoanReqState::IDLE && locals.tmpLoanReqInfo.creationEpoch + QLOAN_REQ_EXISTENCE_EPOCH_COUNT < qpi.epoch())
+            {
+                if (locals.tmpLoanReqInfo.creditor != NULL_ID)
+                {
+                    qpi.transfer(locals.tmpLoanReqInfo.creditor, locals.tmpLoanReqInfo.priceAmount);
+                }
+
+                state.mut()._loanReqs.removeByIndex(locals.activeLoanReqsIdx);
+                state.mut()._totalReqs--;
+            }
 
             locals.activeLoanReqsIdx = state.get()._loanReqs.nextElementIndex(locals.activeLoanReqsIdx);
         }
+
+        state.mut()._loanReqs.cleanupIfNeeded();
     }
 
     struct END_EPOCH_locals
