@@ -3984,6 +3984,16 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
         return;
     }
 
+    // Skip a solution the chain has already processed
+    unsigned int seenFlagIndices[2];
+    computeAntSolutionFlagIndices(entry.computorPublicKey, entry.nonce, entry.parentRef, seenFlagIndices);
+    if (isAntSolutionSeen(seenFlagIndices))
+    {
+        gAntPendingSolutions.markObsoleteGateRejected(idx);
+        antDebugPending(L"retire seen", entry, 0);
+        return;
+    }
+
     const AntSolutionRecord* parentRec = nullptr;
     if (gAntColony.tryGetParent(entry.parentRef, &parentRec) != ValidityResult::Valid)
     {
