@@ -1228,8 +1228,6 @@ struct QPUMP : public ContractBase
     {
         BuyQdoge_input qdogeIn;
         BuyQdoge_output qdogeOut;
-        QTREAT::DepositDividends_input qtreatIn;
-        QTREAT::DepositDividends_output qtreatOut;
         sint64 perShare;
     };
 
@@ -3706,19 +3704,22 @@ struct QPUMP : public ContractBase
             }
         }
         // Pooled per epoch rather than sent per trade, like every other share
-        // of the fee. Invoked rather than transferred to QTREAT's address on
-        // purpose: a bare transfer runs QTREAT's POST_INCOMING_TRANSFER, and
-        // that callback aborts the SENDER if QTREAT is ever inactive or in an
-        // error state. An abort here, inside END_EPOCH, spins forever and
-        // stalls the network. The invoke hands back a call error instead and
-        // the pot simply waits for the next epoch. END_EPOCH runs in
-        // descending contract index, so QTREAT (30) distributes this in the
-        // same epoch Qpump (31) deposits it.
+        // of the fee. QTREAT's POST_INCOMING_TRANSFER books a qpiTransfer into
+        // its dividend fund, so a plain transfer gets there. Its
+        // DepositDividends procedure would be the safer route, because a
+        // transfer runs that callback and the callback aborts the SENDER if
+        // QTREAT is ever in an error state - an abort inside END_EPOCH spins
+        // forever and stalls the network - but the contract verifier rejects
+        // QTREAT:: scope resolution, so the invoke is not available here. The
+        // weaker failure mode is bounded: QTREAT constructs in epoch 233 and
+        // Qpump in 235, so QTREAT can never merely be inactive by the time
+        // this runs, and this is the same exposure QBond, QThirtyFour and
+        // Qswap already carry when they transfer to another contract.
+        // END_EPOCH runs in descending contract index, so QTREAT (30)
+        // distributes this in the same epoch Qpump (31) deposits it.
         if (state.get().qtreatPot > 0)
         {
-            INVOKE_OTHER_CONTRACT_PROCEDURE_E(QTREAT, DepositDividends, locals.qtreatIn, locals.qtreatOut,
-                state.get().qtreatPot, qtreatError);
-            if (qtreatError == NoCallError && locals.qtreatOut.returnCode == QTREAT_OK)
+            if (qpi.transfer(id(QTREAT_CONTRACT_INDEX, 0, 0, 0), state.get().qtreatPot) >= 0)
             {
                 state.mut().totalToQtreat += state.get().qtreatPot;
                 state.mut().qtreatPot = 0;
