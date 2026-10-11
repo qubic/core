@@ -532,7 +532,7 @@ static bool checkAlgoThreshold(int threshold, AlgoType algo)
     case AlgoType::Bpp9000:
         // The score is an error inside one frame. At or below the advance gate no root clears the
         // frame-0 floor; at or above the frame width every error clears it.
-        if (threshold <= (int)(BPP9000_WINDOW_WIDTH / 3) || threshold >= (int)BPP9000_WINDOW_WIDTH)
+        if (threshold <= (int)BPP9000_ADVANCE_THRESHOLD || threshold >= (int)BPP9000_WINDOW_WIDTH)
         {
             return false;
         }
