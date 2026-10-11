@@ -14,11 +14,11 @@ using namespace QPI;
 // Balances are internal until graduation issues the real asset.
 // No admin, no pause. Fees and limits are constants below.
 //
-// The trade fee splits 60 percent to shareholders, 20 percent into a QDOGE
-// buyback the contract keeps for good, and 20 percent to the QPayhub
-// contract's fee pool. The graduation donation goes to a fixed charity
-// identity. All three destinations are compile-time constants, so no key
-// can redirect them.
+// The trade fee splits 34 percent to this contract's shareholders, 33
+// percent into a QDOGE buyback the contract keeps for good, and 33 percent
+// into QTREAT's dividend fund. The graduation donation goes to a fixed
+// charity identity. Every destination is a compile-time constant, so no
+// key can redirect them.
 
 // ---- Curve ----
 constexpr sint64 QPUMP_CURVE_SUPPLY = 710000000LL;            // tokens sold on the curve
@@ -51,9 +51,9 @@ constexpr sint64 QPUMP_TRANSFER_FEE = 100LL;                  // flat fee per in
 constexpr sint64 QPUMP_MIN_TRADE_FEE = 1000LL;
 constexpr uint64 QPUMP_BPS = 10000ULL;
 constexpr uint64 QPUMP_TRADE_FEE_BPS = 100ULL;                // 1 percent
-constexpr uint64 QPUMP_FEE_QDOGE_SHARE_BPS = 2000ULL;         // 20 percent buys QDOGE, locked for good
-constexpr uint64 QPUMP_FEE_QPAYHUB_SHARE_BPS = 2000ULL;       // 20 percent to the QPayhub contract's fee pool
-constexpr uint64 QPUMP_FEE_SHAREHOLDER_SHARE_BPS = 6000ULL;   // 60 percent; taken as the remainder, so rounding dust lands here
+constexpr uint64 QPUMP_FEE_QDOGE_SHARE_BPS = 3300ULL;         // 33 percent buys QDOGE, locked for good
+constexpr uint64 QPUMP_FEE_QTREAT_SHARE_BPS = 3300ULL;        // 33 percent into QTREAT's dividend fund
+constexpr uint64 QPUMP_FEE_SHAREHOLDER_SHARE_BPS = 3400ULL;   // 34 percent; taken as the remainder, so rounding dust lands here
 constexpr sint64 QPUMP_QSWAP_LIQUIDITY_FEE = 100000LL;        // flat Qswap fee on AddLiquidity
 constexpr sint64 QPUMP_DEFAULT_QX_ISSUANCE_FEE = 1000000000LL;
 constexpr sint64 QPUMP_DEFAULT_QX_TRANSFER_FEE = 100LL;
@@ -145,7 +145,7 @@ static_assert(QPUMP_COST_LINEAR == 2ULL * 710000000ULL * QPUMP_START_PRICE_MILLI
 static_assert(QPUMP_COST_SLOPE == QPUMP_END_PRICE_MILLI - QPUMP_START_PRICE_MILLI);
 static_assert(QPUMP_COST_DENOMINATOR == 2ULL * 710000000ULL * QPUMP_MILLI);
 static_assert(QPUMP_OPENING_TOKEN_CAP * 4 == QPUMP_CURVE_SUPPLY);
-static_assert(QPUMP_FEE_QDOGE_SHARE_BPS + QPUMP_FEE_QPAYHUB_SHARE_BPS + QPUMP_FEE_SHAREHOLDER_SHARE_BPS == QPUMP_BPS);
+static_assert(QPUMP_FEE_QDOGE_SHARE_BPS + QPUMP_FEE_QTREAT_SHARE_BPS + QPUMP_FEE_SHAREHOLDER_SHARE_BPS == QPUMP_BPS);
 static_assert(QPUMP_LAUNCH_FEE_BURN <= QPUMP_LAUNCH_FEE);
 static_assert((QPUMP_MAX_COINS & (QPUMP_MAX_COINS - 1)) == 0);
 static_assert((QPUMP_NAME_CAPACITY & (QPUMP_NAME_CAPACITY - 1)) == 0);
@@ -280,7 +280,7 @@ struct QPUMP : public ContractBase
         sint64 shareholderPot;
         sint64 burnPot;
         sint64 qdogePot;
-        sint64 qpayhubPot;
+        sint64 qtreatPot;
         sint64 totalQuToQdoge;
         sint64 totalQdogeBought;
         sint64 cachedQxIssuanceFee;
@@ -292,7 +292,7 @@ struct QPUMP : public ContractBase
         sint64 totalVolume;
         sint64 totalDividends;
         sint64 totalBurned;
-        sint64 totalToQpayhub;
+        sint64 totalToQtreat;
         sint64 totalDonated;
     };
 
@@ -488,7 +488,7 @@ struct QPUMP : public ContractBase
     struct SplitFee_locals
     {
         sint64 qdoge;
-        sint64 qpayhub;
+        sint64 qtreat;
     };
 
     struct LinkHolder_input
@@ -863,7 +863,7 @@ struct QPUMP : public ContractBase
         uint64 tradeFeeBps;
         uint64 feeShareholderShareBps;
         uint64 feeQdogeShareBps;
-        uint64 feeQpayhubShareBps;
+        uint64 feeQtreatShareBps;
         sint64 qxIssuanceFee;
         sint64 qxTransferFee;
         sint64 qswapPoolFee;
@@ -921,13 +921,13 @@ struct QPUMP : public ContractBase
         sint64 shareholderPot;
         sint64 burnPot;
         sint64 qdogePot;
-        sint64 qpayhubPot;
+        sint64 qtreatPot;
         sint64 totalQuToQdoge;
         sint64 totalQdogeBought;
         sint64 feeReserve;
         sint64 totalDividends;
         sint64 totalBurned;
-        sint64 totalToQpayhub;
+        sint64 totalToQtreat;
         sint64 totalDonated;
         uint64 wallets;
         uint32 liveCoins;
@@ -1228,6 +1228,8 @@ struct QPUMP : public ContractBase
     {
         BuyQdoge_input qdogeIn;
         BuyQdoge_output qdogeOut;
+        QTREAT::DepositDividends_input qtreatIn;
+        QTREAT::DepositDividends_output qtreatOut;
         sint64 perShare;
     };
 
@@ -1546,10 +1548,10 @@ struct QPUMP : public ContractBase
             return;
         }
         locals.qdoge = static_cast<sint64>(div(static_cast<uint64>(input.fee) * QPUMP_FEE_QDOGE_SHARE_BPS, QPUMP_BPS));
-        locals.qpayhub = static_cast<sint64>(div(static_cast<uint64>(input.fee) * QPUMP_FEE_QPAYHUB_SHARE_BPS, QPUMP_BPS));
+        locals.qtreat = static_cast<sint64>(div(static_cast<uint64>(input.fee) * QPUMP_FEE_QTREAT_SHARE_BPS, QPUMP_BPS));
         state.mut().qdogePot += locals.qdoge;
-        state.mut().qpayhubPot += locals.qpayhub;
-        state.mut().shareholderPot += input.fee - locals.qdoge - locals.qpayhub;
+        state.mut().qtreatPot += locals.qtreat;
+        state.mut().shareholderPot += input.fee - locals.qdoge - locals.qtreat;
     }
 
     // Puts a holder entry at the head of its list.
@@ -2631,7 +2633,7 @@ struct QPUMP : public ContractBase
         output.tradeFeeBps = QPUMP_TRADE_FEE_BPS;
         output.feeShareholderShareBps = QPUMP_FEE_SHAREHOLDER_SHARE_BPS;
         output.feeQdogeShareBps = QPUMP_FEE_QDOGE_SHARE_BPS;
-        output.feeQpayhubShareBps = QPUMP_FEE_QPAYHUB_SHARE_BPS;
+        output.feeQtreatShareBps = QPUMP_FEE_QTREAT_SHARE_BPS;
         output.qxIssuanceFee = state.get().cachedQxIssuanceFee;
         output.qxTransferFee = state.get().cachedQxTransferFee;
         output.qswapPoolFee = state.get().cachedQswapPoolFee;
@@ -2700,8 +2702,8 @@ struct QPUMP : public ContractBase
         output.totalBurned = state.get().totalBurned;
         output.totalDonated = state.get().totalDonated;
         output.qdogePot = state.get().qdogePot;
-        output.qpayhubPot = state.get().qpayhubPot;
-        output.totalToQpayhub = state.get().totalToQpayhub;
+        output.qtreatPot = state.get().qtreatPot;
+        output.totalToQtreat = state.get().totalToQtreat;
         output.totalQuToQdoge = state.get().totalQuToQdoge;
         output.totalQdogeBought = state.get().totalQdogeBought;
         output.wallets = state.get().walletIds.population();
@@ -3703,15 +3705,23 @@ struct QPUMP : public ContractBase
                 state.mut().totalDividends += locals.perShare * NUMBER_OF_COMPUTORS;
             }
         }
-        // QPayhub's POST_INCOMING_TRANSFER books a qpiTransfer into its fee
-        // pool, so this needs no call into that contract. Pooled per epoch
-        // rather than sent per trade, like every other share of the fee.
-        if (state.get().qpayhubPot > 0)
+        // Pooled per epoch rather than sent per trade, like every other share
+        // of the fee. Invoked rather than transferred to QTREAT's address on
+        // purpose: a bare transfer runs QTREAT's POST_INCOMING_TRANSFER, and
+        // that callback aborts the SENDER if QTREAT is ever inactive or in an
+        // error state. An abort here, inside END_EPOCH, spins forever and
+        // stalls the network. The invoke hands back a call error instead and
+        // the pot simply waits for the next epoch. END_EPOCH runs in
+        // descending contract index, so QTREAT (30) distributes this in the
+        // same epoch Qpump (31) deposits it.
+        if (state.get().qtreatPot > 0)
         {
-            if (qpi.transfer(id(QPAYHUB_CONTRACT_INDEX, 0, 0, 0), state.get().qpayhubPot) >= 0)
+            INVOKE_OTHER_CONTRACT_PROCEDURE_E(QTREAT, DepositDividends, locals.qtreatIn, locals.qtreatOut,
+                state.get().qtreatPot, qtreatError);
+            if (qtreatError == NoCallError && locals.qtreatOut.returnCode == QTREAT_OK)
             {
-                state.mut().totalToQpayhub += state.get().qpayhubPot;
-                state.mut().qpayhubPot = 0;
+                state.mut().totalToQtreat += state.get().qtreatPot;
+                state.mut().qtreatPot = 0;
             }
         }
         if (state.get().burnPot > 0)
