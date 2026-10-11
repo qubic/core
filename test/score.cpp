@@ -33,7 +33,6 @@ using namespace test_utils;
 
 static const std::string TASK_FILE_NAME = "data/example_task_bpp9000.bin";
 static const std::string SAMPLES_FILE_NAME = "data/samples_bpp9000.csv";
-static const std::string SCORES_FILE_NAME = "data/scores_bpp9000.csv";
 
 static const std::string PRODUCTION_TASK_FILE_NAME = "data/bpp9000.task";
 static const std::string PRODUCTION_FILE_NAME = "data/gt_production.csv";
@@ -85,23 +84,6 @@ static void loadSamples(std::vector<m256i>& seeds, std::vector<m256i>& pubkeys, 
         nonces.push_back(hexTo32Bytes(trim(rows[i + 1][2]), 32));
     }
 }
-
-// // scores_bpp9000.csv: header (config params) + rows of two columns per config: shift, then failure count.
-// static std::vector<std::vector<unsigned int>> loadGolden()
-// {
-//     auto rows = readCSV(SCORES_FILE_NAME);
-//     std::vector<std::vector<unsigned int>> golden;
-//     for (unsigned long long i = 1; i < rows.size(); ++i)   // skip header
-//     {
-//         std::vector<unsigned int> row;
-//         for (const auto& cell : rows[i])
-//         {
-//             row.push_back((unsigned int)std::stoul(trim(cell)));
-//         }
-//         golden.push_back(row);
-//     }
-//     return golden;
-// }
 
 // Build synthetic task
 template<typename Cfg>
@@ -276,38 +258,6 @@ static std::unique_ptr<score_engine::ScoreBpp9000<Cfg>> makeEngine(const unsigne
     return engine;
 }
 
-// regression: ScoreBpp9000 on the real task subview vs the groundtruth. One read-only pool is shared
-// across threads (all samples use the same mining seed)
-template<std::size_t I>
-static void runRegressionConfig(const std::vector<m256i>& seeds, const std::vector<m256i>& pubkeys, const std::vector<m256i>& nonces,
-                                const std::vector<unsigned char>& taskBytes, const std::vector<std::vector<unsigned int>>& golden)
-{
-    using Cfg = std::tuple_element_t<I, ConfigList>;
-
-    const TaskBlocks tb = taskSubview<Cfg>(taskBytes);   // configs are first-T-rows subviews of the task file
-    std::vector<unsigned char> pool;
-    generatePool(seeds[0], pool);
-
-    runWorkers(workerThreadCount(seeds.size()), [&](unsigned int threadIdx, unsigned int numThreads)
-    {
-        auto engine = makeEngine<Cfg>(tb.topo, tb.data);
-        if (!engine)
-        {
-            return;
-        }
-        // All samples share one mining seed, so the epoch's control/output is derived once here.
-        engine->deriveControlOutput(seeds[0].m256i_u8, pool.data());
-        for (unsigned long long s = threadIdx; s < seeds.size(); s += numThreads)
-        {
-            const m256i& n = nonces[s];
-            const score_engine::Rating eng = engine->computeScore(pubkeys[s].m256i_u8, n.m256i_u8, pool.data());
-
-            EXPECT_EQ(eng.shift, golden[s][2 * I]) << "config " << I << " sample " << s;
-            EXPECT_EQ(eng.error, golden[s][2 * I + 1]) << "config " << I << " sample " << s;
-        }
-    });
-}
-
 // ScoreBpp9000 vs the reference on a random task. Used to debug a mismatch.
 // Note: each thread's reference owns a full pool, so this path costs ~512MB per thread.
 template<typename Cfg>
@@ -348,44 +298,10 @@ static void runRefVsEngineConfig(const std::vector<m256i>& seeds, const std::vec
     });
 }
 
-template<std::size_t I = 0>
-static void runRegression(const std::vector<m256i>& seeds, const std::vector<m256i>& pubkeys, const std::vector<m256i>& nonces,
-                          const std::vector<unsigned char>& taskBytes, const std::vector<std::vector<unsigned int>>& golden)
-{
-    if constexpr (I < CONFIG_COUNT)
-    {
-        runRegressionConfig<I>(seeds, pubkeys, nonces, taskBytes, golden);
-        runRegression<I + 1>(seeds, pubkeys, nonces, taskBytes, golden);
-    }
-}
-
-// Production only: the small configs are population 64, which the vectorized scorer rejects, so they
-// would compare the scalar fallback against itself and prove nothing about the engine.
 static void runRefVsEngine(const std::vector<m256i>& seeds, const std::vector<m256i>& pubkeys, const std::vector<m256i>& nonces)
 {
     runRefVsEngineConfig<ProductionConfig>(seeds, pubkeys, nonces);
 }
-
-// TEST(TestQubicScoreFunction, Bpp9000Regression)
-// {
-//     std::vector<m256i> seeds, pubkeys, nonces;
-//     loadSamples(seeds, pubkeys, nonces, TEST_NUMBER_OF_SAMPLES);
-//
-//     auto golden = loadGolden();
-//     ASSERT_GE(golden.size(), seeds.size()) << "fewer golden rows than samples";
-//
-//     auto taskBytes = readBinaryFile(TASK_FILE_NAME);
-//     ASSERT_GT(taskBytes.size(), sizeof(score_task_file::TaskFileHeader)) << "missing/short " << TASK_FILE_NAME;
-//
-//     // The parallel path shares one pool, valid because all samples use the same mining seed.
-//     for (unsigned long long i = 1; i < seeds.size(); ++i)
-//     {
-//         ASSERT_EQ(memcmp(seeds[i].m256i_u8, seeds[0].m256i_u8, 32), 0)
-//             << "all samples must share one mining seed for the shared-pool parallel path";
-//     }
-//
-//     runRegression(seeds, pubkeys, nonces, taskBytes, golden);
-// }
 
 TEST(TestQubicScoreFunction, Bpp9000ProductionRegression)
 {
