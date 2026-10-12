@@ -86,7 +86,7 @@ public:
     // Sum of QU the contract owes to coins plus the undistributed fee pots.
     sint64 obligations() const
     {
-        sint64 total = shareholderPot + burnPot + qdogePot + qtreatPot;
+        sint64 total = shareholderPot + burnPot + qdogePot + qtreatPot + qxPot;
         for (uint32 slot = 0; slot < QPUMP_MAX_COINS; ++slot)
         {
             const QPUMP::Coin& coin = coins.get(slot);
@@ -396,10 +396,10 @@ TEST(ContractQpump, GetFeesReflectsConstantsAndCachedExternalFees)
     EXPECT_EQ(fees.graduationReward, 50000000LL);
     EXPECT_EQ(fees.graduationDonation, 10000000LL);
     EXPECT_EQ(fees.tradeFeeBps, 100ULL);
-    EXPECT_EQ(fees.feeShareholderShareBps, 3400ULL);
+    EXPECT_EQ(fees.feeQxShareBps, 3400ULL);
     EXPECT_EQ(fees.feeQdogeShareBps, 3300ULL);
     EXPECT_EQ(fees.feeQtreatShareBps, 3300ULL);
-    EXPECT_EQ(fees.feeShareholderShareBps + fees.feeQdogeShareBps + fees.feeQtreatShareBps, 10000ULL);
+    EXPECT_EQ(fees.feeQxShareBps + fees.feeQdogeShareBps + fees.feeQtreatShareBps, 10000ULL);
     EXPECT_EQ(fees.curveRaise, 3905000000LL);
     EXPECT_EQ(fees.openingQuCap, 377187500LL);
     EXPECT_EQ(fees.qxIssuanceFee, 1000000000LL);
@@ -507,6 +507,7 @@ TEST(ContractQpump, CurveBuyAndSellMatchTheIntegerFormulas)
     EXPECT_EQ(quote.fee, 215830LL);
     EXPECT_EQ(quote.total, 21798735LL);
 
+    sint64 qxBefore = qp.state()->qxPot;
     sint64 shareholderBefore = qp.state()->shareholderPot;
     sint64 burnBefore = qp.state()->burnPot;
     sint64 qdogeBefore = qp.state()->qdogePot;
@@ -517,9 +518,11 @@ TEST(ContractQpump, CurveBuyAndSellMatchTheIntegerFormulas)
     EXPECT_EQ(bought.tokens, 10000000LL);
     EXPECT_EQ(bought.quSpent, 21798735LL);
     EXPECT_EQ(getBalance(BUYER3), before - 21798735LL);
-    // 215,830 QU of fee splits 34/33/33, shareholders taking the remainder,
-    // which is why their slice is 73,384 and not the nominal 73,382.
-    EXPECT_EQ(qp.state()->shareholderPot - shareholderBefore, 73384LL);
+    // 215,830 QU of fee splits 34/33/33, with QX taking the remainder,
+    // which is why its slice is 73,384 and not the nominal 73,382. None of a
+    // trade fee reaches this contract's own shareholders.
+    EXPECT_EQ(qp.state()->qxPot - qxBefore, 73384LL);
+    EXPECT_EQ(qp.state()->shareholderPot, shareholderBefore);
     EXPECT_EQ(qp.state()->qdogePot - qdogeBefore, 71223LL);
     EXPECT_EQ(qp.state()->qtreatPot - qtreatBefore, 71223LL);
     // Trading no longer burns any part of the fee.
@@ -749,7 +752,7 @@ TEST(ContractQpump, ExpiredCoinRefundsHoldersProRata)
     qp.checkSolvent();
 }
 
-TEST(ContractQpump, EndEpochPaysDividendsBurnsPotsAndFundsQtreat)
+TEST(ContractQpump, EndEpochPaysDividendsBurnsPotsAndFundsQxAndQtreat)
 {
     ContractTestingQpump qp;
     qp.launchPepeWithBatch();
@@ -759,21 +762,32 @@ TEST(ContractQpump, EndEpochPaysDividendsBurnsPotsAndFundsQtreat)
     // Only the launch fee still feeds the burn pot; trades no longer do.
     sint64 burnPot = qp.state()->burnPot;
     EXPECT_EQ(burnPot, QPUMP_LAUNCH_FEE_BURN);
+    // Dividends to this contract's own shares come from the launch fee alone.
+    EXPECT_EQ(qp.state()->shareholderPot, QPUMP_LAUNCH_FEE - QPUMP_LAUNCH_FEE_BURN);
     sint64 qtreatPot = qp.state()->qtreatPot;
     EXPECT_GT(qtreatPot, 0LL);
+    sint64 qxPot = qp.state()->qxPot;
+    EXPECT_GT(qxPot, 0LL);
     sint64 qtreatBalanceBefore = getBalance(QTREAT_CONTRACT_ID);
     sint64 qtreatFundBefore = static_cast<sint64>(qp.qtreatFunds().dividendFund);
+    sint64 qxBalanceBefore = getBalance(QX_CONTRACT_ID);
 
     qp.endEpoch();
     EXPECT_EQ(qp.state()->burnPot, 0LL);
     EXPECT_EQ(qp.state()->totalBurned, burnPot);
     EXPECT_LT(qp.state()->shareholderPot, static_cast<sint64>(NUMBER_OF_COMPUTORS));
-    // The QTREAT share is deposited through DepositDividends, so it must show
-    // up both as QU at QTREAT's address and inside its dividend fund.
+    // The QTREAT share is a plain transfer, which QTREAT's
+    // POST_INCOMING_TRANSFER books into its dividend fund, so it must show up
+    // both as QU at QTREAT's address and inside that fund.
     EXPECT_EQ(qp.state()->qtreatPot, 0LL);
     EXPECT_EQ(qp.state()->totalToQtreat, qtreatPot);
     EXPECT_EQ(getBalance(QTREAT_CONTRACT_ID), qtreatBalanceBefore + qtreatPot);
     EXPECT_EQ(static_cast<sint64>(qp.qtreatFunds().dividendFund), qtreatFundBefore + qtreatPot);
+    // The QX share lands at QX's address, where its own
+    // POST_INCOMING_TRANSFER adds it to what QX pays its shareholders.
+    EXPECT_EQ(qp.state()->qxPot, 0LL);
+    EXPECT_EQ(qp.state()->totalToQx, qxPot);
+    EXPECT_EQ(getBalance(QX_CONTRACT_ID), qxBalanceBefore + qxPot);
     qp.checkSolvent();
 }
 
