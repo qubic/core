@@ -870,7 +870,7 @@ TEST(ContractQpump, HolderListsStayLinkedAcrossCoinsTradesAndRefunds)
     {
         id w(100 + i, 7, 7, 7);
         id to(500 + i, 7, 7, 7);
-        EXPECT_EQ(qp.transfer(w, to, NAME_MOON, qp.getHolder(NAME_MOON, w).tokens, QPUMP_TRANSFER_FEE).returnCode, QPUMP_OK);
+        EXPECT_EQ(qp.transfer(w, to, NAME_MOON, qp.getHolder(NAME_MOON, w).tokens, QPUMP_TRANSFER_FEE + QPUMP_NEW_POSITION_FEE).returnCode, QPUMP_OK);
     }
     EXPECT_TRUE(qp.state()->holderListsConsistent());
 
@@ -922,10 +922,22 @@ TEST(ContractQpump, TransferOfAnyAmountCanCreateANewHolder)
     ContractTestingQpump qp;
     qp.launchPepeWithBatch();
 
-    EXPECT_EQ(qp.transfer(BUYER1, WHALE, NAME_PEPE, 1LL, QPUMP_TRANSFER_FEE).returnCode, QPUMP_OK);
+    // Creating a position costs the new-position fee on top: at the bare
+    // transfer fee the sender would consume shared map capacity for 100 QU.
+    sint64 realQuBefore = qp.getCoin(NAME_PEPE).coin.realQu;
+    EXPECT_EQ(qp.transfer(BUYER1, WHALE, NAME_PEPE, 1LL, QPUMP_TRANSFER_FEE).returnCode, QPUMP_ERR_INSUFFICIENT_REWARD);
+    EXPECT_FALSE(qp.getHolder(NAME_PEPE, WHALE).found);
+
+    const auto made = qp.transfer(BUYER1, WHALE, NAME_PEPE, 1LL, QPUMP_TRANSFER_FEE + QPUMP_NEW_POSITION_FEE);
+    EXPECT_EQ(made.returnCode, QPUMP_OK);
+    EXPECT_EQ(made.fee, QPUMP_TRANSFER_FEE + QPUMP_NEW_POSITION_FEE);
     EXPECT_EQ(qp.getHolder(NAME_PEPE, WHALE).tokens, 1LL);
     EXPECT_EQ(qp.getCoin(NAME_PEPE).coin.holders, 4U);
     EXPECT_EQ(qp.getStats().wallets, 4ULL);
+    // The surcharge funds the delivery budget the new entry reserves.
+    EXPECT_EQ(qp.getCoin(NAME_PEPE).coin.realQu, realQuBefore + QPUMP_NEW_POSITION_FEE);
+    // A transfer to an existing position stays at the flat fee.
+    EXPECT_EQ(qp.transfer(BUYER1, WHALE, NAME_PEPE, 1LL, QPUMP_TRANSFER_FEE).returnCode, QPUMP_OK);
     qp.checkSolvent();
 }
 

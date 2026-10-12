@@ -48,6 +48,14 @@ constexpr sint64 QPUMP_LAUNCH_FEE_BURN = 5000000LL;           // the rest goes t
 constexpr sint64 QPUMP_GRADUATION_REWARD = 50000000LL;        // paid to the creator from the raise
 constexpr sint64 QPUMP_GRADUATION_DONATION = 10000000LL;      // donated to charity from the raise at graduation
 constexpr sint64 QPUMP_TRANSFER_FEE = 100LL;                  // flat fee per internal transfer, burned
+// Charged on top when a transfer creates a holder entry for a recipient that had
+// none. A new entry takes a slot in the shared holders and walletIds maps and
+// reserves cachedQxTransferFee * QPUMP_DELIVERY_BUDGET_FACTOR of the coin's raise
+// as delivery budget, so at the bare QPUMP_TRANSFER_FEE the sender paid 100 QU to
+// consume shared capacity and 200 QU of someone else's pool seed. This prices a
+// transfer-created position like the cheapest curve-created one and pays the
+// budget into the coin instead of diluting it.
+constexpr sint64 QPUMP_NEW_POSITION_FEE = 1000LL;
 constexpr sint64 QPUMP_MIN_TRADE_FEE = 1000LL;
 constexpr uint64 QPUMP_BPS = 10000ULL;
 constexpr uint64 QPUMP_TRADE_FEE_BPS = 100ULL;                // 1 percent
@@ -274,7 +282,6 @@ struct QPUMP : public ContractBase
         uint32 liveCoins;
         uint32 freeSlotCount;
         uint32 nextFreshSlot;
-        uint32 sweepCursor;
         uint32 graduatedCount;
         uint32 activePayoutSlot;
         sint64 shareholderPot;
@@ -1161,6 +1168,7 @@ struct QPUMP : public ContractBase
         Coin coin;
         uint64 fromKey;
         uint64 toKey;
+        sint64 charged;
         HolderEntry fromEntry;
         HolderEntry toEntry;
         FindWallet_input walletIn;
@@ -3401,6 +3409,12 @@ struct QPUMP : public ContractBase
             locals.toKey = locals.keyOut.key;
             locals.toFound = state.get().holders.get(locals.toKey, locals.toEntry);
         }
+        if (!locals.toFound && qpi.invocationReward() < QPUMP_TRANSFER_FEE + QPUMP_NEW_POSITION_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = QPUMP_ERR_INSUFFICIENT_REWARD;
+            return;
+        }
         if (!locals.toFound)
         {
             if (state.get().holders.population() >= QPUMP_HOLDER_LOAD_LIMIT)
@@ -3473,13 +3487,21 @@ struct QPUMP : public ContractBase
             locals.linkIn.key = locals.toKey;
             CALL(LinkHolder, locals.linkIn, locals.linkOut);
         }
+        locals.charged = QPUMP_TRANSFER_FEE;
+        if (!locals.toFound)
+        {
+            // Pays the delivery budget the new entry reserves, rather than
+            // taking it out of the pool seed at graduation.
+            locals.charged += QPUMP_NEW_POSITION_FEE;
+            locals.coin.realQu += QPUMP_NEW_POSITION_FEE;
+        }
         state.mut().coins.set(locals.findOut.slot, locals.coin);
         state.mut().burnPot += QPUMP_TRANSFER_FEE;
-        if (qpi.invocationReward() > QPUMP_TRANSFER_FEE)
+        if (qpi.invocationReward() > locals.charged)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPUMP_TRANSFER_FEE);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.charged);
         }
-        output.fee = QPUMP_TRANSFER_FEE;
+        output.fee = locals.charged;
 
         locals.log._contractIndex = SELF_INDEX;
         locals.log._type = QPUMP_LOG_TRANSFER;
@@ -3641,43 +3663,55 @@ struct QPUMP : public ContractBase
             }
         }
 
-        // Lifecycle sweep over a rotating window of used slots.
+        // Lifecycle sweep over a rotating window of used slots. The window start
+        // is derived from the tick rather than kept in a stored cursor: writing a
+        // cursor here marked the whole state dirty on every tick, and the node
+        // answers a dirty state by running KangarooTwelve over all of it
+        // (getComputerDigest in qubic.cpp), which for this contract is ~227 MB
+        // per tick even when the sweep finds nothing to do. Nothing below writes
+        // state unless it actually changes something.
         locals.scanned = 0;
         locals.work = 0;
-        while (locals.scanned < QPUMP_TICK_SLOT_SCAN && locals.scanned < state.get().nextFreshSlot && locals.work < QPUMP_TICK_COIN_WORK)
+        locals.slot = static_cast<uint32>(mod(static_cast<uint64>(qpi.tick()) * static_cast<uint64>(QPUMP_TICK_SLOT_SCAN),
+            static_cast<uint64>(state.get().nextFreshSlot)));
+        while (locals.scanned < QPUMP_TICK_SLOT_SCAN && locals.scanned < state.get().nextFreshSlot)
         {
-            locals.slot = state.get().sweepCursor;
             if (locals.slot >= state.get().nextFreshSlot)
             {
                 locals.slot = 0;
             }
-            state.mut().sweepCursor = locals.slot + 1;
             locals.scanned += 1;
-            locals.coin = state.get().coins.get(locals.slot);
-            if (locals.coin.status == QPUMP_STATUS_OPENING)
+            // Scanning the whole window stays cheap (reads only); the costly
+            // transitions are what the per-tick budget caps, and anything over
+            // budget is picked up on the next pass over this window.
+            if (locals.work < QPUMP_TICK_COIN_WORK)
             {
-                if (qpi.tick() >= locals.coin.createdTick + QPUMP_OPENING_TICKS)
-                {
-                    locals.settleIn.slot = locals.slot;
-                    CALL(SettleOpening, locals.settleIn, locals.settleOut);
-                    locals.work += 1;
-                }
-            }
-            else if (locals.coin.status == QPUMP_STATUS_OPEN || locals.coin.status == QPUMP_STATUS_COMPLETE)
-            {
-                locals.expiryIn.slot = locals.slot;
-                CALL(CheckExpiry, locals.expiryIn, locals.expiryOut);
-                if (locals.expiryOut.changed)
-                {
-                    locals.work += 1;
-                }
                 locals.coin = state.get().coins.get(locals.slot);
-                if (locals.coin.status == QPUMP_STATUS_COMPLETE
-                    && (locals.coin.lastAttemptTick == 0 || qpi.tick() >= locals.coin.lastAttemptTick + QPUMP_GRADUATION_RETRY_TICKS))
+                if (locals.coin.status == QPUMP_STATUS_OPENING)
                 {
-                    locals.graduateIn.slot = locals.slot;
-                    CALL(TryGraduate, locals.graduateIn, locals.graduateOut);
-                    locals.work += 1;
+                    if (qpi.tick() >= locals.coin.createdTick + QPUMP_OPENING_TICKS)
+                    {
+                        locals.settleIn.slot = locals.slot;
+                        CALL(SettleOpening, locals.settleIn, locals.settleOut);
+                        locals.work += 1;
+                    }
+                }
+                else if (locals.coin.status == QPUMP_STATUS_OPEN || locals.coin.status == QPUMP_STATUS_COMPLETE)
+                {
+                    locals.expiryIn.slot = locals.slot;
+                    CALL(CheckExpiry, locals.expiryIn, locals.expiryOut);
+                    if (locals.expiryOut.changed)
+                    {
+                        locals.work += 1;
+                    }
+                    locals.coin = state.get().coins.get(locals.slot);
+                    if (locals.coin.status == QPUMP_STATUS_COMPLETE
+                        && (locals.coin.lastAttemptTick == 0 || qpi.tick() >= locals.coin.lastAttemptTick + QPUMP_GRADUATION_RETRY_TICKS))
+                    {
+                        locals.graduateIn.slot = locals.slot;
+                        CALL(TryGraduate, locals.graduateIn, locals.graduateOut);
+                        locals.work += 1;
+                    }
                 }
             }
             locals.coin = state.get().coins.get(locals.slot);
@@ -3687,6 +3721,7 @@ struct QPUMP : public ContractBase
             {
                 state.mut().activePayoutSlot = locals.slot;
             }
+            locals.slot += 1;
         }
     }
 
