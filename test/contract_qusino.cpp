@@ -2194,3 +2194,63 @@ TEST(ContractQUSINO, MapFull_DailyClaimBonusRejectedWithoutTouchingBonusPool)
     EXPECT_EQ(infoAfter.QSCCirclatingSupply, infoBefore.QSCCirclatingSupply);
     EXPECT_EQ(infoAfter.epochRevenue, infoBefore.epochRevenue);
 }
+
+TEST(ContractQUSINO, redemptionQSCToQubic_ZeroAmountRejectedAndCreatesNoEntry)
+{
+    ContractTestingQUSINO QUSINO;
+    id user = QUSINO_testUser1;
+    increaseEnergy(user, 1);   // the harness only runs a procedure for an identity with a balance
+
+    QUSINO::redemptionQSCToQubic_output out = QUSINO.redemptionQSCToQubic(user, 0, 0);
+    EXPECT_EQ(out.returnCode, QUSINO_INVALID_INPUT);
+
+    // Fill the map to one slot short of capacity: if the zero redemption had created an
+    // entry for `user`, the map would now be full and this next new user would be refused.
+    ASSERT_EQ(fillUserAssetVolumeMap(QUSINO, QUSINO_MAX_USERS - 1), QUSINO_MAX_USERS - 1);
+    id lastUser = QUSINO_testUser2;
+    increaseEnergy(lastUser, 100);
+    EXPECT_EQ(QUSINO.earnSTAR(lastUser, 1, 100).returnCode, QUSINO_SUCCESS);
+}
+
+TEST(ContractQUSINO, END_EPOCH_PrunesExpiredDailyClaimEntriesAndKeepsRecentOnes)
+{
+    ContractTestingQUSINO QUSINO;
+    QUSINO.fundBonusAmount(QUSINO_BONUS_CLAIM_AMOUNT * 10);
+    QUSINO::StateData* st = reinterpret_cast<QUSINO::StateData*>(contractStates[QUSINO_CONTRACT_INDEX]);
+
+    id oldClaimer = QUSINO_testUser1;
+    id recentClaimer = QUSINO_testUser2;
+    increaseEnergy(oldClaimer, 1);
+    increaseEnergy(recentClaimer, 1);
+
+    auto setTime = [](unsigned short day, unsigned char hour)
+    {
+        setMemory(utcTime, 0);
+        utcTime.Year = 2024;
+        utcTime.Month = 1;
+        utcTime.Day = day;
+        utcTime.Hour = hour;
+        utcTime.Minute = 0;
+        utcTime.Second = 0;
+        updateQpiTime();
+    };
+
+    // Day 1: first claim.
+    setTime(1, 0);
+    ASSERT_EQ(QUSINO.dailyClaimBonus(oldClaimer, 0).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(st->userDailyClaimedBonus.population(), 1u);
+
+    // Day 3, 00:00: a second user claims (well past the global 60 s rate limit).
+    setTime(3, 0);
+    ASSERT_EQ(QUSINO.dailyClaimBonus(recentClaimer, 0).returnCode, QUSINO_SUCCESS);
+    EXPECT_EQ(st->userDailyClaimedBonus.population(), 2u);
+
+    // Day 3, 12:00: epoch ends. oldClaimer's entry is ~60 h old (expired), recentClaimer's is 12 h old.
+    setTime(3, 12);
+    QUSINO.endEpoch();
+    EXPECT_EQ(st->userDailyClaimedBonus.population(), 1u);
+
+    // The pruned user is simply "never claimed" again and may claim; the recent one still can't.
+    EXPECT_TRUE(QUSINO.getDailyClaimStatus(oldClaimer).canClaimNow);
+    EXPECT_FALSE(QUSINO.getDailyClaimStatus(recentClaimer).canClaimNow);
+}
