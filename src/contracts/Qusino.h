@@ -1025,6 +1025,15 @@ public:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(redemptionQSCToQubic)
     {
+        // A zero redemption passes every check below for an identity not in the map and
+        // then set()s a zero-balance entry for it -- a free way to fill userAssetVolume.
+        if (input.amount == 0)
+        {
+            output.returnCode = QUSINO_INVALID_INPUT;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
         locals.idx = state.get().gameList.nextElementIndex(NULL_INDEX);
 		while (locals.idx != NULL_INDEX)
         {
@@ -1711,6 +1720,10 @@ public:
         uint64 ccfShare;
         uint64 treasuryShare;
         uint64 shareholders676Part;
+        uint32 claimCurDate;
+        uint32 claimLastDate;
+        sint32 claimI;
+        uint64 claimDiff, claimDayA, claimDayB;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -1805,6 +1818,25 @@ public:
             locals.idx = state.get().userAssetVolume.nextElementIndex(locals.idx);
         }
         state.mut().userAssetVolume.cleanupIfNeeded();
+
+        // userDailyClaimedBonus is a fixed-capacity map that otherwise only ever grows.
+        // A claim older than QUSINO_DAILY_CLAIM_BONUS_DURATION no longer affects
+        // dailyClaimBonus (or getDailyClaimStatus -- a missing entry reads as "never
+        // claimed", i.e. allowed), so drop those; otherwise it would eventually fill up
+        // and permanently lock every new user out of dailyClaimBonus.
+        packQusinoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.claimCurDate);
+        locals.idx = state.get().userDailyClaimedBonus.nextElementIndex(NULL_INDEX);
+        while (locals.idx != NULL_INDEX)
+        {
+            locals.claimLastDate = state.get().userDailyClaimedBonus.value(locals.idx);
+            diffQusinoDateInSecond(locals.claimLastDate, locals.claimCurDate, locals.claimI, locals.claimDayA, locals.claimDayB, locals.claimDiff);
+            if (locals.claimDiff >= QUSINO_DAILY_CLAIM_BONUS_DURATION)
+            {
+                state.mut().userDailyClaimedBonus.removeByIndex(locals.idx);
+            }
+            locals.idx = state.get().userDailyClaimedBonus.nextElementIndex(locals.idx);
+        }
+        state.mut().userDailyClaimedBonus.cleanupIfNeeded();
 
         locals.epochSnapshot = state.get().epochRevenue;
         locals.lpShare = div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_LP_DIVIDENDS_PERCENT), 1ULL), 100ULL);
