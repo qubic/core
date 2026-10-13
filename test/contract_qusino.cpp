@@ -2223,7 +2223,7 @@ TEST(ContractQUSINO, END_EPOCH_PrunesExpiredDailyClaimEntriesAndKeepsRecentOnes)
     increaseEnergy(oldClaimer, 1);
     increaseEnergy(recentClaimer, 1);
 
-    auto setTime = [](unsigned short day, unsigned char hour)
+    auto setTime = [](unsigned char day, unsigned char hour)
     {
         setMemory(utcTime, 0);
         utcTime.Year = 2024;
