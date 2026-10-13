@@ -326,7 +326,7 @@
 #define CONTRACT_INDEX QLOAN_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QLOAN
 #define CONTRACT_STATE2_TYPE QLOAN2
-#include "contracts/Qloan.h"
+#include "contracts/QLoan.h"
 
 #endif
 
