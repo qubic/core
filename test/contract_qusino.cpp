@@ -2053,3 +2053,144 @@ TEST(ContractQUSINO, depositBonus_CapsAtGameBankrollAndRoutesOverflowToEpochReve
     EXPECT_EQ(QUSINO.getSCInfo().bonusAmount, QUSINO_GAME_BANKROLL_CAP);
     EXPECT_EQ(QUSINO.getSCInfo().epochRevenue, epochRevenueBefore + 900);
 }
+
+// ---------------------------------------------------------------------------
+// Balance-map capacity (QVE-2026-0002): userAssetVolume has a fixed capacity and
+// QPI's HashMap::set() silently drops a NEW key once it is full. These tests pin
+// the guards that stop a full map from swallowing deposits, destroying transfers,
+// or being filled for free with zero-balance entries.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+    // Fills userAssetVolume to capacity with real (non-zero) users, each via a 1-QSC earnSTAR.
+    // Returns the number of users created (== QUSINO_MAX_USERS on success).
+    uint64 fillUserAssetVolumeMap(ContractTestingQUSINO& QUSINO, uint64 count)
+    {
+        uint64 created = 0;
+        for (uint64 i = 0; i < count; ++i)
+        {
+            id filler(1000000ULL + i, 7, 7, 7);
+            increaseEnergy(filler, 100);
+            if (QUSINO.earnSTAR(filler, 1, 100).returnCode != QUSINO_SUCCESS)
+                break;
+            ++created;
+        }
+        return created;
+    }
+}
+
+TEST(ContractQUSINO, earnSTAR_ZeroAmountRejectedAndRefunded)
+{
+    ContractTestingQUSINO QUSINO;
+    id user = QUSINO_testUser1;
+    increaseEnergy(user, 500);
+    long long before = getBalance(user);
+
+    QUSINO::earnSTAR_output out = QUSINO.earnSTAR(user, 0, 500);
+    EXPECT_EQ(out.returnCode, QUSINO_INVALID_INPUT);
+    EXPECT_EQ(getBalance(user), before);               // reward fully refunded
+    EXPECT_EQ(QUSINO.getUserAssetVolume(user).QSCAmount, 0u);
+    EXPECT_EQ(QUSINO.getSCInfo().QSCCirclatingSupply, 0u);
+}
+
+TEST(ContractQUSINO, transferSTAROrQSC_ZeroAmountRejected)
+{
+    ContractTestingQUSINO QUSINO;
+    id sender = QUSINO_testUser1;
+    id receiver = QUSINO_testUser2;
+    QUSINO.giveUserQSC(sender, 10);
+
+    QUSINO::transferSTAROrQSC_output out = QUSINO.transferSTAROrQSC(sender, receiver, 0, QUSINO_ASSET_TYPE_QSC, 0);
+    EXPECT_EQ(out.returnCode, QUSINO_INVALID_TRANSFER);
+    // Neither the zero-amount call nor a rejected one may have created an entry for the receiver.
+    EXPECT_EQ(QUSINO.getUserAssetVolume(receiver).QSCAmount, 0u);
+}
+
+TEST(ContractQUSINO, transferSTAROrQSC_SelfTransferRejectedAndDoesNotMint)
+{
+    ContractTestingQUSINO QUSINO;
+    id user = QUSINO_testUser1;
+    QUSINO.giveUserQSC(user, 10);
+    QUSINO::getUserAssetVolume_output before = QUSINO.getUserAssetVolume(user);
+
+    QUSINO::transferSTAROrQSC_output out = QUSINO.transferSTAROrQSC(user, user, 5, QUSINO_ASSET_TYPE_QSC, 0);
+    EXPECT_EQ(out.returnCode, QUSINO_INVALID_TRANSFER);
+
+    QUSINO::getUserAssetVolume_output after = QUSINO.getUserAssetVolume(user);
+    EXPECT_EQ(after.QSCAmount, before.QSCAmount);       // previously: balance + amount (minted)
+    EXPECT_EQ(after.STARAmount, before.STARAmount);
+}
+
+TEST(ContractQUSINO, MapFull_EarnSTARRefundsNewUserAndKeepsSupply)
+{
+    ContractTestingQUSINO QUSINO;
+    ASSERT_EQ(fillUserAssetVolumeMap(QUSINO, QUSINO_MAX_USERS), QUSINO_MAX_USERS);
+    QUSINO::getSCInfo_output infoBefore = QUSINO.getSCInfo();
+
+    id victim = QUSINO_testUser1;
+    increaseEnergy(victim, 100000);
+    long long before = getBalance(victim);
+    QUSINO::earnSTAR_output out = QUSINO.earnSTAR(victim, 1000, 100000);
+
+    EXPECT_EQ(out.returnCode, QUSINO_NO_EMPTY_SLOT);
+    EXPECT_EQ(getBalance(victim), before);               // deposit not confiscated
+    EXPECT_EQ(QUSINO.getUserAssetVolume(victim).QSCAmount, 0u);
+    QUSINO::getSCInfo_output infoAfter = QUSINO.getSCInfo();
+    EXPECT_EQ(infoAfter.QSCCirclatingSupply, infoBefore.QSCCirclatingSupply);   // no phantom supply
+    EXPECT_EQ(infoAfter.STARCirclatingSupply, infoBefore.STARCirclatingSupply);
+
+    // An identity already in the map can still top up.
+    id existing(1000000ULL, 7, 7, 7);
+    increaseEnergy(existing, 100);
+    EXPECT_EQ(QUSINO.earnSTAR(existing, 1, 100).returnCode, QUSINO_SUCCESS);
+}
+
+TEST(ContractQUSINO, MapFull_TransferToNewUserRejectedSenderNotDebited)
+{
+    ContractTestingQUSINO QUSINO;
+    id sender = QUSINO_testUser1;
+    QUSINO.giveUserQSC(sender, 1000);
+    ASSERT_EQ(fillUserAssetVolumeMap(QUSINO, QUSINO_MAX_USERS - 1), QUSINO_MAX_USERS - 1);   // sender + fillers == capacity
+    QUSINO::getSCInfo_output infoBefore = QUSINO.getSCInfo();
+
+    id freshDest = QUSINO_testUser2;
+    QUSINO::transferSTAROrQSC_output out = QUSINO.transferSTAROrQSC(sender, freshDest, 500, QUSINO_ASSET_TYPE_QSC, 0);
+
+    EXPECT_EQ(out.returnCode, QUSINO_NO_EMPTY_SLOT);
+    EXPECT_EQ(QUSINO.getUserAssetVolume(sender).QSCAmount, 1000u);   // not debited
+    EXPECT_EQ(QUSINO.getUserAssetVolume(freshDest).QSCAmount, 0u);
+    EXPECT_EQ(QUSINO.getSCInfo().QSCCirclatingSupply, infoBefore.QSCCirclatingSupply);
+
+    // Transfer to an identity that already has an entry still works at full capacity.
+    id existing(1000000ULL, 7, 7, 7);
+    EXPECT_EQ(QUSINO.transferSTAROrQSC(sender, existing, 500, QUSINO_ASSET_TYPE_QSC, 0).returnCode, QUSINO_SUCCESS);
+}
+
+TEST(ContractQUSINO, MapFull_DailyClaimBonusRejectedWithoutTouchingBonusPool)
+{
+    ContractTestingQUSINO QUSINO;
+    QUSINO.fundBonusAmount(1000000);
+    ASSERT_EQ(fillUserAssetVolumeMap(QUSINO, QUSINO_MAX_USERS), QUSINO_MAX_USERS);
+    QUSINO::getSCInfo_output infoBefore = QUSINO.getSCInfo();
+
+    id user = QUSINO_testUser1;
+    increaseEnergy(user, 1);   // the harness only runs a procedure for an identity with a balance
+
+    setMemory(utcTime, 0);
+    utcTime.Year = 2024;
+    utcTime.Month = 1;
+    utcTime.Day = 1;
+    utcTime.Hour = 0;
+    utcTime.Minute = 0;
+    utcTime.Second = 0;
+    updateQpiTime();
+
+    QUSINO::dailyClaimBonus_output out = QUSINO.dailyClaimBonus(user, 0);
+
+    EXPECT_EQ(out.returnCode, QUSINO_NO_EMPTY_SLOT);
+    QUSINO::getSCInfo_output infoAfter = QUSINO.getSCInfo();
+    EXPECT_EQ(infoAfter.bonusAmount, infoBefore.bonusAmount);        // pool not debited for a credit that never lands
+    EXPECT_EQ(infoAfter.QSCCirclatingSupply, infoBefore.QSCCirclatingSupply);
+    EXPECT_EQ(infoAfter.epochRevenue, infoBefore.epochRevenue);
+}
