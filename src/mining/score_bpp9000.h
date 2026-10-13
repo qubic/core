@@ -38,8 +38,8 @@ struct ScoreBpp9000
     static constexpr unsigned int INVALID_SCORE_VALUE = 0xFFFFFFFFU;
     static constexpr unsigned long long lutSize = 27;
 
-    // advanceThreshold: shift advances when the frame error drops to <= 1/3 of the frame.
-    static constexpr unsigned int advanceThreshold = (unsigned int)(windowWidth / 3);
+    // advanceThreshold: shift advances while the frame error stays <= this value.
+    static constexpr unsigned int advanceThreshold = BPP9000_ADVANCE_THRESHOLD;
 
     static constexpr unsigned long long numberOfLinks = populationThreshold * numberOfNeighbors;
 

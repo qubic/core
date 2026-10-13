@@ -40,8 +40,8 @@ struct Miner
     static constexpr unsigned long long lutSize = 27;
     static constexpr unsigned int MAX_CHANGES_PER_STEP = 10;
     static constexpr unsigned long long numberOfLinks = populationThreshold * numberOfNeighbors;
-    // shift advances when the frame error drops to <= 1/3 of the frame.
-    static constexpr unsigned int advanceThreshold = (unsigned int)(windowWidth / 3);
+    // shift advances while the frame error stays <= this value.
+    static constexpr unsigned int advanceThreshold = BPP9000_ADVANCE_THRESHOLD;
 
     static_assert(numberOfNeighbors == 3, "the LUT index is hardcoded for 3 neighbors");
     static_assert(populationThreshold % 16 == 0, "populationThreshold must be a multiple of 16 so sizeof(RootMaterial) stays a multiple of 64 for the random2 draw");
