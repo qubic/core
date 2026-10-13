@@ -142,6 +142,21 @@ long long QPI::QpiContextProcedureCall::__transfer(const m256i& destination, lon
         return INVALID_AMOUNT;
     }
 
+    // Reject a transfer to a contract that cannot currently run its POST_INCOMING_TRANSFER callback:
+    // in an error state, not yet constructed (its IPO epoch), or past destruction. Without this the
+    // callback below would try to build a procedure context for it, fail, and __qpiAbort into
+    // while(1), hanging the tick processor on every node.
+    if (isPublicKeyOfContract(destination))
+    {
+        const unsigned int destContractIndex = static_cast<unsigned int>(destination.u64._0);
+        if (contractError[destContractIndex] != NoContractError
+            || system.epoch < contractDescriptions[destContractIndex].constructionEpoch
+            || system.epoch >= contractDescriptions[destContractIndex].destructionEpoch)
+        {
+            return INVALID_AMOUNT;
+        }
+    }
+
     if (amount < 0 || amount > MAX_AMOUNT)
     {
         return -((long long)(MAX_AMOUNT + 1));
