@@ -68,6 +68,7 @@ public:
         initEmptyUniverse();
         INIT_CONTRACT(QIP);
         callSystemProcedure(QIP_CONTRACT_INDEX, INITIALIZE);
+        callSystemProcedure(QIP_CONTRACT_INDEX, BEGIN_EPOCH); // sets developmentFundAddress (epoch 224)
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
     }
