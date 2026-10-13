@@ -2589,7 +2589,7 @@ TEST(QUtilTest, TransferVote_RoutingAndFees)
         for (uint64_t option = 0; option < QUTIL_MAX_OPTIONS; ++option)
         {
             const auto amount = QUTIL_VOTE_FEE + poll * QUTIL_MAX_OPTIONS + option + 1;
-            EXPECT_GT(amount, QUTIL_VOTE_FEE);
+            EXPECT_GT(static_cast<sint64>(amount), QUTIL_VOTE_FEE);
             EXPECT_TRUE(amounts.insert(amount).second);
             const auto balance = getBalance(voter);
             qutil.transferVote(voter, amount);
