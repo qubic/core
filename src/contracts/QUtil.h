@@ -201,14 +201,14 @@ private:
     };
 
     // Get Voter Balance Helper
-    struct get_voter_balance_input {
+    struct GetVoterBalance_input {
         uint64 poll_idx;
         id address;
     };
-    struct get_voter_balance_output {
+    struct GetVoterBalance_output {
         uint64 balance;
     };
-    struct get_voter_balance_locals {
+    struct GetVoterBalance_locals {
         uint64 poll_type;
         uint64 balance;
         uint64 max_balance;
@@ -389,25 +389,53 @@ public:
     {
         bit success;
     };
+    struct CastVote_input
+    {
+        uint64 pollId;
+        id address;
+        uint64 amount;
+        uint64 chosenOption;
+    };
+    struct CastVote_output
+    {
+        bit success;
+    };
     struct Vote_locals
+    {
+        CastVote_input voteInput;
+        CastVote_output voteOutput;
+        Logger logger;
+    };
+    struct CastVote_locals
     {
         uint64 idx;
         uint64 balance;
-        uint64 poll_type;
-        sint64 voter_idx;
-        get_voter_balance_input gvb_input;
-        get_voter_balance_output gvb_output;
-        get_voter_balance_locals gvb_locals;
-        swap_voter_to_end_input sve_input;
-        swap_voter_to_end_output sve_output;
-        swap_voter_to_end_locals sve_locals;
+        uint64 pollType;
+        sint64 voterIdx;
+        GetVoterBalance_input voterBalanceInput;
+        GetVoterBalance_output voterBalanceOutput;
+        GetVoterBalance_locals voterBalanceLocals;
+        swap_voter_to_end_input swapInput;
+        swap_voter_to_end_output swapOutput;
+        swap_voter_to_end_locals swapLocals;
         uint64 i;
-        uint64 voter_index;
-        Voter temp_voter;
-        uint64 real_vote;
-        uint64 end_idx;
-        uint64 max_balance;
+        uint64 voterIndex;
+        Voter tempVoter;
+        uint64 realVote;
+        uint64 endIndex;
+        uint64 maxBalance;
         Logger logger;
+    };
+
+    struct POST_INCOMING_TRANSFER_locals
+    {
+        uint64 code;
+        uint64 idx;
+        CastVote_input voteInput;
+        CastVote_output voteOutput;
+        GetVoterBalance_input balanceInput;
+        GetVoterBalance_output balanceOutput;
+        GetVoterBalance_locals balanceLocals;
     };
 
     struct CancelPoll_input
@@ -536,7 +564,7 @@ public:
         output.balance = qpi.numberOfShares(input.asset, AssetOwnershipSelect::byOwner(input.address), AssetPossessionSelect::byPossessor(input.address));
     }
 
-    PRIVATE_FUNCTION_WITH_LOCALS(get_voter_balance)
+    PRIVATE_FUNCTION_WITH_LOCALS(GetVoterBalance)
     {
         output.balance = 0;
         locals.poll_type = state.get().polls.get(input.poll_idx).poll_type;
@@ -1494,37 +1522,48 @@ public:
             return;
         }
 
-        locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
+        locals.voteInput.pollId = input.poll_id;
+        locals.voteInput.address = input.address;
+        locals.voteInput.amount = input.amount;
+        locals.voteInput.chosenOption = input.chosen_option;
+        CALL(CastVote, locals.voteInput, locals.voteOutput);
+        output.success = locals.voteOutput.success;
+    }
 
-        if (state.get().poll_ids.get(locals.idx) != input.poll_id)
+    PRIVATE_PROCEDURE_WITH_LOCALS(CastVote)
+    {
+        output.success = false;
+        locals.idx = mod(input.pollId, QUTIL_MAX_POLL);
+
+        if (state.get().poll_ids.get(locals.idx) != input.pollId)
         {
-            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidPollId };
+            locals.logger = Logger{ 0, 0, input.address, SELF, 0, QUTILLogTypeInvalidPollId };
             LOG_INFO(locals.logger);
             return;
         }
         if (state.get().polls.get(locals.idx).is_active == 0)
         {
-            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypePollInactive };
+            locals.logger = Logger{ 0, 0, input.address, SELF, 0, QUTILLogTypePollInactive };
             LOG_INFO(locals.logger);
             return;
         }
-        locals.poll_type = state.get().polls.get(locals.idx).poll_type;
+        locals.pollType = state.get().polls.get(locals.idx).poll_type;
 
         // Fetch voter balance using helper function
-        locals.gvb_input.poll_idx = locals.idx;
-        locals.gvb_input.address = input.address;
-        get_voter_balance(qpi, state, locals.gvb_input, locals.gvb_output, locals.gvb_locals);
-        locals.max_balance = locals.gvb_output.balance;
+        locals.voterBalanceInput.poll_idx = locals.idx;
+        locals.voterBalanceInput.address = input.address;
+        GetVoterBalance(qpi, state, locals.voterBalanceInput, locals.voterBalanceOutput, locals.voterBalanceLocals);
+        locals.maxBalance = locals.voterBalanceOutput.balance;
 
-        if (locals.max_balance < state.get().polls.get(locals.idx).min_amount || locals.max_balance < input.amount)
+        if (locals.maxBalance < state.get().polls.get(locals.idx).min_amount || locals.maxBalance < input.amount)
         {
-            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInsufficientBalance };
+            locals.logger = Logger{ 0, 0, input.address, SELF, 0, QUTILLogTypeInsufficientBalance };
             LOG_INFO(locals.logger);
             return;
         }
-        if (input.chosen_option >= QUTIL_MAX_OPTIONS)
+        if (input.chosenOption >= QUTIL_MAX_OPTIONS)
         {
-            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidOption };
+            locals.logger = Logger{ 0, 0, input.address, SELF, 0, QUTILLogTypeInvalidOption };
             LOG_INFO(locals.logger);
             return;
         }
@@ -1532,18 +1571,18 @@ public:
         // Search for existing voter or empty slot
         for (locals.i = 0; locals.i < QUTIL_MAX_VOTERS_PER_POLL; locals.i++)
         {
-            locals.voter_index = calculate_voter_index(locals.idx, locals.i);
-            if (state.get().voters.get(locals.voter_index).address == input.address)
+            locals.voterIndex = calculate_voter_index(locals.idx, locals.i);
+            if (state.get().voters.get(locals.voterIndex).address == input.address)
             {
                 // Update existing voter
-                state.mut().voters.set(locals.voter_index, Voter{ input.address, input.amount, input.chosen_option });
+                state.mut().voters.set(locals.voterIndex, Voter{ input.address, input.amount, input.chosenOption });
                 output.success = true;
                 break;
             }
-            else if (state.get().voters.get(locals.voter_index).address == NULL_ID)
+            else if (state.get().voters.get(locals.voterIndex).address == NULL_ID)
             {
                 // Add new voter in empty slot
-                state.mut().voters.set(locals.voter_index, Voter{ input.address, input.amount, input.chosen_option });
+                state.mut().voters.set(locals.voterIndex, Voter{ input.address, input.amount, input.chosenOption });
                 state.mut().voter_counts.set(locals.idx, state.get().voter_counts.get(locals.idx) + 1);
                 output.success = true;
                 break;
@@ -1556,28 +1595,28 @@ public:
         }
 
         // Update voter balances and compact the voter list
-        locals.real_vote = 0;
-        locals.end_idx = state.get().voter_counts.get(locals.idx) - 1;
+        locals.realVote = 0;
+        locals.endIndex = state.get().voter_counts.get(locals.idx) - 1;
         locals.i = 0;
 
-        while (locals.i <= locals.end_idx)
+        while (locals.i <= locals.endIndex)
         {
-            locals.voter_index = calculate_voter_index(locals.idx, locals.i);
-            locals.temp_voter = state.get().voters.get(locals.voter_index);
-            if (locals.temp_voter.address == NULL_ID)
+            locals.voterIndex = calculate_voter_index(locals.idx, locals.i);
+            locals.tempVoter = state.get().voters.get(locals.voterIndex);
+            if (locals.tempVoter.address == NULL_ID)
             {
                 // Swap with the last valid voter
-                while (locals.end_idx > locals.i && state.get().voters.get(calculate_voter_index(locals.idx, locals.end_idx)).address == NULL_ID)
+                while (locals.endIndex > locals.i && state.get().voters.get(calculate_voter_index(locals.idx, locals.endIndex)).address == NULL_ID)
                 {
-                    locals.end_idx--;
+                    locals.endIndex--;
                 }
-                if (locals.end_idx > locals.i)
+                if (locals.endIndex > locals.i)
                 {
-                    locals.sve_input.poll_idx = locals.idx;
-                    locals.sve_input.i = locals.i;
-                    locals.sve_input.end_idx = locals.end_idx;
-                    swap_voter_to_end(qpi, state, locals.sve_input, locals.sve_output, locals.sve_locals);
-                    locals.end_idx--;
+                    locals.swapInput.poll_idx = locals.idx;
+                    locals.swapInput.i = locals.i;
+                    locals.swapInput.end_idx = locals.endIndex;
+                    swap_voter_to_end(qpi, state, locals.swapInput, locals.swapOutput, locals.swapLocals);
+                    locals.endIndex--;
                     continue;
                 }
                 else
@@ -1588,50 +1627,81 @@ public:
             }
 
             // Update voter balance
-            if (locals.temp_voter.address != NULL_ID)
+            if (locals.tempVoter.address != NULL_ID)
             {
-                locals.gvb_input.poll_idx = locals.idx;
-                locals.gvb_input.address = locals.temp_voter.address;
-                get_voter_balance(qpi, state, locals.gvb_input, locals.gvb_output, locals.gvb_locals);
-                locals.max_balance = locals.gvb_output.balance;
+                locals.voterBalanceInput.poll_idx = locals.idx;
+                locals.voterBalanceInput.address = locals.tempVoter.address;
+                GetVoterBalance(qpi, state, locals.voterBalanceInput, locals.voterBalanceOutput, locals.voterBalanceLocals);
+                locals.maxBalance = locals.voterBalanceOutput.balance;
 
-                if (locals.max_balance < state.get().polls.get(locals.idx).min_amount)
+                if (locals.maxBalance < state.get().polls.get(locals.idx).min_amount)
                 {
                     // Mark as invalid by setting address to NULL_ID
-                    state.mut().voters.set(locals.voter_index, Voter{ NULL_ID, 0, 0 });
+                    state.mut().voters.set(locals.voterIndex, Voter{ NULL_ID, 0, 0 });
                     // Swap with the last valid voter
-                    while (locals.end_idx > locals.i && state.get().voters.get(calculate_voter_index(locals.idx, locals.end_idx)).address == NULL_ID)
+                    while (locals.endIndex > locals.i && state.get().voters.get(calculate_voter_index(locals.idx, locals.endIndex)).address == NULL_ID)
                     {
-                        locals.end_idx--;
+                        locals.endIndex--;
                     }
-                    if (locals.end_idx > locals.i)
+                    if (locals.endIndex > locals.i)
                     {
-                        locals.sve_input.poll_idx = locals.idx;
-                        locals.sve_input.i = locals.i;
-                        locals.sve_input.end_idx = locals.end_idx;
-                        swap_voter_to_end(qpi, state, locals.sve_input, locals.sve_output, locals.sve_locals);
-                        locals.end_idx--;
+                        locals.swapInput.poll_idx = locals.idx;
+                        locals.swapInput.i = locals.i;
+                        locals.swapInput.end_idx = locals.endIndex;
+                        swap_voter_to_end(qpi, state, locals.swapInput, locals.swapOutput, locals.swapLocals);
+                        locals.endIndex--;
                         continue;
                     }
                 }
                 else
                 {
-                    locals.temp_voter.amount = locals.max_balance < locals.temp_voter.amount ? locals.max_balance : locals.temp_voter.amount;
-                    state.mut().voters.set(locals.voter_index, locals.temp_voter);
-                    locals.real_vote++;
+                    locals.tempVoter.amount = locals.maxBalance < locals.tempVoter.amount ? locals.maxBalance : locals.tempVoter.amount;
+                    state.mut().voters.set(locals.voterIndex, locals.tempVoter);
+                    locals.realVote++;
                 }
             }
             locals.i++;
         }
 
         // Update voter count
-        state.mut().voter_counts.set(locals.idx, locals.real_vote);
+        state.mut().voter_counts.set(locals.idx, locals.realVote);
 
         if (output.success)
         {
-            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, state.get().pollVoteFee, QUTILLogTypeVoteCast };
+            locals.logger = Logger{ 0, 0, input.address, SELF, state.get().pollVoteFee, QUTILLogTypeVoteCast };
             LOG_INFO(locals.logger);
         }
+    }
+
+    POST_INCOMING_TRANSFER_WITH_LOCALS()
+    {
+        if (input.type != TransferType::standardTransaction || input.amount <= 0 || input.sourceId == NULL_ID)
+        {
+            return;
+        }
+        if (input.amount <= state.get().pollVoteFee)
+        {
+            qpi.burn(input.amount);
+            return;
+        }
+        locals.code = input.amount - state.get().pollVoteFee;
+        locals.voteInput.pollId = div(locals.code - 1, QUTIL_MAX_OPTIONS);
+        locals.idx = mod(locals.voteInput.pollId, QUTIL_MAX_POLL);
+        if (state.get().poll_ids.get(locals.idx) != locals.voteInput.pollId ||
+            !state.get().polls.get(locals.idx).is_active)
+        {
+            qpi.burn(state.get().pollVoteFee);
+            qpi.transfer(input.sourceId, input.amount - state.get().pollVoteFee);
+            return;
+        }
+        locals.voteInput.address = input.sourceId;
+        locals.voteInput.chosenOption = mod(locals.code - 1, QUTIL_MAX_OPTIONS);
+        qpi.burn(input.amount);
+        locals.balanceInput.poll_idx = locals.idx;
+        locals.balanceInput.address = input.sourceId;
+        GetVoterBalance(qpi, state, locals.balanceInput, locals.balanceOutput, locals.balanceLocals);
+        locals.voteInput.amount = locals.balanceOutput.balance;
+        CALL(CastVote, locals.voteInput, locals.voteOutput);
     }
 
     PUBLIC_PROCEDURE_WITH_LOCALS(CancelPoll)
