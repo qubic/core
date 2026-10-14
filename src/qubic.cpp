@@ -1,5 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
+// #define NO_QLOAN
+
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
 
@@ -3981,6 +3983,16 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
         computorPublicKeys[computorIndex], system.tick, entry);
     if (idx == AntPendingSolutions::NO_ENTRY)
     {
+        return;
+    }
+
+    // Skip a solution the chain has already processed
+    unsigned int seenFlagIndices[2];
+    computeAntSolutionFlagIndices(entry.computorPublicKey, entry.nonce, entry.parentRef, seenFlagIndices);
+    if (isAntSolutionSeen(seenFlagIndices))
+    {
+        gAntPendingSolutions.markObsoleteGateRejected(idx);
+        antDebugPending(L"retire seen", entry, 0);
         return;
     }
 

@@ -1077,7 +1077,7 @@ TEST(ContractQDuel, SetPercentFeesAccessDeniedAndGetPercentFees)
 	static constexpr uint16 percentScale = 4;
 	static constexpr sint64 reward = 10LL;
 
-	const id user(28, 0, 0, 0);
+	const id user(28, 1, 0, 0); // not a contract public key
 	increaseEnergy(user, userAmount);
 	const uint64 balanceBefore = getBalance(user);
 
@@ -1116,7 +1116,7 @@ TEST(ContractQDuel, SetTTLHoursAccessDenied)
 	ContractTestingQDuel qduel;
 	const uint8 ttlBefore = qduel.state()->ttl();
 
-	const id user(29, 0, 0, 0);
+	const id user(29, 1, 0, 0); // not a contract public key
 	increaseEnergy(user, 5);
 	const uint64 balanceBefore = getBalance(user);
 

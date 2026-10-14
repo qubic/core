@@ -78,6 +78,7 @@ constexpr uint32 QUSINO_LOG_EXCEEDS_MAX_BET = 19;
 constexpr uint32 QUSINO_LOG_PROPOSER_CANNOT_VOTE = 20;
 constexpr uint32 QUSINO_LOG_DUPLICATE_GAME_URI = 21;
 constexpr uint32 QUSINO_LOG_INSUFFICIENT_QST_FOR_BETA = 22;
+constexpr uint32 QUSINO_LOG_NO_EMPTY_SLOT = 23;
 
 // ---------------------------------------------------------------------------
 // Coin Flip + shared RNG "Result Bank"
@@ -560,6 +561,20 @@ public:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(earnSTAR)
     {
+        // A zero amount has no economic purpose and would create a free zero-balance
+        // entry in userAssetVolume (cost 0 <= reward 0), which could be used to fill
+        // the map for the whole epoch (zero entries are only pruned in END_EPOCH).
+        if (input.amount == 0)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QUSINO_INVALID_INPUT;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
         locals.starVolumeIncrease = smul(input.amount, 100ULL);
         locals.qubicCost = smul(locals.starVolumeIncrease, (uint64)QUSINO_STAR_PRICE);
         if (locals.qubicCost > (uint64)qpi.invocationReward())
@@ -570,6 +585,21 @@ public:
             }
             output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
             locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_FUNDS, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+        // userAssetVolume is a fixed-capacity map: once full, set() silently drops a NEW
+        // key. Refuse (and refund everything) before any money or counter moves, so a
+        // full map can never swallow a deposit.
+        if (state.get().userAssetVolume.getElementIndex(qpi.invocator()) == NULL_INDEX
+            && state.get().userAssetVolume.population() >= state.get().userAssetVolume.capacity())
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QUSINO_NO_EMPTY_SLOT;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_NO_EMPTY_SLOT, 0 };
             LOG_INFO(locals.log);
             return ;
         }
@@ -615,6 +645,26 @@ public:
                 return;
             }
             locals.idx = state.get().gameList.nextElementIndex(locals.idx);
+        }
+        // Zero-amount transfers only create empty map entries; a transfer to oneself would
+        // end with the destination write (balance + amount) overwriting the sender write
+        // (balance - amount), minting `amount` out of thin air.
+        if (input.amount == 0 || input.dest == qpi.invocator())
+        {
+            output.returnCode = QUSINO_INVALID_TRANSFER;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+        // Fixed-capacity map: a NEW destination key can't be stored once it's full, and
+        // set() would silently drop the credit after the sender was already debited.
+        if (state.get().userAssetVolume.getElementIndex(input.dest) == NULL_INDEX
+            && state.get().userAssetVolume.population() >= state.get().userAssetVolume.capacity())
+        {
+            output.returnCode = QUSINO_NO_EMPTY_SLOT;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_NO_EMPTY_SLOT, 0 };
+            LOG_INFO(locals.log);
+            return;
         }
         state.get().userAssetVolume.get(qpi.invocator(), locals.sender);
         state.get().userAssetVolume.get(input.dest, locals.dest);
@@ -937,6 +987,19 @@ public:
             LOG_INFO(locals.log);
             return ;
         }
+        // Both maps are fixed-capacity and drop NEW keys silently when full: bail out
+        // before any state changes (bonusAmount, supplies, revenue) if either can't
+        // store this caller.
+        if ((state.get().userAssetVolume.getElementIndex(qpi.invocator()) == NULL_INDEX
+                && state.get().userAssetVolume.population() >= state.get().userAssetVolume.capacity())
+            || (state.get().userDailyClaimedBonus.getElementIndex(qpi.invocator()) == NULL_INDEX
+                && state.get().userDailyClaimedBonus.population() >= state.get().userDailyClaimedBonus.capacity()))
+        {
+            output.returnCode = QUSINO_NO_EMPTY_SLOT;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_NO_EMPTY_SLOT, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
         state.mut().bonusAmount -= QUSINO_BONUS_CLAIM_AMOUNT;
         state.get().userAssetVolume.get(qpi.invocator(), locals.userVolume);
         locals.userVolume.volumeOfSTAR = sadd(locals.userVolume.volumeOfSTAR, QUSINO_BONUS_CLAIM_AMOUNT_STAR);
@@ -962,6 +1025,15 @@ public:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(redemptionQSCToQubic)
     {
+        // A zero redemption passes every check below for an identity not in the map and
+        // then set()s a zero-balance entry for it -- a free way to fill userAssetVolume.
+        if (input.amount == 0)
+        {
+            output.returnCode = QUSINO_INVALID_INPUT;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
         locals.idx = state.get().gameList.nextElementIndex(NULL_INDEX);
 		while (locals.idx != NULL_INDEX)
         {
@@ -1648,6 +1720,10 @@ public:
         uint64 ccfShare;
         uint64 treasuryShare;
         uint64 shareholders676Part;
+        uint32 claimCurDate;
+        uint32 claimLastDate;
+        sint32 claimI;
+        uint64 claimDiff, claimDayA, claimDayB;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -1742,6 +1818,25 @@ public:
             locals.idx = state.get().userAssetVolume.nextElementIndex(locals.idx);
         }
         state.mut().userAssetVolume.cleanupIfNeeded();
+
+        // userDailyClaimedBonus is a fixed-capacity map that otherwise only ever grows.
+        // A claim older than QUSINO_DAILY_CLAIM_BONUS_DURATION no longer affects
+        // dailyClaimBonus (or getDailyClaimStatus -- a missing entry reads as "never
+        // claimed", i.e. allowed), so drop those; otherwise it would eventually fill up
+        // and permanently lock every new user out of dailyClaimBonus.
+        packQusinoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.claimCurDate);
+        locals.idx = state.get().userDailyClaimedBonus.nextElementIndex(NULL_INDEX);
+        while (locals.idx != NULL_INDEX)
+        {
+            locals.claimLastDate = state.get().userDailyClaimedBonus.value(locals.idx);
+            diffQusinoDateInSecond(locals.claimLastDate, locals.claimCurDate, locals.claimI, locals.claimDayA, locals.claimDayB, locals.claimDiff);
+            if (locals.claimDiff >= QUSINO_DAILY_CLAIM_BONUS_DURATION)
+            {
+                state.mut().userDailyClaimedBonus.removeByIndex(locals.idx);
+            }
+            locals.idx = state.get().userDailyClaimedBonus.nextElementIndex(locals.idx);
+        }
+        state.mut().userDailyClaimedBonus.cleanupIfNeeded();
 
         locals.epochSnapshot = state.get().epochRevenue;
         locals.lpShare = div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_LP_DIVIDENDS_PERCENT), 1ULL), 100ULL);
