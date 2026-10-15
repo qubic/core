@@ -317,6 +317,16 @@
 #define CONTRACT_STATE2_TYPE QTREAT2
 #include "contracts/QTREAT.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QPUMP_CONTRACT_INDEX 31
+#define CONTRACT_INDEX QPUMP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QPUMP
+#define CONTRACT_STATE2_TYPE QPUMP2
+#include "contracts/Qpump.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -434,6 +444,7 @@ constexpr struct ContractDescription
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
     {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
+    {"QPUMP", 235, 10000, sizeof(QPUMP::StateData)}, // PLACEHOLDER: proposal in epoch 233, IPO in 234, construction and first use in 235
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -568,6 +579,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPAYHUB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTREAT);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPUMP);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
