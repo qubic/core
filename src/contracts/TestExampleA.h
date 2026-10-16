@@ -214,6 +214,10 @@ protected:
 			output.qpiFunctionsOutput = state.get().qpiFunctionsOutputUserProc.get(input.tick);
 	}
 
+	POST_INCOMING_TRANSFER()
+	{
+	}
+
 	BEGIN_TICK()
 	{
 		state.mut().qpiFunctionsOutputTemp.year = qpi.year();
