@@ -5,10 +5,6 @@
 #include "platform/memory.h"
 #include "platform/assert.h"
 
-// Compiler flag to determine AVX512 or generic implementation of K12
-
-#define GENERIC_K12 1
-
 
 ////////// KangarooTwelve \\\\\\\\\\
 
@@ -327,47 +323,6 @@
 #define ROL64(a, offset) ((((unsigned long long)a) << offset) ^ (((unsigned long long)a) >> (64 - offset)))
 #endif
 
-#if defined (__AVX512F__) && !GENERIC_K12
-static __m512i zero, moveThetaPrev, moveThetaNext, rhoB, rhoG, rhoK, rhoM, rhoS, pi1B, pi1G, pi1K, pi1M, pi1S, pi2S1, pi2S2, pi2BG, pi2KM, pi2S3, padding;
-static __m512i K12RoundConst0, K12RoundConst1, K12RoundConst2, K12RoundConst3, K12RoundConst4, K12RoundConst5, K12RoundConst6, K12RoundConst7, K12RoundConst8, K12RoundConst9, K12RoundConst10, K12RoundConst11;
-
-static void initAVX512KangarooTwelveConstants()
-{
-    zero = _mm512_maskz_set1_epi64(0, 0);
-    moveThetaPrev = _mm512_setr_epi64(4, 0, 1, 2, 3, 5, 6, 7);
-    moveThetaNext = _mm512_setr_epi64(1, 2, 3, 4, 0, 5, 6, 7);
-    rhoB = _mm512_setr_epi64(0, 1, 62, 28, 27, 0, 0, 0);
-    rhoG = _mm512_setr_epi64(36, 44, 6, 55, 20, 0, 0, 0);
-    rhoK = _mm512_setr_epi64(3, 10, 43, 25, 39, 0, 0, 0);
-    rhoM = _mm512_setr_epi64(41, 45, 15, 21, 8, 0, 0, 0);
-    rhoS = _mm512_setr_epi64(18, 2, 61, 56, 14, 0, 0, 0);
-    pi1B = _mm512_setr_epi64(0, 3, 1, 4, 2, 5, 6, 7);
-    pi1G = _mm512_setr_epi64(1, 4, 2, 0, 3, 5, 6, 7);
-    pi1K = _mm512_setr_epi64(2, 0, 3, 1, 4, 5, 6, 7);
-    pi1M = _mm512_setr_epi64(3, 1, 4, 2, 0, 5, 6, 7);
-    pi1S = _mm512_setr_epi64(4, 2, 0, 3, 1, 5, 6, 7);
-    pi2S1 = _mm512_setr_epi64(0, 1, 2, 3, 4, 5, 8, 10);
-    pi2S2 = _mm512_setr_epi64(0, 1, 2, 3, 4, 5, 9, 11);
-    pi2BG = _mm512_setr_epi64(0, 1, 8, 9, 6, 5, 6, 7);
-    pi2KM = _mm512_setr_epi64(2, 3, 10, 11, 7, 5, 6, 7);
-    pi2S3 = _mm512_setr_epi64(4, 5, 12, 13, 4, 5, 6, 7);
-    padding = _mm512_maskz_set1_epi64(1, 0x8000000000000000);
-
-    K12RoundConst0 = _mm512_maskz_set1_epi64(1, 0x000000008000808bULL);
-    K12RoundConst1 = _mm512_maskz_set1_epi64(1, 0x800000000000008bULL);
-    K12RoundConst2 = _mm512_maskz_set1_epi64(1, 0x8000000000008089ULL);
-    K12RoundConst3 = _mm512_maskz_set1_epi64(1, 0x8000000000008003ULL);
-    K12RoundConst4 = _mm512_maskz_set1_epi64(1, 0x8000000000008002ULL);
-    K12RoundConst5 = _mm512_maskz_set1_epi64(1, 0x8000000000000080ULL);
-    K12RoundConst6 = _mm512_maskz_set1_epi64(1, 0x000000000000800aULL);
-    K12RoundConst7 = _mm512_maskz_set1_epi64(1, 0x800000008000000aULL);
-    K12RoundConst8 = _mm512_maskz_set1_epi64(1, 0x8000000080008081ULL);
-    K12RoundConst9 = _mm512_maskz_set1_epi64(1, 0x8000000000008080ULL);
-    K12RoundConst10 = _mm512_maskz_set1_epi64(1, 0x0000000080000001ULL);
-    K12RoundConst11 = _mm512_maskz_set1_epi64(1, 0x8000000080008008ULL);
-}
-
-#else
 #define declareABCDE \
     unsigned long long Aba, Abe, Abi, Abo, Abu; \
     unsigned long long Aga, Age, Agi, Ago, Agu; \
@@ -647,7 +602,6 @@ static void initAVX512KangarooTwelveConstants()
     Asi =   Bsi ^((~Bso)&  Bsu ); \
     Aso =   Bso ^((~Bsu)&  Bsa ); \
     Asu =   Bsu ^((~Bsa)&  Bse );
-#endif
 
 #define K12_security        128
 #define K12_capacity        (2 * K12_security)
@@ -664,302 +618,11 @@ typedef struct
 
 static void KeccakP1600_Permute_12rounds(unsigned char* state)
 {
-#if defined (__AVX512F__) && !GENERIC_K12
-    __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, state);
-    __m512i Gaeiou = _mm512_maskz_loadu_epi64(0x1F, state + 40);
-    __m512i Kaeiou = _mm512_maskz_loadu_epi64(0x1F, state + 80);
-    __m512i Maeiou = _mm512_maskz_loadu_epi64(0x1F, state + 120);
-    __m512i Saeiou = _mm512_maskz_loadu_epi64(0x1F, state + 160);
-    __m512i b0, b1, b2, b3, b4, b5;
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst0);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst1);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst2);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst3);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst4);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst5);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst6);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst7);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst8);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst9);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst10);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst11);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    _mm512_mask_storeu_epi64(state, 0x1F, Baeiou);
-    _mm512_mask_storeu_epi64(state + 40, 0x1F, Gaeiou);
-    _mm512_mask_storeu_epi64(state + 80, 0x1F, Kaeiou);
-    _mm512_mask_storeu_epi64(state + 120, 0x1F, Maeiou);
-    _mm512_mask_storeu_epi64(state + 160, 0x1F, Saeiou);
-#else
     declareABCDE
         unsigned long long* stateAsLanes = (unsigned long long*)state;
     copyFromState(stateAsLanes)
         rounds12
         copyToState(stateAsLanes)
-#endif
 }
 
 static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned char* data, unsigned long long dataByteLen)
@@ -969,304 +632,12 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned c
     {
         if (!instance->byteIOIndex && dataByteLen >= i + K12_rateInBytes)
         {
-#if defined (__AVX512F__) && !GENERIC_K12
-            __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state);
-            __m512i Gaeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state + 40);
-            __m512i Kaeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state + 80);
-            __m512i Maeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state + 120);
-            __m512i Saeiou = _mm512_maskz_loadu_epi64(0x1F, instance->state + 160);
-#else
             declareABCDE
                 unsigned long long* stateAsLanes = (unsigned long long*)instance->state;
             copyFromState(stateAsLanes)
-#endif
                 unsigned long long modifiedDataByteLen = dataByteLen - i;
             while (modifiedDataByteLen >= K12_rateInBytes)
             {
-#if defined (__AVX512F__) && !GENERIC_K12
-                Baeiou = _mm512_xor_si512(Baeiou, _mm512_maskz_loadu_epi64(0x1F, data));
-                Gaeiou = _mm512_xor_si512(Gaeiou, _mm512_maskz_loadu_epi64(0x1F, data + 40));
-                Kaeiou = _mm512_xor_si512(Kaeiou, _mm512_maskz_loadu_epi64(0x1F, data + 80));
-                Maeiou = _mm512_xor_si512(Maeiou, _mm512_maskz_loadu_epi64(0x1F, data + 120));
-                Saeiou = _mm512_xor_si512(Saeiou, _mm512_maskz_loadu_epi64(0x01, data + 160));
-                __m512i b0, b1, b2, b3, b4, b5;
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst0);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst1);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst2);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst3);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst4);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst5);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst6);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst7);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst8);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst9);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst10);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-                b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-                b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-                b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-                b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-                b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-                b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-                b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-                b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-                Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst11);
-                Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-                Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-                Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-                Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-                b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-                b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-                b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-                b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-                Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-                Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-                Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-                Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-                Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-#else
                 Aba ^= ((unsigned long long*)data)[0];
                 Abe ^= ((unsigned long long*)data)[1];
                 Abi ^= ((unsigned long long*)data)[2];
@@ -1289,19 +660,10 @@ static void KangarooTwelve_F_Absorb(KangarooTwelve_F* instance, const unsigned c
                 Amu ^= ((unsigned long long*)data)[19];
                 Asa ^= ((unsigned long long*)data)[20];
                 rounds12
-#endif
                     data += K12_rateInBytes;
                 modifiedDataByteLen -= K12_rateInBytes;
             }
-#if defined (__AVX512F__) && !GENERIC_K12
-            _mm512_mask_storeu_epi64(instance->state, 0x1F, Baeiou);
-            _mm512_mask_storeu_epi64(instance->state + 40, 0x1F, Gaeiou);
-            _mm512_mask_storeu_epi64(instance->state + 80, 0x1F, Kaeiou);
-            _mm512_mask_storeu_epi64(instance->state + 120, 0x1F, Maeiou);
-            _mm512_mask_storeu_epi64(instance->state + 160, 0x1F, Saeiou);
-#else
             copyToState(stateAsLanes)
-#endif
                 i = dataByteLen - modifiedDataByteLen;
         }
         else
@@ -1534,276 +896,158 @@ static inline void KangarooTwelve(const void* input, unsigned int inputByteLen, 
     KangarooTwelve((const unsigned char*)input, inputByteLen, (unsigned char*)output, outputByteLen);
 }
 
+// Chaining value of one full K12 leaf (K12_chunkSize bytes, tree mode). Leaves are independent of each
+// other, so they can be hashed in any order and on any core; KangarooTwelveStream::absorbChainingValue()
+// feeds the results into the final node in place of the leaf bytes.
+static void KangarooTwelveLeaf(const void* leaf, void* chainingValue32)
+{
+    KangarooTwelve_F node;
+    setMem(&node, sizeof(node), 0);
+    KangarooTwelve_F_Absorb(&node, (const unsigned char*)leaf, K12_chunkSize);
+    node.state[node.byteIOIndex] ^= K12_suffixLeaf;
+    node.state[K12_rateInBytes - 1] ^= 0x80;
+    KeccakP1600_Permute_12rounds(node.state);
+    copyMem(chainingValue32, node.state, K12_capacityInBytes);
+}
+
+// Streaming (incremental) KangarooTwelve: 128-bit security, empty customization string, 32-byte output.
+// Uses the same tree, suffix and padding steps as KangarooTwelve() above, so the digest of a byte
+// sequence is identical to the one-shot digest no matter how the sequence is split across update() calls.
+// Lifecycle: init() -> update()* -> finalize() once; call init() again before reuse.
+struct KangarooTwelveStream
+{
+    KangarooTwelve_F finalNode;
+    KangarooTwelve_F queueNode;
+    unsigned long long blockNumber;
+    unsigned int queueAbsorbedLen;
+    bool finalized;
+
+    void init()
+    {
+        setMem(this, sizeof(*this), 0);
+    }
+
+    void update(const void* input, unsigned long long inputByteLen)
+    {
+        ASSERT(!finalized);
+        const unsigned char* data = (const unsigned char*)input;
+        if (blockNumber == 0)
+        {
+            // The first chunk is absorbed by the final node
+            const unsigned long long len = (inputByteLen < K12_chunkSize - queueAbsorbedLen) ? inputByteLen : K12_chunkSize - queueAbsorbedLen;
+            KangarooTwelve_F_Absorb(&finalNode, data, len);
+            data += len;
+            inputByteLen -= len;
+            queueAbsorbedLen += (unsigned int)len;
+            if (queueAbsorbedLen == K12_chunkSize && inputByteLen)
+            {
+                finishFirstChunk();
+            }
+        }
+        while (inputByteLen)
+        {
+            if (!queueAbsorbedLen)
+            {
+                setMem(&queueNode, sizeof(queueNode), 0);
+            }
+            const unsigned long long len = (inputByteLen < K12_chunkSize - queueAbsorbedLen) ? inputByteLen : K12_chunkSize - queueAbsorbedLen;
+            KangarooTwelve_F_Absorb(&queueNode, data, len);
+            data += len;
+            inputByteLen -= len;
+            queueAbsorbedLen += (unsigned int)len;
+            if (queueAbsorbedLen == K12_chunkSize)
+            {
+                chainQueueNode();
+            }
+        }
+    }
+
+    // Absorb the chaining value of a full leaf computed elsewhere (KangarooTwelveLeaf()) instead of the
+    // leaf bytes. Only valid at a leaf boundary: the first chunk is complete and no partial leaf is pending.
+    void absorbChainingValue(const void* chainingValue32)
+    {
+        ASSERT(!finalized);
+        ASSERT(queueAbsorbedLen == (blockNumber ? 0 : K12_chunkSize));
+        if (blockNumber == 0)
+        {
+            finishFirstChunk();
+        }
+        ++blockNumber;
+        KangarooTwelve_F_Absorb(&finalNode, (const unsigned char*)chainingValue32, K12_capacityInBytes);
+    }
+
+    void finalize(void* output32)
+    {
+        ASSERT(!finalized);
+        // length_encode of the empty customization string is a single 0x00 byte; it is part of the
+        // message and may complete a chunk, so it goes through update()
+        const unsigned char customizationLengthEncoding = 0;
+        update(&customizationLengthEncoding, 1);
+        finalized = true;
+
+        if (blockNumber)
+        {
+            if (queueAbsorbedLen)
+            {
+                chainQueueNode();
+            }
+            // right_encode(number of chaining values) || 0xFF || 0xFF
+            unsigned int n = 0;
+            for (unsigned long long v = --blockNumber; v && (n < sizeof(unsigned long long)); ++n, v >>= 8)
+            {
+            }
+            unsigned char encbuf[sizeof(unsigned long long) + 1 + 2];
+            for (unsigned int i = 1; i <= n; ++i)
+            {
+                encbuf[i - 1] = (unsigned char)(blockNumber >> (8 * (n - i)));
+            }
+            encbuf[n] = (unsigned char)n;
+            encbuf[++n] = 0xFF;
+            encbuf[++n] = 0xFF;
+            KangarooTwelve_F_Absorb(&finalNode, encbuf, ++n);
+            finalNode.state[finalNode.byteIOIndex] ^= 0x06;
+        }
+        else
+        {
+            finalNode.state[finalNode.byteIOIndex] ^= 0x07;
+        }
+        finalNode.state[K12_rateInBytes - 1] ^= 0x80;
+        KeccakP1600_Permute_12rounds(finalNode.state);
+        copyMem(output32, finalNode.state, 32);
+    }
+
+private:
+    // First chunk complete and more data follows: switch the final node to tree mode
+    void finishFirstChunk()
+    {
+        blockNumber = 1;
+        queueAbsorbedLen = 0;
+        finalNode.state[finalNode.byteIOIndex] ^= 0x03;
+        if (++finalNode.byteIOIndex == K12_rateInBytes)
+        {
+            KeccakP1600_Permute_12rounds(finalNode.state);
+            finalNode.byteIOIndex = 0;
+        }
+        else
+        {
+            finalNode.byteIOIndex = (finalNode.byteIOIndex + 7) & ~7;
+        }
+    }
+
+    // Finish the current (full or partial) leaf in the queue node and absorb its chaining value into the final node
+    void chainQueueNode()
+    {
+        ++blockNumber;
+        queueAbsorbedLen = 0;
+        queueNode.state[queueNode.byteIOIndex] ^= K12_suffixLeaf;
+        queueNode.state[K12_rateInBytes - 1] ^= 0x80;
+        KeccakP1600_Permute_12rounds(queueNode.state);
+        KangarooTwelve_F_Absorb(&finalNode, queueNode.state, K12_capacityInBytes);
+    }
+};
+
 static void KangarooTwelve64To32(const unsigned char* input, unsigned char* output)
 {
-#if defined (__AVX512F__) && !GENERIC_K12
-    __m512i Baeiou = _mm512_maskz_loadu_epi64(0x1F, input);
-    __m512i Gaeiou = _mm512_set_epi64(0, 0, 0, 0, 0x0700, ((unsigned long long*)input)[7], ((unsigned long long*)input)[6], ((unsigned long long*)input)[5]);
-
-    __m512i b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, zero, 0x96), zero, padding, 0x96);
-    __m512i b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    __m512i b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(zero, b0, b1, 0x96), rhoK));
-    __m512i b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(zero, b0, b1, 0x96), rhoM));
-    __m512i b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(padding, b0, b1, 0x96), rhoS));
-    __m512i b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst0);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    __m512i Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    __m512i Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    __m512i Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst1);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst2);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst3);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst4);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst5);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst6);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst7);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst8);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst9);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-    Baeiou = _mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst10);
-    Gaeiou = _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2);
-    Kaeiou = _mm512_ternarylogic_epi64(b2, b3, b4, 0xD2);
-    Maeiou = _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2);
-    Saeiou = _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2);
-    b0 = _mm512_permutex2var_epi64(_mm512_unpacklo_epi64(Baeiou, Gaeiou), pi2S1, Saeiou);
-    b2 = _mm512_permutex2var_epi64(_mm512_unpackhi_epi64(Baeiou, Gaeiou), pi2S2, Saeiou);
-    b1 = _mm512_unpacklo_epi64(Kaeiou, Maeiou);
-    b3 = _mm512_unpackhi_epi64(Kaeiou, Maeiou);
-    Baeiou = _mm512_permutex2var_epi64(b0, pi2BG, b1);
-    Gaeiou = _mm512_permutex2var_epi64(b2, pi2BG, b3);
-    Kaeiou = _mm512_permutex2var_epi64(b0, pi2KM, b1);
-    Maeiou = _mm512_permutex2var_epi64(b2, pi2KM, b3);
-    Saeiou = _mm512_mask_blend_epi64(0x10, _mm512_permutex2var_epi64(b0, pi2S3, b1), Saeiou);
-
-    b0 = _mm512_ternarylogic_epi64(_mm512_ternarylogic_epi64(Baeiou, Gaeiou, Kaeiou, 0x96), Maeiou, Saeiou, 0x96);
-    b1 = _mm512_permutexvar_epi64(moveThetaPrev, b0);
-    b0 = _mm512_rol_epi64(_mm512_permutexvar_epi64(moveThetaNext, b0), 1);
-    b2 = _mm512_permutexvar_epi64(pi1K, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Kaeiou, b0, b1, 0x96), rhoK));
-    b3 = _mm512_permutexvar_epi64(pi1M, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Maeiou, b0, b1, 0x96), rhoM));
-    b4 = _mm512_permutexvar_epi64(pi1S, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Saeiou, b0, b1, 0x96), rhoS));
-    b5 = _mm512_permutexvar_epi64(pi1G, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Gaeiou, b0, b1, 0x96), rhoG));
-    b0 = _mm512_permutexvar_epi64(pi1B, _mm512_rolv_epi64(_mm512_ternarylogic_epi64(Baeiou, b0, b1, 0x96), rhoB));
-
-    _mm512_mask_storeu_epi64(output, 0xF, _mm512_permutex2var_epi64(_mm512_permutex2var_epi64(_mm512_unpacklo_epi64(_mm512_xor_si512(_mm512_ternarylogic_epi64(b0, b5, b2, 0xD2), K12RoundConst11), _mm512_ternarylogic_epi64(b5, b2, b3, 0xD2)), pi2S1, _mm512_ternarylogic_epi64(b4, b0, b5, 0xD2)), pi2BG, _mm512_unpacklo_epi64(_mm512_ternarylogic_epi64(b2, b3, b4, 0xD2), _mm512_ternarylogic_epi64(b3, b4, b0, 0xD2))));
-#else
     unsigned long long Aba, Abe, Abi, Abo, Abu;
     unsigned long long Aga, Age, Agi, Ago, Agu;
     unsigned long long Aka, Ake, Aki, Ako, Aku;
@@ -2487,7 +1731,6 @@ static void KangarooTwelve64To32(const unsigned char* input, unsigned char* outp
     ((unsigned long long*)output)[1] = Bbe ^ _andn_u64(Bbi, Bbo);
     ((unsigned long long*)output)[2] = Bbi ^ _andn_u64(Bbo, Bbu);
     ((unsigned long long*)output)[3] = Bbo ^ _andn_u64(Bbu, Bba);
-#endif
 }
 
 static void KangarooTwelve64To32(const void* input, void* output)

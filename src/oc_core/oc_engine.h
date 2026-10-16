@@ -10,8 +10,6 @@
 #include "oc_transactions.h"
 #include "core_oc_network_messages.h"
 
-// Self-contained K12 wrapper; K12/kangaroo_twelve_xkcp.h's external-linkage
-// XKCP symbols would clash at link with other TUs defining them.
 #include "kangaroo_twelve.h"
 
 

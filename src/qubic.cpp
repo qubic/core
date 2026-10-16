@@ -37,7 +37,6 @@
 
 #include "text_output.h"
 
-#include "K12/kangaroo_twelve_xkcp.h"
 #include "kangaroo_twelve.h"
 #include "four_q.h"
 #include "score.h"
@@ -94,6 +93,9 @@
 
 #if USE_PARALLEL_SIGN_VOTES
 #include "optimizations/opt_parallel_sign_votes.h"
+#endif
+#if USE_PARALLEL_K12_LEAVES
+#include "optimizations/opt_parallel_k12_leaves.h"
 #endif
 
 ////////// Qubic \\\\\\\\\\
@@ -190,7 +192,7 @@ const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateD
 static bool targetNextTickDataDigestIsKnown = false;
 static m256i targetNextTickDataDigest;
 static m256i lastExpectedTickTransactionDigest;
-XKCP::KangarooTwelve_Instance g_k12_instance;
+static KangarooTwelveStream txBodyDigestStream;
 // rdtsc (timestamp) of ticks
 static unsigned long long tickTicks[11];
 
@@ -840,7 +842,16 @@ static void getComputerDigest(m256i& digest)
                 contractStateLock[digestIndex].acquireRead();
 
                 const unsigned long long startTime = __rdtsc();
-                KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
+#if USE_PARALLEL_K12_LEAVES
+                if (size >= PARALLEL_K12_LEAVES_MIN_STATE_SIZE)
+                {
+                    parallelK12Leaves.digest(contractStates[digestIndex], size, &contractStateDigests[digestIndex]);
+                }
+                else
+#endif
+                {
+                    KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
+                }
                 const unsigned long long executionTime = __rdtsc() - startTime;
 
                 contractStateLock[digestIndex].releaseRead();
@@ -2514,6 +2525,12 @@ static void requestProcessor(void* ProcedureArgument)
         // Pull pending signTickVote tasks dispatched by broadcastTickVotes().
         // Cheap fast-path when nothing pending, otherwise loop until pool empty.
         while (parallelSignVotes.tryProcessOne())
+        {
+        }
+#endif
+#if USE_PARALLEL_K12_LEAVES
+        // Hash K12 leaves of large contract states dispatched by getComputerDigest().
+        while (parallelK12Leaves.tryProcessOne())
         {
         }
 #endif
@@ -6135,9 +6152,8 @@ static void prepareNextTickTransactions()
 static void computeTxBodyDigestBase(const int tick)
 {
     ASSERT(nextTickData.epoch == system.epoch); // nextTickData need to be valid
-    constexpr size_t outputLen = 4; // output length in bytes
 
-    XKCP::KangarooTwelve_Initialize(&g_k12_instance, 128, outputLen);
+    txBodyDigestStream.init();
 
     const unsigned int tickIndex = ts.tickToIndexCurrentEpoch(tick);
     const auto* tsTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
@@ -6160,22 +6176,7 @@ static void computeTxBodyDigestBase(const int tick)
                     KangarooTwelve(transaction, transaction->totalSize(), digest, sizeof(digest));
                     if (digest == nextTickData.transactionDigests[i])
                     {
-                        int ret = 1;
-                        while(ret == 1)
-                        {
-                            ret = XKCP::KangarooTwelve_Update(&g_k12_instance, reinterpret_cast<const unsigned char *>(transaction), transaction->totalSize());
-                            if (ret == 0)
-                            {
-                                break;
-                            }
-#if !defined(NDEBUG)
-                            else
-                            {
-                                setText(message, L"txBodyDigest: XKCP failed to create hash of tx");
-                                addDebugMessage(message);
-                            }
-#endif
-                        }
+                        txBodyDigestStream.update(transaction, transaction->totalSize());
                     }
                 }
 #if !defined(NDEBUG)
@@ -6191,18 +6192,10 @@ static void computeTxBodyDigestBase(const int tick)
         }
     }
 
-    int ret = 1;
-    while(ret == 1)
-    {
-        ret = XKCP::KangarooTwelve_Final(&g_k12_instance, reinterpret_cast<unsigned char*>(&etalonTick.saltedTransactionBodyDigest), (const unsigned char *)"", 0);
-#if !defined(NDEBUG)
-        if(ret == 1)
-        {
-            setText(message, L"txBodyDigest: XKCP failed to finalize hash");
-            addDebugMessage(message);
-        }
-#endif
-    }
+    // the tx body digest is the first 4 bytes of the K12 output
+    unsigned char txBodyDigest[32];
+    txBodyDigestStream.finalize(txBodyDigest);
+    copyMem(&etalonTick.saltedTransactionBodyDigest, txBodyDigest, sizeof(etalonTick.saltedTransactionBodyDigest));
 }
 
 // special procedure to sign the tick vote
@@ -7368,9 +7361,6 @@ static bool initialize()
 {
     enableAVX();
 
-#if defined (__AVX512F__) && !GENERIC_K12
-    initAVX512KangarooTwelveConstants();
-#endif
 #if defined (__AVX512F__)
     initAVX512FourQConstants();
 #endif
@@ -7445,6 +7435,24 @@ static bool initialize()
                 return false;
             }
         }
+#if USE_PARALLEL_K12_LEAVES
+        {
+            unsigned long long maxStateSize = 0;
+            for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+            {
+                if (contractDescriptions[contractIndex].stateSize > maxStateSize)
+                {
+                    maxStateSize = contractDescriptions[contractIndex].stateSize;
+                }
+            }
+            void* chainingValueBuffer = nullptr;
+            if (!allocPoolWithErrorLog(L"parallelK12Leaves", ParallelK12LeafTasks::chainingValueBufferSize(maxStateSize), &chainingValueBuffer, __LINE__))
+            {
+                return false;
+            }
+            parallelK12Leaves.init((unsigned char*)chainingValueBuffer, maxStateSize);
+        }
+#endif
 
         if (!allocPoolWithErrorLog(L"score", sizeof(*score), (void**)&score, __LINE__))
         {
@@ -7864,6 +7872,12 @@ static void deinitialize()
     gAntPendingSolutions.deinit();
     gAntColony.deinit();
 
+#if USE_PARALLEL_K12_LEAVES
+    if (parallelK12Leaves.chainingValueBuffer)
+    {
+        freePool(parallelK12Leaves.chainingValueBuffer);
+    }
+#endif
     if (score)
     {
         freePool(score);
@@ -8527,12 +8541,7 @@ static void processKeyPresses()
             logToConsole(message);
 #endif
 
-            setText(message, L"Average K12 duration for  ");
-#if defined (__AVX512F__) && !GENERIC_K12
-            appendText(message, L"AVX512 implementation is ");
-#else
-            appendText(message, L"Generic implementation is ");
-#endif
+            setText(message, L"Average K12 duration of state digests is ");
             appendNumber(message, QPI::div(K12MeasurementsSum, K12MeasurementsCount), TRUE);
             appendText(message, L" ticks.");
             logToConsole(message);

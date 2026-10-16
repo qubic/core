@@ -25,6 +25,10 @@
 #define IMAP_LOG_PAGE_SIZE 300ULL
 #define VM_NUM_CACHE_PAGE 1
 
+// enable the per-tick log state digest chain in the test TUs
+#undef LOG_STATE_DIGEST
+#define LOG_STATE_DIGEST 1
+
 #include "logging/logging.h"
 
 class LoggingTest
@@ -33,6 +37,7 @@ public:
     LoggingTest()
     {
         EXPECT_TRUE(qLogger::initLogging());
+        qLogger::registerNewTx(0, 0); // initLogging() resets tickBegin to 0 but keeps the tx context of earlier tests
     }
 
     ~LoggingTest()

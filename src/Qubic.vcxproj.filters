@@ -251,7 +251,6 @@
     <ClInclude Include="platform\uint128.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="K12/kangaroo_twelve_xkcp.h" />
     <ClInclude Include="contracts\TestExampleC.h">
       <Filter>contracts</Filter>
     </ClInclude>
@@ -458,6 +457,9 @@
       <Filter>oracle_interfaces</Filter>
 	</ClInclude>
     <ClInclude Include="optimizations\opt_parallel_sign_votes.h">
+      <Filter>optimizations</Filter>
+    </ClInclude>
+    <ClInclude Include="optimizations\opt_parallel_k12_leaves.h">
       <Filter>optimizations</Filter>
     </ClInclude>
   </ItemGroup>
