@@ -146,7 +146,7 @@ int main(int argc, char** argv)
         printf("256 MiB [MB/s]: stream %.0f | one-shot %.0f | %s\n", big / 1.048576 / best[0], big / 1.048576 / best[1], memcmp(b, c, 32) ? "MISMATCH" : "ok");
     }
 
-    // Parallel leaf hashing of a QX-sized state (600 MB): tick processor plus N helper threads that act
+    // Parallel leaf hashing of a 600 MB state: tick processor plus N helper threads that act
     // as request processors, versus the one-shot on one core.
     {
         const size_t stateSize = 600u << 20;

@@ -67,7 +67,6 @@ namespace
     }
 
     // Streaming hash fed in the given update sizes (remaining bytes are fed as a last update).
-    // No test checks inside, so it can be timed as well.
     void streamNativeRaw(const unsigned char* d, size_t len, const std::vector<size_t>& updates, unsigned char out[32])
     {
         KangarooTwelveStream s;
@@ -344,9 +343,7 @@ TEST(TestCoreK12, Digest64To32MatchesOneShot)
 //   digest[t] = K12(digest[t-1] || messages[t])
 // where messages[t] are the selected log messages of tick t fed by separate updates, and the
 // stream is finalized once per tick and re-initialized with the previous digest.
-// The chain itself is not compiled in NO_UEFI builds today (LOG_STATE_DIGEST forced to 0), so this
-// test drives the same call sequence directly on the stream; logging_digest.cpp checks the wiring
-// through qLogger itself.
+// logging_digest.cpp checks the same chain through qLogger itself.
 TEST(TestCoreK12, LoggingDigestChainContract)
 {
     const std::vector<unsigned char> pool = pseudoRandom(5000, 7);
@@ -384,16 +381,8 @@ TEST(TestCoreK12, LoggingDigestChainContract)
     }
 }
 
-// Smoke-level timing of the two stream shapes the node produces per tick, for whichever K12
-// configuration this binary was built with. One warmup, then equal repetitions per backend with the
-// backend order rotated every repetition, minimum reported; results are validated outside the
-// timed region.
-// Caveat: in this binary every KangarooTwelveStream::update() carries the gtest expansion of
-// ASSERT(!finalized), which the Release UEFI build does not have. The production-equivalent
-// measurement is tools/k12_bench/k12_bench.cpp (single TU, no gtest, NDEBUG); use that for
-// performance decisions.
-//  - txBodyDigest: up to NUMBER_OF_TRANSACTIONS_PER_TICK updates of transaction size
-//  - logging chain: many small updates
+// Smoke-level timing of the two stream shapes the node produces per tick (txBodyDigest, logging chain).
+// Not production-equivalent (gtest ASSERT expansion); use tools/k12_bench for performance decisions.
 TEST(TestCoreK12, PerformanceStreamShapes)
 {
     const std::vector<unsigned char> m = ptn(4096 * 1200);
@@ -573,11 +562,8 @@ TEST(TestCoreK12, ParallelLeafPoolMatchesOneShot)
     EXPECT_EQ(parallelDigest(parallelK12Leaves, m.data(), len, 7), expected) << "7 helpers";
 }
 
-// Lifetime: after digest() returns the caller releases the state's read lock, so no worker may still
-// be reading the input. Helpers keep running while the input buffer is destroyed and replaced right
-// after each digest; a worker still inside a leaf would read freed memory (visible under
-// AddressSanitizer, run the test with it after changing the pool) and, on a live node, contract
-// state that is being written.
+// After digest() returns no worker may read the input: helpers keep running while the input is freed
+// after each digest (a late reader shows up under AddressSanitizer).
 TEST(TestCoreK12, ParallelLeafPoolNoReaderAfterDigestReturns)
 {
     typedef ParallelK12LeafTasksT<2, 7> SmallPool;

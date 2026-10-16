@@ -2,35 +2,16 @@
 
 // Parallel K12 leaf hashing for large contract state digests.
 //
-// getComputerDigest() hashes every contract state that changed since the last tick. K12 hashes its
-// input as a tree: the first K12_chunkSize bytes go into the final node, every further full chunk
-// is an independent leaf whose 32-byte chaining value is absorbed by the final node, and only the
-// final node is sequential. For a 600 MB state that is ~75000 independent leaves and 2.4 MB of
-// sequential work, so the leaves are handed out in fixed-size tasks that the request processors
-// pick up in their loop (like parallelSignVotes) while the tick processor takes the rest.
+// K12 hashes every full chunk after the first as an independent leaf; only the final node is
+// sequential. digest() hands the leaves out in fixed-size tasks that the request processors pick up
+// in their loop (like parallelSignVotes) while the tick processor works too. The result is
+// bit-identical to KangarooTwelve(state, size, out, 32). Each task is claimed by exactly one core,
+// and digest() returns only when no worker is inside the pool any more, because the caller releases
+// the state's read lock right after.
 //
-// The result is bit-identical to KangarooTwelve(state, size, out, 32): KangarooTwelveLeaf() performs
-// exactly the leaf steps of the one-shot code and KangarooTwelveStream absorbs the chaining values in
-// leaf order.
-//
-// Ownership is exclusive: a task is claimed by an atomic counter, hashed by exactly one core straight
-// into its slot of the chaining-value buffer, and never redone. A leaf hash is deterministic and takes
-// microseconds, and application processors are not preempted under UEFI, so racing a claimed task
-// could not finish it earlier anyway; it would only duplicate work. The tail of a digest is therefore
-// bounded by one task of a helper's time. digest() returns only when every worker has left the pool,
-// because the caller releases the state's read lock right after.
-//
-// Workers see a consistent (range, counter) pair without a generation counter: a range is published
-// only while active == 0 and after the previous digest drained busy to 0, and a worker registers as
-// busy before it re-checks active and reads the range. Closing admission (active = 0) and registering
-// (busy++) are both locked instructions, i.e. full barriers, so either the ticker sees the worker's
-// busy and waits for it, or the worker sees active == 0 and leaves: a plain store for active = 0
-// could stay in the store buffer while the ticker already reads busy == 0, letting a worker slip
-// into a range that is about to be replaced.
-//
-// Disable via USE_PARALLEL_K12_LEAVES in private_settings.h; getComputerDigest() then hashes on
-// the tick processor as before. PARALLEL_K12_LEAVES_MAX_HELPERS caps the request processors that
-// hash at the same time; the others keep serving requests.
+// Closing admission (active = 0) and registering a worker (busy++) are locked instructions, i.e. full
+// barriers: either the ticker sees the worker's busy and waits, or the worker sees active == 0 and
+// leaves. A plain store for active = 0 could let a worker slip into a range that is about to be replaced.
 
 #include "../kangaroo_twelve.h"
 #include "../platform/memory.h"
@@ -49,8 +30,7 @@
 #define PARALLEL_K12_LEAVES_MIN_STATE_SIZE (4 * 1024 * 1024)
 #endif
 
-// Request processors hashing at the same time. Scaling flattens between 8 and 16 and every helper
-// stops handling requests while it hashes.
+// Request processors hashing at the same time; each one stops serving requests while it hashes.
 #ifndef PARALLEL_K12_LEAVES_MAX_HELPERS
 #define PARALLEL_K12_LEAVES_MAX_HELPERS 8
 #endif
@@ -58,7 +38,7 @@
 template <unsigned int TASK_LEAVES_ = 64, unsigned int MAX_HELPERS_ = PARALLEL_K12_LEAVES_MAX_HELPERS>
 struct ParallelK12LeafTasksT
 {
-    static constexpr unsigned int TASK_LEAVES = TASK_LEAVES_;   // 512 KiB of input per task, ~0.4 ms
+    static constexpr unsigned int TASK_LEAVES = TASK_LEAVES_;   // 512 KiB of input per task
     static constexpr unsigned int MAX_HELPERS = MAX_HELPERS_;
 
     // the published range: task i covers leaves [i * TASK_LEAVES, (i + 1) * TASK_LEAVES)

@@ -963,8 +963,7 @@ struct KangarooTwelveStream
     }
 
     // Absorb the chaining value of a full leaf computed elsewhere (KangarooTwelveLeaf()) instead of the
-    // leaf bytes. Valid only right after the first chunk (exactly K12_chunkSize bytes) was fed with update()
-    // and while no partial leaf is pending, i.e. every leaf so far was fed this way.
+    // leaf bytes. Only valid at a leaf boundary: the first chunk is complete and no partial leaf is pending.
     void absorbChainingValue(const void* chainingValue32)
     {
         ASSERT(!finalized);

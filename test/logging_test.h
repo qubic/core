@@ -25,7 +25,8 @@
 #define IMAP_LOG_PAGE_SIZE 300ULL
 #define VM_NUM_CACHE_PAGE 1
 
-// enable the per-tick log state digest chain in all test TUs (must be consistent across TUs)
+// enable the per-tick log state digest chain in the test TUs
+#undef LOG_STATE_DIGEST
 #define LOG_STATE_DIGEST 1
 
 #include "logging/logging.h"
