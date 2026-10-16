@@ -42,15 +42,15 @@
 #define NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS 16
 
 // OM related setting
-static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Config timout for connecting attemp to OM
+static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 15;  // Config timout for connecting attemp to OM
 static constexpr unsigned int ORACLE_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OM
-static constexpr unsigned int ORACLE_MACHINE_GRACEFUL_CLOSE_RETRIES = 3; // Graceful close retries for connecting attempt to OM
+static constexpr unsigned int ORACLE_MACHINE_GRACEFUL_CLOSE_RETRIES = 3;    // Graceful close retries for connecting attempt to OM
 static constexpr unsigned long long OM_RECONNECT_COOLDOWN_SECS = 0;
 
 // OC machine setting (mirrors the OM settings above)
-static constexpr unsigned int OC_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Config timeout for connecting attempt to OC machine
+static constexpr unsigned int OC_MACHINE_CONNECTION_TIMEOUT_SECS = 15;  // Config timeout for connecting attempt to OC machine
 static constexpr unsigned int OC_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OC machine
-static constexpr unsigned int OC_MACHINE_GRACEFUL_CLOSE_RETRIES = 3; // Graceful close retries for connecting attempt to OC machine
+static constexpr unsigned int OC_MACHINE_GRACEFUL_CLOSE_RETRIES = 3;    // Graceful close retries for connecting attempt to OC machine
 static constexpr unsigned long long OC_RECONNECT_COOLDOWN_SECS = 0;
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
@@ -106,7 +106,7 @@ struct Peer
     static constexpr unsigned int dejavuListSize = 32;
     unsigned int trackRequestedDejavu[dejavuListSize];
     unsigned int trackRequestedTick[dejavuListSize];
-    long trackRequestedCounter; // "long" to discard warning from intrin.h
+    long trackRequestedCounter;  // "long" to discard warning from intrin.h
     unsigned int lastActiveTick; // indicate the tick number that this peer transfer valid tick/vote data
 
     bool isFullNode() const
@@ -160,7 +160,7 @@ struct Peer
         exchangedPublicPeers = FALSE;
         isClosing = FALSE;
         isIncommingConnection = FALSE;
-        
+
         isOMNode = FALSE;
         lastOMActivityTime = 0;
         connectionStartTime = 0;
@@ -262,7 +262,7 @@ static bool isWhiteListPeer(unsigned char address[4])
 
 static bool isPrivateIp(const unsigned char address[4])
 {
-    int total = min(int(sizeof(knownPublicPeers)/sizeof(knownPublicPeers[0])), NUMBER_OF_PRIVATE_IP);
+    int total = min(int(sizeof(knownPublicPeers) / sizeof(knownPublicPeers[0])), NUMBER_OF_PRIVATE_IP);
     for (int i = 0; i < total; i++)
     {
         const auto& privateIp = knownPublicPeers[i];
@@ -308,7 +308,7 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
                 status = peer->tcp4Protocol->Close(peer->tcp4Protocol, &closeToken);
                 if (status == EFI_SUCCESS)
                 {
-                    // Poll a few times (non-blocking) - hopefully RST will arrive the 
+                    // Poll a few times (non-blocking) - hopefully RST will arrive the
                     for (int i = 0; i < closeGracefullyRetries; i++)
                     {
                         peer->tcp4Protocol->Poll(peer->tcp4Protocol);
@@ -575,7 +575,6 @@ static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeade
 #if !defined(NDEBUG)
     addDebugMessage(::message);
 #endif
-
 }
 
 
@@ -673,28 +672,28 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 }
 
 /**
-* checks if a given address is a bogon address
-* a bogon address is an ip address which should not be used publicly (e.g. private networks)
-*
-* @param address the ip address to be checked
-* @return true if address is bogon or false if not
-*/
+ * checks if a given address is a bogon address
+ * a bogon address is an ip address which should not be used publicly (e.g. private networks)
+ *
+ * @param address the ip address to be checked
+ * @return true if address is bogon or false if not
+ */
 static bool isBogonAddress(const IPv4Address& address)
 {
     return (!address.u8[0])
-        || (address.u8[0] == 127)
-        || (address.u8[0] == 10)
-        || (address.u8[0] == 172 && address.u8[1] >= 16 && address.u8[1] <= 31)
-        || (address.u8[0] == 192 && address.u8[1] == 168)
-        || (address.u8[0] == 255);
+           || (address.u8[0] == 127)
+           || (address.u8[0] == 10)
+           || (address.u8[0] == 172 && address.u8[1] >= 16 && address.u8[1] <= 31)
+           || (address.u8[0] == 192 && address.u8[1] == 168)
+           || (address.u8[0] == 255);
 }
 
 /**
-* checks if a given address was manually set in the initial list of known public peers
-*
-* @param address the ip address to be checked
-* @return true if the ip address is in the Known Public Peers or false if not
-*/
+ * checks if a given address was manually set in the initial list of known public peers
+ *
+ * @param address the ip address to be checked
+ * @return true if the ip address is in the Known Public Peers or false if not
+ */
 static bool isAddressInKnownPublicPeers(const IPv4Address& address)
 {
     // keep this exception to avoid bogon addresses kept for outgoing connections
@@ -828,7 +827,6 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 penalizePublicPeerRejectedConnection(peers[i].address);
 
                 closePeer(&peers[i]);
-
             }
             else
             {
@@ -955,7 +953,7 @@ static void processReceivedData(unsigned int i, unsigned int salt)
                 else
                 {
                     numberOfReceivedBytes += peers[i].receiveData.DataLength;
-                    *((unsigned long long*) & peers[i].receiveData.FragmentTable[0].FragmentBuffer) += peers[i].receiveData.DataLength;
+                    *((unsigned long long*)&peers[i].receiveData.FragmentTable[0].FragmentBuffer) += peers[i].receiveData.DataLength;
 
                 iteration:
                     unsigned int receivedDataSize = (unsigned int)(((unsigned long long)peers[i].receiveData.FragmentTable[0].FragmentBuffer) - ((unsigned long long)peers[i].receiveBuffer));
@@ -1109,7 +1107,7 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
                 peers[i].isTransmitting = FALSE;
                 peers[i].omTransmitStartTime = 0; // mark as invalid
                 closePeer(&peers[i]);
-                return;  // Exit early
+                return; // Exit early
             }
         }
 
@@ -1122,7 +1120,7 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
                 peers[i].isTransmitting = FALSE;
                 peers[i].ocTransmitStartTime = 0; // mark as invalid
                 closePeer(&peers[i]);
-                return;  // Exit early
+                return; // Exit early
             }
         }
 
@@ -1204,7 +1202,6 @@ static void transmitData(unsigned int i, unsigned int salt)
                 }
             }
         }
-
     }
 }
 
@@ -1260,7 +1257,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                     unsigned long long elapsedSecs = (__rdtsc() - peers[i].lastOcCloseTime) / frequency;
                     if (elapsedSecs < OC_RECONNECT_COOLDOWN_SECS)
                     {
-                        return;  // Still in cooldown, don't attempt reconnection yet
+                        return; // Still in cooldown, don't attempt reconnection yet
                     }
                 }
             }
@@ -1281,10 +1278,9 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                     unsigned long long elapsedSecs = (__rdtsc() - peers[i].lastOMCloseTime) / frequency;
                     if (elapsedSecs < OM_RECONNECT_COOLDOWN_SECS)
                     {
-                        return;  // Still in cooldown, don't attempt reconnection yet
+                        return; // Still in cooldown, don't attempt reconnection yet
                     }
                 }
-
             }
             else
             {
