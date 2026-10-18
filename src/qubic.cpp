@@ -3578,6 +3578,12 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
         return;
     }
 
+    if (system.tick >= FREEZE_FROM_TICK
+        && isFrozenAddress(transaction->sourcePublicKey))
+    {
+        return;
+    }
+
     // Record the tx with digest
     ts.transactionsDigestAccess.acquireLock();
     ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
