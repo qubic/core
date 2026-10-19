@@ -8,6 +8,7 @@
 #include "four_q.h"
 #include "private_settings.h"
 #include "public_settings.h"
+#include "frozen_addresses.h"
 
 static constexpr unsigned long long computorSeedsCount = sizeof(computorSeeds) / sizeof(computorSeeds[0]);
 

@@ -171,6 +171,7 @@
     <ClInclude Include="text_output.h" />
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
+    <ClInclude Include="frozen_addresses.h" />
     <ClInclude Include="platform\time.h" />
     <ClInclude Include="ticking\ticking.h" />
     <ClInclude Include="ticking\tick_storage.h" />

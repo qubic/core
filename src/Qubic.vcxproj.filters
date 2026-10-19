@@ -6,6 +6,7 @@
   <ItemGroup>
     <ClInclude Include="private_settings.h" />
     <ClInclude Include="public_settings.h" />
+    <ClInclude Include="frozen_addresses.h" />
     <ClInclude Include="kangaroo_twelve.h" />
     <ClInclude Include="four_q.h" />
     <ClInclude Include="text_output.h" />
