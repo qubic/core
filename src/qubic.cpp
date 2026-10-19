@@ -4069,6 +4069,47 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
     antDebugPending(L"published", entry, payload.tick);
 }
 
+// Move all qus and shares of frozen addresses to FROZEN_ESCROW. Run once, in tick FREEZE_FROM_TICK after BEGIN_TICK.
+static void transferFrozenAssetsToEscrow()
+{
+    for (unsigned long long i = 0; i < FROZEN_ADDRESSES_CAPACITY; i++)
+    {
+        const m256i frozen = gFrozenAddresses[i];
+        if (isZero(frozen))
+        {
+            continue;
+        }
+
+        const int spectrumIndex = ::spectrumIndex(frozen);
+        if (spectrumIndex >= 0)
+        {
+            const long long amount = energy(spectrumIndex);
+            if (amount > 0 && decreaseEnergy(spectrumIndex, amount))
+            {
+                increaseEnergy(frozenEscrowPublicKey, amount);
+                const QuTransfer quTransfer = { frozen, frozenEscrowPublicKey, amount };
+                logger.logQuTransfer(quTransfer);
+            }
+        }
+
+        ACQUIRE(universeLock);
+        unsigned int possessionIndex = frozen.m256i_u32[0] & (ASSETS_CAPACITY - 1);
+        while (assets[possessionIndex].varStruct.possession.type != EMPTY)
+        {
+            const auto& possession = assets[possessionIndex].varStruct.possession;
+            if (possession.type == POSSESSION && possession.publicKey == frozen && possession.numberOfShares > 0
+                && assets[possession.ownershipIndex].varStruct.ownership.publicKey == frozen)
+            {
+                int destinationOwnershipIndex, destinationPossessionIndex;
+                transferShareOwnershipAndPossession((int)possession.ownershipIndex, (int)possessionIndex, frozenEscrowPublicKey, possession.numberOfShares,
+                    &destinationOwnershipIndex, &destinationPossessionIndex, false);
+            }
+            possessionIndex = (possessionIndex + 1) & (ASSETS_CAPACITY - 1);
+        }
+        RELEASE(universeLock);
+    }
+}
+
 static void processTick(unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -4141,6 +4182,11 @@ static void processTick(unsigned long long processorNumber)
     contractProcessorState = 1;
     WAIT_WHILE(contractProcessorState);
     PROFILE_SCOPE_END();
+
+    if (system.tick == FREEZE_FROM_TICK)
+    {
+        transferFrozenAssetsToEscrow();
+    }
 
     unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     ts.tickData.acquireLock();

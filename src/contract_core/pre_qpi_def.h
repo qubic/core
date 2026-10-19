@@ -2,6 +2,7 @@
 
 #include "network_messages/common_def.h"
 #include "platform/m256.h"
+#include "frozen_addresses.h"
 
 namespace QPI
 {

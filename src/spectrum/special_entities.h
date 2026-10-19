@@ -18,6 +18,7 @@ GLOBAL_VAR_DECL m256i computorPrivateKeys[computorSeedsCount];
 GLOBAL_VAR_DECL m256i computorPublicKeys[computorSeedsCount];
 GLOBAL_VAR_DECL m256i arbitratorPublicKey;
 GLOBAL_VAR_DECL m256i dispatcherPublicKey;
+GLOBAL_VAR_DECL m256i frozenEscrowPublicKey;
 
 GLOBAL_VAR_DECL BroadcastComputors broadcastedComputors;
 
@@ -59,6 +60,7 @@ static bool initSpecialEntities()
 
     getPublicKeyFromIdentity((const unsigned char*)ARBITRATOR, (unsigned char*)&arbitratorPublicKey);
     getPublicKeyFromIdentity((const unsigned char*)DISPATCHER, dispatcherPublicKey.m256i_u8);
+    getPublicKeyFromIdentity((const unsigned char*)FROZEN_ESCROW, frozenEscrowPublicKey.m256i_u8);
 
     setMem(gFrozenAddresses, sizeof(gFrozenAddresses), 0);
     for (unsigned long long i = 0; i < NUMBER_OF_FROZEN_ADDRESSES; i++)
