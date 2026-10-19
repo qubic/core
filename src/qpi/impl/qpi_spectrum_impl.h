@@ -2,6 +2,7 @@
 
 #include "contract_core/contract_exec.h"
 #include "spectrum/spectrum.h"
+#include "spectrum/special_entities.h"
 
 
 QPI::bit QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const
@@ -31,6 +32,11 @@ QPI::bit QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& en
 
         return true;
     }
+}
+
+QPI::bit QPI::QpiContextFunctionCall::isFrozenIdentity(const QPI::id& id) const
+{
+    return isFrozenAddress(id);
 }
 
 // Return the amount in the fee reserve of the specified contract (data stored in state of contract 0).

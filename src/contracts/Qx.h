@@ -1149,6 +1149,64 @@ protected:
 		state.mut()._tradeFee = 3000000; // 0.3%
 	}
 
+	struct BEGIN_TICK_locals
+	{
+		sint64 entityIndex;
+		sint64 assetIndex;
+		sint64 priority;
+		id entity;
+		id issuerAndAssetName;
+		EntityOrder entityOrder;
+		AssetOrder assetOrder;
+	};
+
+	BEGIN_TICK_WITH_LOCALS()
+	{
+		// One-shot removal of all orders of frozen entities (see frozen_addresses.h)
+		if (qpi.tick() != FREEZE_FROM_TICK || qpi.epoch() != 235)
+		{
+			return;
+		}
+
+		// remove() moves the last element into the freed slot, so don't advance after removing
+		locals.entityIndex = 0;
+		while (locals.entityIndex < sint64(state.get()._entityOrders.population()))
+		{
+			locals.entity = state.get()._entityOrders.pov(locals.entityIndex);
+			if (!qpi.isFrozenIdentity(locals.entity))
+			{
+				locals.entityIndex++;
+				continue;
+			}
+
+			locals.entityOrder = state.get()._entityOrders.element(locals.entityIndex);
+			locals.priority = state.get()._entityOrders.priority(locals.entityIndex);
+			locals.issuerAndAssetName = locals.entityOrder.issuer;
+			locals.issuerAndAssetName.u64._3 = locals.entityOrder.assetName;
+
+			locals.assetIndex = state.get()._assetOrders.headIndex(locals.issuerAndAssetName, locals.priority);
+			while (locals.assetIndex != NULL_INDEX
+				&& state.get()._assetOrders.priority(locals.assetIndex) == locals.priority)
+			{
+				locals.assetOrder = state.get()._assetOrders.element(locals.assetIndex);
+				if (locals.assetOrder.entity == locals.entity)
+				{
+					state.mut()._assetOrders.remove(locals.assetIndex);
+					break;
+				}
+
+				locals.assetIndex = state.get()._assetOrders.nextElementIndex(locals.assetIndex);
+			}
+
+			state.mut()._entityOrders.remove(locals.entityIndex);
+
+			if (locals.priority > 0) // bid order: qus were escrowed in AddToBidOrder
+			{
+				qpi.transfer(locals.entity, locals.priority * locals.entityOrder.numberOfShares);
+			}
+		}
+	}
+
 	END_TICK()
 	{
 		if ((div((state.get()._earnedAmount - state.get()._distributedAmount), 676ULL) > 0) && (state.get()._earnedAmount > state.get()._distributedAmount))

@@ -5,6 +5,7 @@
 #define PRINT_DETAILS 0
 
 static constexpr uint64 QX_ISSUE_ASSET_FEE = 1000000000ull;
+static constexpr uint64 QX_TRANSFER_FEE = 100ull;
 
 std::string assetNameFromInt64(uint64 assetName);
 
@@ -151,13 +152,93 @@ public:
         return output.issuedNumberOfShares;
     }
 
+    sint64 addToAskOrder(const id& entity, const id& issuer, uint64 assetName, sint64 price, sint64 numberOfShares)
+    {
+        QX::AddToAskOrder_input input{ issuer, assetName, price, numberOfShares };
+        QX::AddToAskOrder_output output;
+        invokeUserProcedure(QX_CONTRACT_INDEX, 5, input, output, entity, 0);
+        return output.addedNumberOfShares;
+    }
+
+    sint64 addToBidOrder(const id& entity, const id& issuer, uint64 assetName, sint64 price, sint64 numberOfShares)
+    {
+        QX::AddToBidOrder_input input{ issuer, assetName, price, numberOfShares };
+        QX::AddToBidOrder_output output;
+        invokeUserProcedure(QX_CONTRACT_INDEX, 6, input, output, entity, price * numberOfShares);
+        return output.addedNumberOfShares;
+    }
+
+    sint64 transferShares(const id& owner, const id& issuer, uint64 assetName, sint64 numberOfShares, const id& newOwner)
+    {
+        QX::TransferShareOwnershipAndPossession_input input{ issuer, newOwner, assetName, numberOfShares };
+        QX::TransferShareOwnershipAndPossession_output output;
+        invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, owner, QX_TRANSFER_FEE);
+        return output.transferredNumberOfShares;
+    }
+
+    QX::AssetAskOrders_output assetAskOrders(const id& issuer, uint64 assetName, uint64 offset)
+    {
+        QX::AssetAskOrders_input input{ issuer, assetName, offset };
+        QX::AssetAskOrders_output output;
+        callFunction(QX_CONTRACT_INDEX, 2, input, output);
+        return output;
+    }
+
     // TODO: add other procedures
+
+    void beginTick(bool expectSuccess = true)
+    {
+        callSystemProcedure(QX_CONTRACT_INDEX, BEGIN_TICK, expectSuccess);
+    }
 
     void endTick(bool expectSuccess = true)
     {
         callSystemProcedure(QX_CONTRACT_INDEX, END_TICK, expectSuccess);
     }
 };
+
+TEST(ContractQx, FrozenEntityOrdersRemovedAtCleanupTick)
+{
+    ContractTestingQx qx;
+
+    id issuer(1, 2, 3, 4);
+    uint64 assetName = assetNameFromString("QUTIL");
+    m256i frozen;
+    getPublicKeyFromIdentity(gFrozenIdentities[0], frozen.m256i_u8);
+    ASSERT_TRUE(isFrozenAddress(frozen));
+
+    increaseEnergy(issuer, QX_ISSUE_ASSET_FEE);
+    EXPECT_EQ(qx.issueAsset(issuer, assetName, 1000000, 0, 0), 1000000);
+
+    // frozen entity: bid 100 shares at 10 (1000 qus escrowed) and, after getting shares, ask 50 at 30
+    increaseEnergy(frozen, 1000);
+    EXPECT_EQ(qx.addToBidOrder(frozen, issuer, assetName, 10, 100), 100);
+    EXPECT_EQ(getBalance(frozen), 0);
+    increaseEnergy(issuer, QX_TRANSFER_FEE);
+    EXPECT_EQ(qx.transferShares(issuer, issuer, assetName, 50, frozen), 50);
+    EXPECT_EQ(qx.addToAskOrder(frozen, issuer, assetName, 30, 50), 50);
+
+    // non-frozen entity: ask 20 shares at 20
+    EXPECT_EQ(qx.addToAskOrder(issuer, issuer, assetName, 20, 20), 20);
+
+    // wrong tick: nothing happens
+    system.tick = FREEZE_FROM_TICK - 1;
+    system.epoch = 235;
+    qx.beginTick();
+    EXPECT_EQ(getBalance(frozen), 0);
+
+    system.tick = FREEZE_FROM_TICK;
+    qx.beginTick();
+
+    EXPECT_EQ(getBalance(frozen), 1000);
+    EXPECT_EQ(qx.entityBidOrders(frozen, 0).orders.get(0).price, 0);
+    EXPECT_EQ(qx.assetBidOrders(issuer, assetName, 0).orders.get(0).price, 0);
+    auto asks = qx.assetAskOrders(issuer, assetName, 0);
+    EXPECT_EQ(asks.orders.get(0).entity, issuer);
+    EXPECT_EQ(asks.orders.get(0).numberOfShares, 20);
+    EXPECT_EQ(asks.orders.get(1).price, 0);
+    qx.getState()->checkCollectionConsistency();
+}
 
 
 TEST(ContractQx, IssueAsset)

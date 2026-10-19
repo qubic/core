@@ -109,6 +109,10 @@ namespace QPI
 			const id& id
 		) const;
 
+		inline bit isFrozenIdentity(
+			const id& id
+		) const; // Returns "true" if the id is on the frozen list
+
 		template <typename T>
 		inline id K12(
 			const T& data
