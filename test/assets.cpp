@@ -751,6 +751,25 @@ TEST(TestCoreAssets, AssetTransferShareManagementRights)
     }
 }
 
+TEST(TestCoreAssets, IssueAssetRejectsIssuerCollidingInLow192Bits)
+{
+    AssetsTest test;
+    test.clearUniverse();
+
+    const m256i issuer(1, 2, 3, 4);
+    const m256i twin(1, 2, 3, 4 ^ 0x8000000000000000ull); // public key of N - k differs only in bit 255
+    const char token[8] = "TOKEN", other[8] = "OTHER";
+    int issuanceIdx, ownershipIdx, possessionIdx;
+
+    EXPECT_EQ(issueAsset(issuer, token, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, 1000, 1, &issuanceIdx, &ownershipIdx, &possessionIdx), 1000);
+    EXPECT_EQ(issueAsset(twin, token, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, 1000, 1, &issuanceIdx, &ownershipIdx, &possessionIdx), 0);
+    EXPECT_EQ(issueAsset(m256i(1, 2, 3, 5), token, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, 1000, 1, &issuanceIdx, &ownershipIdx, &possessionIdx), 0);
+    EXPECT_EQ(issueAsset(twin, other, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, 1000, 1, &issuanceIdx, &ownershipIdx, &possessionIdx), 1000);
+    EXPECT_EQ(issueAsset(m256i(1, 2, 4, 4), token, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, 1000, 1, &issuanceIdx, &ownershipIdx, &possessionIdx), 1000);
+
+    test.checkAssetsConsistency();
+}
+
 
 
 
