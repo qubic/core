@@ -126,7 +126,7 @@ static constexpr unsigned char BPP9000_DATA_HASH[32] =
       0x8e, 0x53, 0x01, 0xcc, 0x13, 0xe7, 0x15, 0x81, 0x7b, 0x28, 0xef, 0x3c, 0x3e, 0xff, 0x15, 0x46 };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
-static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 64;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 32;
 static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
 static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
 static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
