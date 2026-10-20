@@ -3623,6 +3623,12 @@ struct QNFT : public ContractBase
 	/** @brief Use the native public arguments for SetShareholderProposal execution. */
 	using ExecuteSetShareholderProposal_input = SetShareholderProposal_input;
 
+	/** @brief Zeroed batch used to invalidate payloads when a proposal slot is reused. */
+	struct ExecuteSetShareholderProposal_locals
+	{
+		FeeProposalBatch emptyBatch;
+	};
+
 	/** @brief Native result and governance diagnostic for public settlement. */
 	struct ExecuteSetShareholderProposal_output
 	{
@@ -4502,7 +4508,6 @@ struct QNFT : public ContractBase
 		}
 
 		// Persist issuance before attempting delivery: core does not roll back prior calls.
-		locals.item = Item{};
 		locals.item.assetName = locals.nameOutput.name;
 		locals.item.creator = qpi.invocator();
 		locals.item.editor = input.editor;
@@ -6493,7 +6498,7 @@ struct QNFT : public ContractBase
 	/**
 	 * @brief Validate fee bounds, then let QPI authorize, snapshot and create/replace/cancel the proposal.
 	 */
-	PRIVATE_PROCEDURE(ExecuteSetShareholderProposal)
+	PRIVATE_PROCEDURE_WITH_LOCALS(ExecuteSetShareholderProposal)
 	{
 		// Epoch zero requests cancellation; other proposals require payment and a supported fee variable.
 		output.result = INVALID_PROPOSAL_INDEX;
@@ -6517,7 +6522,7 @@ struct QNFT : public ContractBase
 		}
 
 		// Replacing or cancelling invalidates the previous batch in this slot.
-		state.mut().feeBatches.set(output.result, FeeProposalBatch{});
+		state.mut().feeBatches.set(output.result, locals.emptyBatch);
 		output.event.code = Code::Ok;
 	}
 
@@ -6774,7 +6779,7 @@ struct QNFT : public ContractBase
 			locals.event.action = GovernanceAction::Apply;
 			locals.event.actor = qpi(state.get().proposals).proposerId(locals.proposalIndex);
 			locals.event.proposalIndex = locals.proposalIndex;
-			locals.batch = FeeProposalBatch{};
+			setMemory(locals.batch, 0);
 			switch (locals.proposal.type)
 			{
 				case ProposalTypes::VariableYesNo:
