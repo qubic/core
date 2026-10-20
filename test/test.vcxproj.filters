@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="contract_core.cpp" />
@@ -36,6 +36,7 @@
     <ClCompile Include="contract_qip.cpp" />
     <ClCompile Include="contract_qusino.cpp" />
     <ClCompile Include="contract_qtreat.cpp" />
+    <ClCompile Include="contract_qnft.cpp" />
     <ClCompile Include="contract_qpayhub.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
