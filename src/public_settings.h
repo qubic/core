@@ -73,12 +73,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 308
-#define VERSION_C 2
+#define VERSION_B 309
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 235
-#define TICK 84770000
+#define EPOCH 236
+#define TICK 86000000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
