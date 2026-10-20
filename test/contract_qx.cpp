@@ -332,3 +332,61 @@ TEST(ContractQx, CleanupCollections)
         std::cout << "QX state file not found. Skipping file test..." << std::endl;
     }
 }
+
+// A POST_INCOMING_TRANSFER to a contract that is not currently runnable (its IPO epoch, IPO-failed
+// and retained, past destruction, or in an error state) is skipped rather than dispatched. TESTEXA
+// has an empty POST_INCOMING_TRANSFER so it can stand in as the recipient.
+
+// Issue QX's 676 contract shares (1 to the given contract) and give QX earnings so END_TICK pays a dividend.
+static void setupQxDividendTo(ContractTestingQx& qx, const id& shareHolderContractId, sint64 perShare)
+{
+    const id otherHolder(7, 7, 7, 7);
+    std::vector<std::pair<m256i, unsigned int>> owners = {
+        { shareHolderContractId, 1 },
+        { otherHolder, (unsigned int)(NUMBER_OF_COMPUTORS - 1) }
+    };
+    issueContractShares(QX_CONTRACT_INDEX, owners, false);
+
+    increaseEnergy(id(QX_CONTRACT_INDEX, 0, 0, 0), (uint64)perShare * NUMBER_OF_COMPUTORS + 1000000ull);
+    qx.getState()->_earnedAmount = (uint64)perShare * NUMBER_OF_COMPUTORS;
+    qx.getState()->_distributedAmount = 0;
+}
+
+TEST(ContractQx, DividendToErrorStateContractSkipsCallback)
+{
+    ContractTestingQx qx;
+    INIT_CONTRACT(TESTEXA);               // example recipient that declares POST_INCOMING_TRANSFER
+
+    system.epoch = 240;
+    constexpr unsigned int errSc = TESTEXA_CONTRACT_INDEX;
+    contractError[errSc] = ContractErrorIPOFailed;   // error-state recipient holding a QX share
+    const id errScId(errSc, 0, 0, 0);
+
+    constexpr sint64 perShare = 100;
+    setupQxDividendTo(qx, errScId, perShare);
+    const long long before = getBalance(errScId);
+
+    qx.endTick();                         // notification to the non-runnable recipient is skipped
+
+    EXPECT_EQ(getBalance(errScId) - before, perShare);  // amount still credited
+}
+
+TEST(ContractQx, DividendToPreConstructionContractSkipsCallback)
+{
+    ContractTestingQx qx;
+    INIT_CONTRACT(TESTEXA);
+
+    system.epoch = 100;                   // before TESTEXA's construction epoch (138): not yet active
+    constexpr unsigned int sc = TESTEXA_CONTRACT_INDEX;
+    contractError[sc] = NoContractError;  // exercise the epoch-gate branch, not error-state
+    EXPECT_LT((int)system.epoch, (int)contractDescriptions[sc].constructionEpoch);
+    const id scId(sc, 0, 0, 0);
+
+    constexpr sint64 perShare = 100;
+    setupQxDividendTo(qx, scId, perShare);
+    const long long before = getBalance(scId);
+
+    qx.endTick();                         // notification to the not-yet-active recipient is skipped
+
+    EXPECT_EQ(getBalance(scId) - before, perShare);
+}
