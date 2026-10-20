@@ -1,11 +1,12 @@
 #define NO_UEFI
 
+#include "gtest/gtest.h"
+
 #include "../src/platform/memory.h"
 #include "../src/four_q.h"
 #include "utils.h"
 
 #include <lib/platform_common/qintrin.h>
-#include "gtest/gtest.h"
 
 #include <chrono>
 #include <iostream>
