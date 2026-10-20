@@ -22,6 +22,10 @@ constexpr uint8 QNFT_METADATA_URI_MAX_CHARACTER = 126;
 constexpr uint32 QNFT_PROPOSAL_URL_CAPACITY = 256;
 // Power-of-two wire capacity for proposed fee changes; unused entries must be zero.
 constexpr uint32 QNFT_FEE_BATCH_CAPACITY = 16;
+// Number of stable public governance variable IDs; checked against FeeVariable below.
+constexpr uint32 QNFT_FEE_VARIABLE_COUNT = 13;
+// Stable variable IDs 3 and 4 jointly govern the complementary revenue shares.
+constexpr uint32 QNFT_REVENUE_SPLIT_VARIABLE_MASK = (1U << 3) | (1U << 4);
 // Maximum number of listing IDs returned in one shop page.
 constexpr uint32 QNFT_PAGE_CAPACITY = 32;
 // Maximum full registry records per response, keeping both page outputs below the QPI 65535-byte limit.
@@ -95,8 +99,7 @@ constexpr sint64 QNFT_METADATA_FEE = 50000;
 // Default fee for the first reservation of a QBay original, in QU.
 constexpr sint64 QNFT_IMPORT_FEE = 100000;
 // Packed IPO share name used to identify QNFT shareholders for voting and dividends.
-constexpr uint64 QNFT_SHARE_NAME =
-    Ch::Q | (static_cast<uint64>(Ch::N) << 8) | (static_cast<uint64>(Ch::F) << 16) | (static_cast<uint64>(Ch::T) << 24);
+constexpr uint64 QNFT_SHARE_NAME = Ch::Q | (Ch::N << 8) | (Ch::F << 16) | (Ch::T << 24);
 
 /**
  * @brief Reserved extension contract type.
@@ -163,6 +166,11 @@ struct QNFT : public ContractBase
 		/** @brief Governed proposalFee charge in QU. */
 		ProposalFee
 	};
+
+	STATIC_ASSERT(QNFT_FEE_VARIABLE_COUNT == static_cast<uint32>(FeeVariable::ProposalFee) + 1, QNFT_FEE_VARIABLE_COUNT_MATCHES_IDS);
+	STATIC_ASSERT(QNFT_REVENUE_SPLIT_VARIABLE_MASK ==
+	                  ((1U << static_cast<uint32>(FeeVariable::ShareholderFeeBPS)) | (1U << static_cast<uint32>(FeeVariable::BurnFeeBPS))),
+	              QNFT_REVENUE_SPLIT_MASK_MATCHES_IDS);
 
 	/**
 	 * @brief One governed parameter and its proposed QU amount or basis-point rate.
@@ -3793,14 +3801,6 @@ struct QNFT : public ContractBase
 		AppendEvent_output journalOutput;
 	};
 
-	/**
-	 * @brief Derive governance bounds and masks from the stable variable IDs.
-	 */
-	static constexpr uint32 FEE_VARIABLE_COUNT = static_cast<uint32>(FeeVariable::ProposalFee) + 1;
-	/** @brief Variable-ID mask identifying a proposal that explicitly sets both revenue split rates. */
-	static constexpr uint32 REVENUE_SPLIT_VARIABLE_MASK =
-	    (1U << static_cast<uint32>(FeeVariable::ShareholderFeeBPS)) | (1U << static_cast<uint32>(FeeVariable::BurnFeeBPS));
-
 	/** @brief Authorize the owner or its registered item operator without modifying permission. */
 	PRIVATE_FUNCTION_WITH_LOCALS(isOwnerOrApprovedOperator)
 	{
@@ -6350,7 +6350,7 @@ struct QNFT : public ContractBase
 	{
 		// Validate the entire batch before applying any entry, including unused trailing slots.
 		output.valid = false;
-		if (!isInRange<uint32>(input.count, 1, FEE_VARIABLE_COUNT) || input.reserved)
+		if (!isInRange<uint32>(input.count, 1, QNFT_FEE_VARIABLE_COUNT) || input.reserved)
 		{
 			return;
 		}
@@ -6390,7 +6390,7 @@ struct QNFT : public ContractBase
 		}
 
 		// When both adjustable shares are proposed, their combined split must still total 100 percent.
-		if ((locals.seen & REVENUE_SPLIT_VARIABLE_MASK) == REVENUE_SPLIT_VARIABLE_MASK &&
+		if ((locals.seen & QNFT_REVENUE_SPLIT_VARIABLE_MASK) == QNFT_REVENUE_SPLIT_VARIABLE_MASK &&
 		    locals.shareholder + locals.burn + state.get().developerFeeBPS != QNFT_BPS_DENOMINATOR)
 		{
 			return;
