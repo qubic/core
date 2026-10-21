@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -44,6 +44,7 @@
     <ClInclude Include="contracts\Nostromo.h" />
     <ClInclude Include="contracts\QRaffle.h" />
     <ClInclude Include="contracts\QTREAT.h" />
+    <ClInclude Include="contracts\QNft.h" />
     <ClInclude Include="contracts\QPayhub.h" />
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
