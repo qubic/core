@@ -2842,6 +2842,7 @@ static void contractProcessor(void*)
                 }
 
                 setMem(contractStates[executedContractIndex], contractDescriptions[executedContractIndex].stateSize, 0);
+                __markContractStateDirty(executedContractIndex);
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, INITIALIZE);
                 qpiContext.call();
             }
