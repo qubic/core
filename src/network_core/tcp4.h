@@ -77,7 +77,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
                 if (status == EFI_NO_MAPPING)
                 {
                     WAIT_WHILE(!(status = (*tcp4Protocol)->GetModeData(*tcp4Protocol, NULL, NULL, &modeData, NULL, NULL))
-                        && !modeData.IsConfigured);
+                               && !modeData.IsConfigured);
                     if (!status)
                     {
                         if (status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
@@ -157,7 +157,10 @@ static bool initTcp4(unsigned short local_port)
 
 static void deinitTcp4()
 {
+    if (!peerChildHandle)
+    {
+        return; // initTcp4() did not complete
+    }
     bs->CloseProtocol(peerChildHandle, &tcp4ProtocolGuid, ih, NULL);
     tcp4ServiceBindingProtocol->DestroyChild(tcp4ServiceBindingProtocol, peerChildHandle);
 }
-

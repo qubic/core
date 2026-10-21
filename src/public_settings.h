@@ -73,12 +73,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 308
-#define VERSION_C 2
+#define VERSION_B 309
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 235
-#define TICK 84770000
+#define EPOCH 236
+#define TICK 86000000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -126,7 +126,7 @@ static constexpr unsigned char BPP9000_DATA_HASH[32] =
       0x8e, 0x53, 0x01, 0xcc, 0x13, 0xe7, 0x15, 0x81, 0x7b, 0x28, 0xef, 0x3c, 0x3e, 0xff, 0x15, 0x46 };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
-static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 64;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 32;
 static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
 static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
 static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;

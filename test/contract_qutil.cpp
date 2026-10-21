@@ -67,6 +67,17 @@ public:
         return output;
     }
 
+    void transferVote(const id& voter, sint64 amount,
+        unsigned char type = QPI::TransferType::standardTransaction)
+    {
+        ASSERT_TRUE(decreaseEnergy(spectrumIndex(voter), amount));
+        increaseEnergy(id(QUTIL_CONTRACT_INDEX, 0, 0, 0), amount);
+        QpiContextSystemProcedureCall qpi(QUTIL_CONTRACT_INDEX, POST_INCOMING_TRANSFER);
+        QPI::PostIncomingTransfer_input input{ voter, amount, type };
+        qpi.call(input);
+        EXPECT_EQ(contractError[QUTIL_CONTRACT_INDEX], 0);
+    }
+
     QUTIL::GetCurrentResult_output getCurrentResult(uint64_t poll_id) {
         QUTIL::GetCurrentResult_input input;
         input.poll_id = poll_id;
@@ -2551,4 +2562,228 @@ TEST(QUtilTest, TransferShareManagementRights_ZeroShares)
 
     // Regardless of return, shares should be unchanged
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+}
+
+TEST(QUtilTest, TransferVote_RoutingAndFees)
+{
+    ContractTestingQUtil qutil;
+    const id creator = generateRandomId();
+    const id voter = generateRandomId();
+    QUTIL::CreatePoll_input input{};
+    input.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    input.min_amount = 1000;
+    input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    increaseEnergy(creator, 2 * QUTIL_POLL_CREATION_FEE);
+    increaseEnergy(voter, 100000);
+    const auto first = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE).poll_id;
+    const auto second = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE).poll_id;
+    for (const auto type : { QPI::TransferType::procedureTransaction, QPI::TransferType::qpiTransfer })
+    {
+        qutil.transferVote(voter, QUTIL_VOTE_FEE + first * QUTIL_MAX_OPTIONS + 1, type);
+        EXPECT_EQ(qutil.getCurrentResult(first).voter_count.get(0), 0);
+    }
+    const auto contractBalance = getBalance(id(QUTIL_CONTRACT_INDEX, 0, 0, 0));
+    std::set<uint64_t> amounts;
+    for (const auto poll : { first, second })
+    {
+        for (uint64_t option = 0; option < QUTIL_MAX_OPTIONS; ++option)
+        {
+            const auto amount = QUTIL_VOTE_FEE + poll * QUTIL_MAX_OPTIONS + option + 1;
+            EXPECT_GT(static_cast<sint64>(amount), QUTIL_VOTE_FEE);
+            EXPECT_TRUE(amounts.insert(amount).second);
+            const auto balance = getBalance(voter);
+            qutil.transferVote(voter, amount);
+            EXPECT_EQ(getBalance(voter), balance - amount);
+            const auto result = qutil.getCurrentResult(poll);
+            for (uint64_t i = 0; i < QUTIL_MAX_OPTIONS; ++i)
+            {
+                EXPECT_EQ(result.voter_count.get(i), i == option ? 1 : 0);
+                EXPECT_EQ(result.result.get(i), i == option ? getBalance(voter) : 0);
+            }
+        }
+    }
+    EXPECT_EQ(getBalance(id(QUTIL_CONTRACT_INDEX, 0, 0, 0)), contractBalance);
+}
+
+TEST(QUtilTest, TransferVote_RejectsUnknownAmountsAndIneligibleVoters)
+{
+    ContractTestingQUtil qutil;
+    const id voter = generateRandomId();
+    const id creator = generateRandomId();
+    increaseEnergy(voter, 10000);
+    for (const sint64 amount : { 1LL, QUTIL_VOTE_FEE, 101LL, 9000LL })
+    {
+        const auto balance = getBalance(voter);
+        qutil.transferVote(voter, amount);
+        EXPECT_EQ(getBalance(voter), balance - std::min(amount, QUTIL_VOTE_FEE));
+    }
+    QUTIL::CreatePoll_input input{};
+    input.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    input.min_amount = 10000;
+    input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    const auto poll = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE).poll_id;
+    const auto balance = getBalance(voter);
+    const auto amount = QUTIL_VOTE_FEE + poll * QUTIL_MAX_OPTIONS + 1;
+    qutil.transferVote(voter, amount);
+    EXPECT_EQ(getBalance(voter), balance - amount);
+    EXPECT_EQ(qutil.getCurrentResult(poll).voter_count.get(0), 0);
+}
+
+TEST(QUtilTest, TransferVote_InactivePollsAndSlotReuse)
+{
+    ContractTestingQUtil qutil;
+    const id creator = generateRandomId();
+    const id voter = generateRandomId();
+    increaseEnergy(creator, (QUTIL_MAX_POLL + 2) * QUTIL_POLL_CREATION_FEE);
+    increaseEnergy(voter, 10000);
+    QUTIL::CreatePoll_input input{};
+    input.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    input.min_amount = 1000;
+    input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    const auto first = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE).poll_id;
+    const auto oldAmount = QUTIL_VOTE_FEE + first * QUTIL_MAX_OPTIONS + 64;
+    QUTIL::CancelPoll_output cancelled{};
+    qutil.invokeUserProcedure(QUTIL_CONTRACT_INDEX, 6, QUTIL::CancelPoll_input{ first },
+        cancelled, creator, QUTIL_POLL_CREATION_FEE);
+    ASSERT_TRUE(cancelled.success);
+    auto balance = getBalance(voter);
+    qutil.transferVote(voter, oldAmount);
+    EXPECT_EQ(getBalance(voter), balance - QUTIL_VOTE_FEE);
+    for (uint64_t i = 1; i <= QUTIL_MAX_POLL; ++i)
+    {
+        if (i % QUTIL_MAX_NEW_POLL == 0)
+        {
+            const auto expiredAmount = QUTIL_VOTE_FEE + (i - 1) * QUTIL_MAX_OPTIONS + 1;
+            qutil.endEpoch();
+            balance = getBalance(voter);
+            qutil.transferVote(voter, expiredAmount);
+            EXPECT_EQ(getBalance(voter), balance - QUTIL_VOTE_FEE);
+        }
+        EXPECT_EQ(qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE).poll_id, i);
+    }
+    balance = getBalance(voter);
+    qutil.transferVote(voter, oldAmount);
+    EXPECT_EQ(getBalance(voter), balance - QUTIL_VOTE_FEE);
+    balance = getBalance(voter);
+    qutil.transferVote(voter, QUTIL_VOTE_FEE + (QUTIL_MAX_POLL + 1) * QUTIL_MAX_OPTIONS + 1);
+    EXPECT_EQ(getBalance(voter), balance - QUTIL_VOTE_FEE);
+    qutil.transferVote(voter, QUTIL_VOTE_FEE + QUTIL_MAX_POLL * QUTIL_MAX_OPTIONS + 64);
+    EXPECT_EQ(qutil.getCurrentResult(QUTIL_MAX_POLL).voter_count.get(63), 1);
+}
+
+TEST(QUtilTest, TransferVote_AssetBalance)
+{
+    ContractTestingQUtil qutil;
+    const id creator = generateRandomId();
+    const id voter = generateRandomId();
+    const Asset asset{ creator, assetNameFromString("VOTE") };
+    increaseEnergy(creator, 2000000000);
+    increaseEnergy(voter, 10000);
+    qutil.issueAsset(creator, asset.assetName, 5000);
+    qutil.transferAsset(creator, voter, asset, 2000);
+    QUTIL::CreatePoll_input input{};
+    input.poll_type = QUTIL_POLL_TYPE_ASSET;
+    input.min_amount = 1000;
+    input.allowed_assets.set(0, asset);
+    input.num_assets = 1;
+    input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    const auto poll = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE).poll_id;
+    const auto amount = QUTIL_VOTE_FEE + poll * QUTIL_MAX_OPTIONS + 8;
+    qutil.transferVote(voter, amount);
+    EXPECT_EQ(qutil.getCurrentResult(poll).result.get(7), 2000);
+    EXPECT_EQ(getBalance(voter), 10000 - amount);
+}
+
+TEST(QUtilTest, TransferVote_PaymentConservation)
+{
+    ContractTestingQUtil qutil;
+    const id creator = generateRandomId();
+    const id voter = generateRandomId();
+    const id contract(QUTIL_CONTRACT_INDEX, 0, 0, 0);
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    increaseEnergy(voter, 1000000);
+    increaseEnergy(contract, 1000000);
+    QUTIL::CreatePoll_input input{};
+    input.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    input.min_amount = 1000;
+    input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    ASSERT_EQ(qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE).poll_id, 0);
+
+    for (const sint64 fee : { 0LL, 100LL, 250LL })
+    {
+        reinterpret_cast<QUTIL::StateData*>(contractStates[QUTIL_CONTRACT_INDEX])->pollVoteFee = fee;
+        for (const sint64 amount : { 0LL, 1LL, fee, fee + 1, fee + 64, fee + 65, fee + 9000 })
+        {
+            SCOPED_TRACE(::testing::Message() << "fee=" << fee << " amount=" << amount);
+            const auto balance = getBalance(voter);
+            const auto reserve = getContractFeeReserve(QUTIL_CONTRACT_INDEX);
+            const auto burned = amount > fee && amount <= fee + 64 ? amount : std::min(amount, fee);
+            qutil.transferVote(voter, amount);
+            EXPECT_EQ(getBalance(voter), balance - burned);
+            EXPECT_EQ(getBalance(contract), 1000000);
+            EXPECT_EQ(getContractFeeReserve(QUTIL_CONTRACT_INDEX), reserve + burned);
+        }
+    }
+}
+
+TEST(QUtilTest, TransferVote_ProcedurePaymentsAreHandledOnce)
+{
+    ContractTestingQUtil qutil;
+    const id creator = generateRandomId();
+    const id voter = generateRandomId();
+    const id contract(QUTIL_CONTRACT_INDEX, 0, 0, 0);
+    increaseEnergy(creator, QUTIL_POLL_CREATION_FEE);
+    increaseEnergy(voter, 1000000);
+    increaseEnergy(contract, 1000000);
+    QUTIL::CreatePoll_input input{};
+    input.poll_type = QUTIL_POLL_TYPE_QUBIC;
+    input.min_amount = 1000;
+    input.github_link = stringToArray("https://github.com/qubic/proposal/test");
+    const auto poll = qutil.createPoll(creator, input, QUTIL_POLL_CREATION_FEE).poll_id;
+
+    for (const bool authorized : { true, false })
+    {
+        for (const sint64 payment : { QUTIL_VOTE_FEE + 1, QUTIL_VOTE_FEE + 64, QUTIL_VOTE_FEE + 9000 })
+        {
+            const auto balance = getBalance(voter);
+            const auto reserve = getContractFeeReserve(QUTIL_CONTRACT_INDEX);
+            QUTIL::Vote_input vote{ poll, authorized ? voter : creator, 1000, 63 };
+            EXPECT_EQ(qutil.vote(voter, vote, payment).success, authorized);
+            EXPECT_EQ(getBalance(voter), balance - QUTIL_VOTE_FEE);
+            EXPECT_EQ(getBalance(contract), 1000000);
+            EXPECT_EQ(getContractFeeReserve(QUTIL_CONTRACT_INDEX), reserve + QUTIL_VOTE_FEE);
+            EXPECT_EQ(qutil.getCurrentResult(poll).voter_count.get(0), 0);
+            EXPECT_EQ(qutil.getCurrentResult(poll).voter_count.get(63), 1);
+        }
+    }
+
+    const auto balance = getBalance(voter);
+    const auto reserve = getContractFeeReserve(QUTIL_CONTRACT_INDEX);
+    qutil.createPoll(voter, input, QUTIL_VOTE_FEE + 1);
+    EXPECT_EQ(getBalance(voter), balance);
+    EXPECT_EQ(getBalance(contract), 1000000);
+    EXPECT_EQ(getContractFeeReserve(QUTIL_CONTRACT_INDEX), reserve);
+    EXPECT_EQ(qutil.getCurrentResult(poll).voter_count.get(0), 0);
+}
+
+TEST(QUtilTest, TransferVote_IgnoresOtherTransferTypes)
+{
+    ContractTestingQUtil qutil;
+    const id voter = generateRandomId();
+    const id contract(QUTIL_CONTRACT_INDEX, 0, 0, 0);
+    increaseEnergy(voter, 1000000);
+    increaseEnergy(contract, 1000000);
+    for (const auto type : { QPI::TransferType::procedureTransaction, QPI::TransferType::qpiTransfer,
+        QPI::TransferType::qpiDistributeDividends, QPI::TransferType::revenueDonation,
+        QPI::TransferType::ipoBidRefund, QPI::TransferType::procedureInvocationByOtherContract })
+    {
+        const auto balance = getBalance(voter);
+        const auto contractBalance = getBalance(contract);
+        const auto reserve = getContractFeeReserve(QUTIL_CONTRACT_INDEX);
+        qutil.transferVote(voter, QUTIL_VOTE_FEE + 1, type);
+        EXPECT_EQ(getBalance(voter), balance - QUTIL_VOTE_FEE - 1);
+        EXPECT_EQ(getBalance(contract), contractBalance + QUTIL_VOTE_FEE + 1);
+        EXPECT_EQ(getContractFeeReserve(QUTIL_CONTRACT_INDEX), reserve);
+    }
 }

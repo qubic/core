@@ -796,6 +796,15 @@ void QPI::QpiContextProcedureCall::__qpiNotifyPostIncomingTransfer(const QPI::id
     if (!contractSystemProcedures[destContractIndex][POST_INCOMING_TRANSFER])
         return;
 
+    // Skip the notification if the destination contract cannot run a procedure: not yet constructed
+    // (its IPO epoch), IPO failed, past its destruction epoch, or in an error state
+    if (contractError[destContractIndex] != NoContractError
+        || system.epoch < contractDescriptions[destContractIndex].constructionEpoch
+        || system.epoch >= contractDescriptions[destContractIndex].destructionEpoch)
+    {
+        return;
+    }
+
     QPI::PostIncomingTransfer_input input{ source, amount, type };
     QPI::NoData output; // output is zeroed in __qpiCallSystemProc
     __qpiCallSystemProc<POST_INCOMING_TRANSFER>(destContractIndex, input, output, 0);

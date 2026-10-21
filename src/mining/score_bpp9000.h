@@ -458,14 +458,19 @@ struct ScoreBpp9000
     //   gWin[b][j][w]  = mask of the lanes whose source byte falls in window w
     //   gCtl[b][j][64] = (lane&7)*8 + (source&7), the multishift control for the wanted bit
 
-    static constexpr unsigned long long B = populationThreshold / 64;        // 64-neuron blocks
+    // 64-lane blocks, the tail at the end will be ignore
+    static constexpr unsigned long long B = (populationThreshold + 63) / 64;
+    // Neurons in block 64, last block will not contain the full of 64 neurons
+    static constexpr unsigned long long neuronsInBlock(unsigned long long b)
+    {
+        return (populationThreshold - b * 64 < 64) ? (populationThreshold - b * 64) : 64;
+    }
     static constexpr unsigned long long PBYTES = populationThreshold / 8;    // bytes per bit-plane
     static constexpr unsigned long long PWINDOWS = (PBYTES + 127) / 128;     // 128-byte windows/plane
     // A gather always reads a whole 128-byte window, so the planes are padded up to one. Below 1024
     // neurons a plane is shorter than a window and the padding is what keeps the read in bounds; it is
     // never selected, because a source byte index is always below PBYTES.
     static constexpr unsigned long long PPADDED = PWINDOWS * 128;
-    static_assert(populationThreshold % 64 == 0, "the bit-sliced tick advances whole 64-neuron blocks");
 
     alignas(64) unsigned char plane0[PPADDED];
     alignas(64) unsigned char plane1[PPADDED];
@@ -517,13 +522,14 @@ struct ScoreBpp9000
     {
         for (unsigned long long b = 0; b < B; ++b)
         {
+            const unsigned long long neuronCount = neuronsInBlock(b);
             for (unsigned long long j = 0; j < numberOfNeighbors; ++j)
             {
                 for (unsigned long long w = 0; w < PWINDOWS; ++w)
                 {
                     gWin[b][j][w] = 0;
                 }
-                for (unsigned long long l = 0; l < 64; ++l)
+                for (unsigned long long l = 0; l < neuronCount; ++l)
                 {
                     const unsigned int s = neighborIndices[(b * 64 + l) * numberOfNeighbors + j];
                     const unsigned int byteIdx = s >> 3, win = byteIdx / 128;
@@ -541,7 +547,8 @@ struct ScoreBpp9000
         for (unsigned long long b = 0; b < B; ++b)
         {
             unsigned char* t = tbl[b];
-            for (unsigned long long l = 0; l < 64; ++l)
+            const unsigned long long neuronCount = neuronsInBlock(b);
+            for (unsigned long long l = 0; l < neuronCount; ++l)
             {
                 copyMem(t + l * 32, curLut + (b * 64 + l) * lutSize, lutSize);
             }
