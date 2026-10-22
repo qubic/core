@@ -28,11 +28,13 @@ include_directories(${PROJECT_ROOT_DIR})
 add_executable(
   qubic_core_tests
   # assets.cpp
-  # common_def.cpp
+  common_def.cpp
   # contract_core.cpp
   # contract_qearn.cpp
   # contract_qvault.cpp
   # contract_qx.cpp
+  contract_qswap.cpp
+  contract_qswap_layout.cpp
   contract_qpayhub.cpp
   contract_qraffle.cpp
   contract_qusino.cpp
@@ -51,7 +53,7 @@ add_executable(
   # score_cache.cpp
   score.cpp
   # spectrum.cpp
-  # stdlib_impl.cpp
+  stdlib_impl.cpp
   # tick_storage.cpp
   # tx_status_request.cpp
   # vote_counter.cpp
