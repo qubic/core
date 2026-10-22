@@ -58,6 +58,25 @@ public:
     void setTick(uint32 t) { system.tick = t; }
     uint32 tick() const { return system.tick; }
     void endTick() { callSystemProcedure(RANDOM_CONTRACT_INDEX, END_TICK); }
+    void endEpoch() { callSystemProcedure(RANDOM_CONTRACT_INDEX, END_EPOCH); }
+    void nextEpoch()
+    {
+        ++system.epoch;
+        callSystemProcedure(RANDOM_CONTRACT_INDEX, BEGIN_EPOCH);
+    }
+
+    void contributeAndLeave(const id& provider, uint32 startTick, uint64 seed, sint64 collateral = 1)
+    {
+        const auto reveal = makeReveal(seed);
+        QPI::bit_4096 zero; zero.setAll(0);
+        increaseEnergy(provider, collateral * 2);
+        setTick(startTick);
+        revealAndCommit(provider, zero, commitOf(reveal), collateral);
+        endTick();
+        setTick(startTick + 3);
+        revealAndCommit(provider, reveal, id::zero(), collateral);
+        endTick();
+    }
 
     RANDOM::Fees_output fees()
     {
@@ -103,6 +122,109 @@ public:
 // ---------------------------------------------------------------------------
 // Basic sanity tests
 // ---------------------------------------------------------------------------
+
+TEST(ContractRandom, GetRevenueInfoReturnsAllAccountingCounters)
+{
+    ContractTestingRandom r;
+    RANDOM::GetRevenueInfo_input input{};
+    RANDOM::GetRevenueInfo_output output{};
+    ASSERT_EQ(r.callFunction(RANDOM_CONTRACT_INDEX, 3, input, output), 0u);
+    EXPECT_EQ(output.burnedAmount, 0u);
+    EXPECT_EQ(output.revenueBurnedAmount, 0u);
+    EXPECT_EQ(output.distributedAmount, 0u);
+    EXPECT_EQ(output.earnedAmount, 0u);
+
+    r.state()->burnedAmount = 5000000001ULL;
+    r.state()->revenueBurnedAmount = 5000000002ULL;
+    r.state()->distributedAmount = 5000000003ULL;
+    r.state()->earnedAmount = 5000000004ULL;
+    ASSERT_EQ(r.callFunction(RANDOM_CONTRACT_INDEX, 3, input, output), 0u);
+    EXPECT_EQ(output.burnedAmount, 5000000001ULL);
+    EXPECT_EQ(output.revenueBurnedAmount, 5000000002ULL);
+    EXPECT_EQ(output.distributedAmount, 5000000003ULL);
+    EXPECT_EQ(output.earnedAmount, 5000000004ULL);
+}
+
+TEST(ContractRandom, GetRevenueInfoTracksSalesPenaltiesAndEpochPayments)
+{
+    ContractTestingRandom r;
+    const id provider = getUser(30600), absentProvider = getUser(30601);
+    const id buyer = getUser(30602), shareholder = getUser(30603);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    const auto reveal = makeReveal(81);
+    QPI::bit_4096 zero; zero.setAll(0);
+    increaseEnergy(provider, 2);
+    increaseEnergy(absentProvider, 1000);
+    r.setTick(1002);
+    r.revealAndCommit(provider, zero, commitOf(reveal), 1);
+    r.revealAndCommit(absentProvider, zero, commitOf(makeReveal(82)), 1000);
+    r.endTick();
+    r.setTick(1005);
+    r.revealAndCommit(provider, reveal, id::zero(), 1);
+    r.endTick();
+
+    RANDOM::GetRevenueInfo_input input{};
+    RANDOM::GetRevenueInfo_output output{};
+    ASSERT_EQ(r.callFunction(RANDOM_CONTRACT_INDEX, 3, input, output), 0u);
+    EXPECT_EQ(output.burnedAmount, 1000u);
+    EXPECT_EQ(output.revenueBurnedAmount, 0u);
+    EXPECT_EQ(output.distributedAmount, 0u);
+    EXPECT_EQ(output.earnedAmount, 0u);
+
+    increaseEnergy(buyer, 3000);
+    r.setTick(1006);
+    r.buyEntropy(buyer, 0, 28, 3000);
+    ASSERT_EQ(getBalance(buyer), 200);
+    ASSERT_EQ(r.callFunction(RANDOM_CONTRACT_INDEX, 3, input, output), 0u);
+    EXPECT_EQ(output.earnedAmount, 2800u);
+    EXPECT_EQ(output.distributedAmount, 0u);
+
+    r.endEpoch();
+    r.nextEpoch();
+    // Repeated reads must preserve cumulative totals and the undistributed balance.
+    for (int i = 0; i < 2; ++i)
+    {
+        ASSERT_EQ(r.callFunction(RANDOM_CONTRACT_INDEX, 3, input, output), 0u);
+        EXPECT_EQ(output.burnedAmount, 1000u);
+        EXPECT_EQ(output.revenueBurnedAmount, 0u);
+        EXPECT_EQ(output.distributedAmount, 2752u);
+        EXPECT_EQ(output.earnedAmount, 2800u);
+        EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 48);
+    }
+    EXPECT_EQ(getBalance(provider), 1402);
+    EXPECT_EQ(getBalance(shareholder), 1352);
+}
+
+TEST(ContractRandom, EpochPaysLeaverAndShareholderWithoutBurningRevenue)
+{
+    ContractTestingRandom r;
+    const id provider = getUser(9000), shareholder = getUser(9001);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    const auto reveal = makeReveal(9000);
+    QPI::bit_4096 zero; zero.setAll(0);
+    increaseEnergy(provider, 2);
+    r.setTick(1002);
+    r.revealAndCommit(provider, zero, commitOf(reveal), 1);
+    r.endTick();
+    r.setTick(1005);
+    r.revealAndCommit(provider, reveal, id::zero(), 1);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(0), 0u);
+    // Simulate previously collected sales revenue. Neither collateral nor burns are revenue.
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 2704);
+    r.state()->earnedAmount = 2704;
+    const auto providerBefore = getBalance(provider);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(provider) - providerBefore, 1352);
+    EXPECT_EQ(getBalance(shareholder), 1352);
+    EXPECT_EQ(r.state()->distributedAmount, 2704u);
+    EXPECT_EQ(r.state()->burnedAmount, 0u);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(provider) - providerBefore, 1352);
+    EXPECT_EQ(getBalance(shareholder), 1352);
+}
 
 TEST(ContractRandom, FeesReturns100PerBitForFirstTenTiers)
 {
@@ -806,10 +928,8 @@ TEST(ContractRandom, RevealRefundsOldCollateralExactlyOnce)
         << "the new commit's collateral must now be locked";
 }
 
-// C2: a reveal carrying an empty commit must be rejected BEFORE any state
-// change and refunded exactly once. The old bug set the participation flag and
-// refunded, then END_TICK refunded the collateral a second time.
-TEST(ContractRandom, RevealWithZeroCommitIsRejectedNoDoublePay)
+// A valid leave refunds collateral once; repeating the leave cannot refund it again.
+TEST(ContractRandom, RepeatedRevealWithZeroCommitDoesNotDoublePay)
 {
     ContractTestingRandom r;
     const uint8 tier = 2;
@@ -833,13 +953,15 @@ TEST(ContractRandom, RevealWithZeroCommitIsRejectedNoDoublePay)
 
     r.revealAndCommit(provider, reveal1, /*commit=*/id::zero(), collateral);
 
-    // The call is rejected and refunded once; no state was touched.
-    EXPECT_EQ(getBalance(provider), before)
-        << "commit==0 must be refunded once, without double-paying";
-    EXPECT_TRUE(r.state()->reveals.get(index) == zero)
-        << "a rejected commit==0 call must not store the reveal";
-    EXPECT_EQ(r.state()->revealedThisTickFlags.get(index), 0)
-        << "a rejected commit==0 call must not set the participation flag";
+    EXPECT_EQ(getBalance(provider), before + collateral);
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(index), 0u);
+    EXPECT_TRUE(r.state()->reveals.get(index) == reveal1);
+    r.revealAndCommit(provider, reveal1, id::zero(), collateral);
+    EXPECT_EQ(getBalance(provider), before + collateral);
+    r.endTick();
+    EXPECT_EQ(getBalance(provider), before + collateral);
+    EXPECT_EQ(r.getProviderStatus(provider).count, 0u);
+    EXPECT_EQ(r.state()->totalEpochContributions, 1u);
 }
 
 // S1: commit and reveal in the same tick must be rejected. The whole point of the
@@ -1364,4 +1486,498 @@ TEST(ContractRandom, LastUpdateTickSurvivesSwapDeleteRelocation)
     ASSERT_EQ(st.count, 1u);
     EXPECT_EQ(st.lastUpdateTick.get(0), revealTick)
         << "lastUpdateTick must survive swap-delete relocation, not reset to 0";
+}
+
+TEST(ContractRandom, EpochWeightsAccumulateAcrossStreamsTiersAndReentry)
+{
+    ContractTestingRandom r;
+    const id a = getUser(9100), b = getUser(9101), shareholder = getUser(9102);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.contributeAndLeave(a, 1002, 41);
+    r.contributeAndLeave(a, 1006, 42, 10);
+    r.contributeAndLeave(b, 1010, 43);
+    const auto beforeA = getBalance(a), beforeB = getBalance(b);
+    r.state()->earnedAmount = 8113;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 8113);
+    const auto reserveBefore = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(a) - beforeA, 2704);
+    EXPECT_EQ(getBalance(b) - beforeB, 1352);
+    EXPECT_EQ(getBalance(shareholder), 4056);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 1u);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserveBefore);
+    r.nextEpoch();
+    r.contributeAndLeave(b, 1014, 44);
+    const auto nextB = getBalance(b);
+    // The previous one-QU remainder participates in the next 50/50 split.
+    r.state()->earnedAmount += 1351;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 1351);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(a) - beforeA, 2704);
+    EXPECT_EQ(getBalance(b) - nextB, 676);
+    EXPECT_EQ(getBalance(shareholder), 4732);
+    EXPECT_EQ(r.state()->earnedAmount, r.state()->distributedAmount);
+}
+
+TEST(ContractRandom, EpochWithoutContributionsCarriesProviderPoolAndShareRounding)
+{
+    ContractTestingRandom r;
+    const id shareholder = getUser(9200);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.state()->earnedAmount = 3001;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 3001);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(shareholder), 1352);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 1649u);
+    r.nextEpoch();
+    r.endEpoch();
+    EXPECT_EQ(getBalance(shareholder), 2028);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 973u);
+}
+
+TEST(ContractRandom, EpochFailedTransfersRemainAvailableWithoutDebtOrDoublePayment)
+{
+    ContractTestingRandom r;
+    const id a = getUser(9300), shareholder = getUser(9301);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.contributeAndLeave(a, 1002, 45);
+    const auto before = getBalance(a);
+    // Deliberately inconsistent backing tests the QPI failure handling.
+    r.state()->earnedAmount = 2704;
+    r.endEpoch();
+    EXPECT_EQ(getBalance(a), before);
+    EXPECT_EQ(getBalance(shareholder), 0);
+    EXPECT_EQ(r.state()->distributedAmount, 0u);
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 2704);
+    r.endEpoch();
+    EXPECT_EQ(r.state()->distributedAmount, 0u);
+    r.nextEpoch();
+    r.endEpoch();
+    EXPECT_EQ(getBalance(a), before);
+    EXPECT_EQ(getBalance(shareholder), 1352);
+    EXPECT_EQ(r.state()->distributedAmount, 1352u);
+}
+
+TEST(ContractRandom, EpochCapacityRejectsNewAddressButAllowsExistingAndResets)
+{
+    ContractTestingRandom r;
+    QPI::bit_4096 zero; zero.setAll(0);
+    const auto reveal = makeReveal(46);
+    // Fill accounting history independently of the smaller active stream capacity.
+    for (uint32 i = 0; i < 4096; ++i)
+        ASSERT_NE(r.state()->epochContributions.set(getUser(10000 + i), 1), QPI::NULL_INDEX);
+    r.state()->totalEpochContributions = 4096;
+    const id newcomer = getUser(20000), existing = getUser(10000);
+    increaseEnergy(newcomer, 1);
+    increaseEnergy(existing, 2);
+    r.setTick(1002);
+    r.revealAndCommit(newcomer, zero, commitOf(reveal), 1);
+    EXPECT_EQ(getBalance(newcomer), 1);
+    EXPECT_EQ(r.getProviderStatus(newcomer).count, 0u);
+    r.revealAndCommit(existing, zero, commitOf(reveal), 1);
+    EXPECT_EQ(r.getProviderStatus(existing).count, 1u);
+    r.endTick();
+    r.endEpoch();
+    r.nextEpoch();
+    EXPECT_TRUE(r.state()->epochContributions.contains(existing));
+    r.setTick(1005);
+    r.revealAndCommit(existing, reveal, commitOf(reveal), 1);
+    r.revealAndCommit(newcomer, zero, commitOf(reveal), 1);
+    r.endTick();
+    EXPECT_EQ(r.getProviderStatus(newcomer).count, 1u);
+    EXPECT_EQ(r.state()->totalEpochContributions, 1u);
+    uint64 count = 0;
+    ASSERT_TRUE(r.state()->epochContributions.get(existing, count));
+    EXPECT_EQ(count, 1u);
+}
+
+TEST(ContractRandom, EpochLargeWeightedPayoutAvoidsProductOverflowAndProtectsCollateral)
+{
+    ContractTestingRandom r;
+    const id a = getUser(9400), b = getUser(9401), shareholder = getUser(9402);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.state()->epochContributions.set(a, 20000000000ULL);
+    r.state()->epochContributions.set(b, 10000000000ULL);
+    r.state()->totalEpochContributions = 30000000000ULL;
+    r.state()->earnedAmount = 600000000000000ULL;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 600000000000000LL);
+    const id active = getUser(9403);
+    increaseEnergy(active, 1000);
+    QPI::bit_4096 zero; zero.setAll(0);
+    r.revealAndCommit(active, zero, commitOf(makeReveal(47)), 1000);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(a), 200000000000000LL);
+    EXPECT_EQ(getBalance(b), 100000000000000LL);
+    EXPECT_EQ(getBalance(shareholder), 299999999999648LL);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 352u);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 1352);
+    EXPECT_EQ(r.getProviderStatus(active).lockedCollateral.get(0), 1000u);
+}
+
+TEST(ContractRandom, EpochMixingCreditSurvivesLaterInvalidationAndSwapDelete)
+{
+    ContractTestingRandom r;
+    const id missing = getUser(9500), mixed = getUser(9501);
+    const auto reveal = makeReveal(48);
+    QPI::bit_4096 zero; zero.setAll(0);
+    increaseEnergy(missing, 1);
+    increaseEnergy(mixed, 2);
+    r.setTick(1002);
+    // Reverse traversal processes mixed first, then discovers missing's no-show.
+    r.revealAndCommit(missing, zero, commitOf(reveal), 1);
+    r.revealAndCommit(mixed, zero, commitOf(reveal), 1);
+    r.endTick();
+    r.setTick(1005);
+    r.revealAndCommit(mixed, reveal, commitOf(reveal), 1);
+    const auto reserve = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    r.endTick();
+    EXPECT_TRUE(r.state()->entropy.get(0) == zero);
+    EXPECT_EQ(r.state()->totalEpochContributions, 1u);
+    EXPECT_EQ(r.state()->burnedAmount, 1u);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserve + 1);
+    EXPECT_TRUE(r.state()->providers.get(0) == mixed);
+    uint64 count = 0;
+    ASSERT_TRUE(r.state()->epochContributions.get(mixed, count));
+    EXPECT_EQ(count, 1u);
+}
+
+TEST(ContractRandom, EpochProviderRoundingAndShareOwnershipAreProportional)
+{
+    ContractTestingRandom r;
+    const id a = getUser(9600), b = getUser(9601), s1 = getUser(9602), s2 = getUser(9603);
+    std::vector<std::pair<m256i, unsigned int>> owners{{s1, 169}, {s2, 507}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.state()->epochContributions.set(a, 2);
+    r.state()->epochContributions.set(b, 1);
+    r.state()->totalEpochContributions = 3;
+    r.state()->earnedAmount = 2705;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 2705);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(a), 901);
+    EXPECT_EQ(getBalance(b), 450);
+    EXPECT_EQ(getBalance(s1), 338);
+    EXPECT_EQ(getBalance(s2), 1014);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 2u);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 2);
+    // Even additional revenue cannot trigger a second settlement in this epoch.
+    r.state()->earnedAmount += 2704;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 2704);
+    r.endEpoch();
+    EXPECT_EQ(r.state()->distributedAmount, 2703u);
+}
+
+TEST(ContractRandom, EpochSuccessfulProviderPaymentSurvivesFailedDividends)
+{
+    ContractTestingRandom r;
+    const id a = getUser(9700), shareholder = getUser(9701);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.state()->epochContributions.set(a, 1);
+    r.state()->totalEpochContributions = 1;
+    r.state()->earnedAmount = 2704;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 1352);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(a), 1352);
+    EXPECT_EQ(getBalance(shareholder), 0);
+    EXPECT_EQ(r.state()->distributedAmount, 1352u);
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 1352);
+    r.nextEpoch();
+    r.endEpoch();
+    EXPECT_EQ(getBalance(a), 1352);
+    EXPECT_EQ(getBalance(shareholder), 676);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 676u);
+}
+
+TEST(ContractRandom, EpochRejectedRevealAndAlreadyPoisonedTierEarnNoCredit)
+{
+    ContractTestingRandom r;
+    const id good = getUser(9800), missing = getUser(9801);
+    const auto reveal = makeReveal(50);
+    QPI::bit_4096 zero; zero.setAll(0);
+    increaseEnergy(good, 3);
+    increaseEnergy(missing, 1);
+    r.setTick(1002);
+    r.revealAndCommit(good, zero, commitOf(reveal), 1);
+    r.revealAndCommit(missing, zero, commitOf(reveal), 1);
+    r.endTick();
+    EXPECT_EQ(r.state()->totalEpochContributions, 0u);
+    r.setTick(1005);
+    r.revealAndCommit(good, makeReveal(51), commitOf(reveal), 1);
+    EXPECT_EQ(r.state()->totalEpochContributions, 0u);
+    r.revealAndCommit(good, reveal, commitOf(reveal), 1);
+    // Reverse traversal discovers missing's no-show before processing good's valid reveal.
+    r.endTick();
+    EXPECT_EQ(r.state()->totalEpochContributions, 0u);
+    EXPECT_EQ(r.getProviderStatus(good).contributedToEntropy.get(0), 0);
+    uint64 count = 1;
+    ASSERT_TRUE(r.state()->epochContributions.get(good, count));
+    EXPECT_EQ(count, 0u);
+}
+
+// Detects distributing invocation rewards instead of the actual entropy sales revenue.
+TEST(ContractRandom, PurchasedEntropyRevenuePaysHalfAfterRefundingOverpayment)
+{
+    ContractTestingRandom r;
+    const id provider = getUser(30000), buyer = getUser(30001), shareholder = getUser(30002);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.contributeAndLeave(provider, 1002, 60);
+    const auto providerBefore = getBalance(provider);
+    increaseEnergy(buyer, 3500);
+    r.setTick(1006);
+    const auto bought = r.buyEntropy(buyer, 0, 28, 3000);
+    const auto expected = makeReveal(60);
+    for (uint64 bit = 0; bit < 28; ++bit)
+        ASSERT_EQ(bought.entropy.get(bit), expected.get(bit));
+    ASSERT_EQ(getBalance(buyer), 700); // 2800 paid, 200 overpayment returned.
+    r.buyEntropy(buyer, 9, 5, 500); // No entropy in tier 9: refund all 500.
+    ASSERT_EQ(getBalance(buyer), 700);
+    ASSERT_EQ(r.state()->earnedAmount, 2800u);
+    const auto reserveBefore = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(provider) - providerBefore, 1400);
+    EXPECT_EQ(getBalance(shareholder), 1352);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 48);
+    EXPECT_EQ(r.state()->distributedAmount, 2752u);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserveBefore);
+    EXPECT_EQ(getBalance(buyer) + getBalance(provider) - providerBefore +
+        getBalance(shareholder) + getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 3500);
+}
+
+// Detects losing an active provider at BEGIN_EPOCH or paying out its locked collateral.
+TEST(ContractRandom, ActiveProviderContinuesRevealingAcrossEpochBoundary)
+{
+    ContractTestingRandom r;
+    const id provider = getUser(30100), buyer = getUser(30101), shareholder = getUser(30102);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    const auto first = makeReveal(61), second = makeReveal(62);
+    QPI::bit_4096 zero; zero.setAll(0);
+    increaseEnergy(provider, 3);
+    increaseEnergy(buyer, 5600);
+    r.setTick(1002);
+    r.revealAndCommit(provider, zero, commitOf(first), 1);
+    r.endTick();
+    r.setTick(1005);
+    r.revealAndCommit(provider, first, commitOf(second), 1);
+    r.endTick();
+    r.setTick(1006);
+    r.buyEntropy(buyer, 0, 28, 2800, provider);
+    ASSERT_EQ(r.state()->earnedAmount, 2800u);
+    const auto before = getBalance(provider);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(provider) - before, 1400);
+    EXPECT_EQ(r.getProviderStatus(provider).lockedCollateral.get(0), 1u);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 49);
+    r.nextEpoch();
+    r.setTick(1008);
+    r.revealAndCommit(provider, second, id::zero(), 1);
+    r.endTick();
+    ASSERT_EQ(r.getProviderStatus(provider).count, 0u);
+    EXPECT_EQ(getBalance(provider) - before, 1401); // Old collateral returned once.
+    r.setTick(1009);
+    r.buyEntropy(buyer, 0, 28, 2800);
+    ASSERT_EQ(r.state()->earnedAmount, 5600u);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(provider) - before, 2825); // 1400 + refund 1 + 1424.
+    EXPECT_EQ(getBalance(shareholder), 2704);
+    EXPECT_EQ(getBalance(buyer), 0);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 72);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 72u);
+}
+
+// Detects carrying old participation weights into a later epoch when no revenue was earned.
+TEST(ContractRandom, RevenueFreeEpochDoesNotGiveOldProviderFutureRewards)
+{
+    ContractTestingRandom r;
+    const id oldProvider = getUser(30200), currentProvider = getUser(30201);
+    const id buyer = getUser(30202), shareholder = getUser(30203);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.contributeAndLeave(oldProvider, 1002, 63);
+    const auto oldBalance = getBalance(oldProvider);
+    r.endEpoch();
+    ASSERT_EQ(r.state()->earnedAmount, 0u);
+    EXPECT_EQ(getBalance(oldProvider), oldBalance);
+    r.nextEpoch();
+    r.contributeAndLeave(currentProvider, 1008, 64);
+    const auto currentBalance = getBalance(currentProvider);
+    increaseEnergy(buyer, 2800);
+    r.setTick(1012);
+    r.buyEntropy(buyer, 0, 28, 2800);
+    ASSERT_EQ(r.state()->earnedAmount, 2800u);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(oldProvider), oldBalance);
+    EXPECT_EQ(getBalance(currentProvider) - currentBalance, 1400);
+    EXPECT_EQ(getBalance(shareholder), 1352);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 48);
+}
+
+TEST(ContractRandom, FundReserveBurnsOnlyAttachedAmount)
+{
+    ContractTestingRandom r;
+    const id donor = getUser(30300), provider = getUser(30301);
+    QPI::bit_4096 zero; zero.setAll(0);
+    increaseEnergy(provider, 1000);
+    r.revealAndCommit(provider, zero, commitOf(makeReveal(70)), 1000);
+    increaseEnergy(donor, 500);
+    const auto reserve = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    struct Input {} input;
+    struct Output { sint64 amount = 0; } output;
+    ASSERT_NE(contractUserProcedures[RANDOM_CONTRACT_INDEX][3], nullptr);
+    ASSERT_TRUE(r.invokeUserProcedure(RANDOM_CONTRACT_INDEX, 3, input, output, donor, 500));
+    EXPECT_EQ(output.amount, 500);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserve + 500);
+    EXPECT_EQ(getBalance(donor), 0);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 1000);
+    EXPECT_EQ(r.getProviderStatus(provider).lockedCollateral.get(0), 1000u);
+    EXPECT_EQ(r.state()->earnedAmount, 0u);
+    EXPECT_EQ(r.state()->distributedAmount, 0u);
+    EXPECT_EQ(r.state()->burnedAmount, 500u);
+}
+
+TEST(ContractRandom, FundReserveZeroAmountDoesNotBurnExistingBalance)
+{
+    ContractTestingRandom r;
+    increaseEnergy(getUser(30302), 1);
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 100);
+    const auto reserve = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    struct Input {} input;
+    struct Output { sint64 amount = 0; } output;
+    ASSERT_NE(contractUserProcedures[RANDOM_CONTRACT_INDEX][3], nullptr);
+    ASSERT_TRUE(r.invokeUserProcedure(RANDOM_CONTRACT_INDEX, 3, input, output, getUser(30302), 0));
+    EXPECT_EQ(output.amount, -1);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserve);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 100);
+    EXPECT_EQ(r.state()->burnedAmount, 0u);
+}
+
+TEST(ContractRandom, FundReserveFailedBurnRefundsDonor)
+{
+    ContractTestingRandom r;
+    const id donor = getUser(30303);
+    increaseEnergy(donor, 500);
+    const auto reserve = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    RANDOM::FundReserve_input input{};
+    RANDOM::FundReserve_output output{};
+    // QPI rejects burns for a contract marked as having a failed IPO.
+    contractError[RANDOM_CONTRACT_INDEX] = ContractErrorIPOFailed;
+    ASSERT_TRUE(r.invokeUserProcedure(RANDOM_CONTRACT_INDEX, 3, input, output, donor, 500, true, false));
+    EXPECT_EQ(output.amount, -1);
+    EXPECT_EQ(getBalance(donor), 500);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 0);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserve);
+    EXPECT_EQ(r.state()->burnedAmount, 0u);
+    EXPECT_EQ(r.state()->earnedAmount, 0u);
+    contractError[RANDOM_CONTRACT_INDEX] = 0;
+}
+
+TEST(ContractRandom, EpochRevenuePercentagesPreserveRemainderAndExcludeReserveFunding)
+{
+    ContractTestingRandom r;
+    const id provider = getUser(30400), shareholder = getUser(30401), donor = getUser(30402);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.state()->epochContributions.set(provider, 2);
+    r.state()->totalEpochContributions = 2;
+    r.state()->earnedAmount = 33801;
+    r.state()->burnedAmount = 777; // Earlier forfeited collateral is not revenue expenditure.
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 33801);
+    increaseEnergy(donor, 250);
+    const auto reserveBefore = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    RANDOM::FundReserve_input input{};
+    RANDOM::FundReserve_output output{};
+    ASSERT_TRUE(r.invokeUserProcedure(RANDOM_CONTRACT_INDEX, 3, input, output, donor, 250));
+    ASSERT_EQ(output.amount, 250);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(provider), 16900);
+#ifdef RANDOM_TEST_BURN_SPLIT
+    EXPECT_EQ(getBalance(shareholder), 13520);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserveBefore + 3630);
+    EXPECT_EQ(r.state()->distributedAmount, 30420u);
+#else
+    EXPECT_EQ(getBalance(shareholder), 16900);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserveBefore + 250);
+    EXPECT_EQ(r.state()->distributedAmount, 33800u);
+#endif
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 1);
+    const auto reserveAfter = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    r.nextEpoch();
+    r.endEpoch();
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 1);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserveAfter);
+}
+#ifdef RANDOM_TEST_BURN_SPLIT
+TEST(ContractRandom, EpochFailedRevenueBurnRemainsAvailable)
+{
+    ContractTestingRandom r;
+    const id provider = getUser(30500), shareholder = getUser(30501);
+    std::vector<std::pair<m256i, unsigned int>> owners{{shareholder, 676}};
+    issueContractShares(RANDOM_CONTRACT_INDEX, owners);
+    r.state()->epochContributions.set(provider, 2);
+    r.state()->totalEpochContributions = 2;
+    r.state()->earnedAmount = 33801;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 16900);
+    const auto reserveBefore = getContractFeeReserve(RANDOM_CONTRACT_INDEX);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(provider), 16900);
+    EXPECT_EQ(getBalance(shareholder), 0);
+    EXPECT_EQ(r.state()->revenueBurnedAmount, 0u);
+    EXPECT_EQ(r.state()->burnedAmount, 0u);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserveBefore);
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 16901);
+    r.nextEpoch();
+    r.endEpoch();
+    EXPECT_EQ(getBalance(shareholder), 6760);
+    EXPECT_EQ(r.state()->revenueBurnedAmount, 1690u);
+    EXPECT_EQ(getContractFeeReserve(RANDOM_CONTRACT_INDEX), reserveBefore + 1690);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 8451);
+}
+#endif
+
+TEST(ContractRandom, EpochPercentageRoundsAfterMultiplication)
+{
+    ContractTestingRandom r;
+    const id provider = getUser(30600);
+    r.state()->epochContributions.set(provider, 2);
+    r.state()->totalEpochContributions = 2;
+    r.state()->earnedAmount = 199;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 199);
+    r.endEpoch();
+    EXPECT_EQ(getBalance(provider), 99);
+    EXPECT_EQ(r.state()->distributedAmount, 99u);
+    // The shareholder pool is below one QU per share, so it carries over in full.
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 100);
+}
+
+TEST(ContractRandom, ProviderDividendRoundingRemainderFundsNextEpoch)
+{
+    ContractTestingRandom r;
+    const id a = getUser(30700), b = getUser(30701);
+    r.state()->epochContributions.set(a, 1);
+    r.state()->epochContributions.set(b, 1);
+    r.state()->totalEpochContributions = 2;
+    r.state()->earnedAmount = 199;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 199);
+    r.endEpoch();
+    // Provider pool 99: each receives floor(99 / 2). No shareholder payout below 676 QU.
+    EXPECT_EQ(getBalance(a), 49);
+    EXPECT_EQ(getBalance(b), 49);
+    EXPECT_EQ(r.state()->distributedAmount, 98u);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 101);
+    r.nextEpoch();
+    r.state()->epochContributions.set(a, 1);
+    r.state()->totalEpochContributions = 1;
+    r.state()->earnedAmount += 3;
+    increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 3);
+    r.endEpoch();
+    // Carried 101 + new 3 = 104, of which 52 goes to the sole current provider.
+    EXPECT_EQ(getBalance(a), 101);
+    EXPECT_EQ(getBalance(b), 49);
+    EXPECT_EQ(r.state()->distributedAmount, 150u);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 52);
 }
