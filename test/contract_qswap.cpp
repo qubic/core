@@ -10,6 +10,18 @@ static constexpr uint64 QSWAP_CREATE_POOL_FEE = 1000000000ull;
 
 static const id QSWAP_CONTRACT_ID(QSWAP_CONTRACT_INDEX, 0, 0, 0);
 
+static id referencePoolKey(const id& issuer, uint64 name)
+{
+	uint8 bytes[48] = { 'Q', 'S', 'W', 'A', 'P', 'P', 'L', '1' };
+	const uint64 words[] = { issuer.u64._0, issuer.u64._1, issuer.u64._2, issuer.u64._3, name };
+	for (unsigned int word = 0; word < 5; ++word)
+		for (unsigned int byte = 0; byte < 8; ++byte)
+			bytes[8 + word * 8 + byte] = uint8(words[word] >> (byte * 8));
+	id digest;
+	KangarooTwelve(bytes, sizeof(bytes), &digest, sizeof(digest));
+	return digest;
+}
+
 //constexpr uint32 SWAP_FEE_IDX = 1;
 constexpr uint32 GET_POOL_BASIC_STATE_IDX = 2;
 constexpr uint32 GET_LIQUIDITY_OF_IDX = 3;
@@ -810,8 +822,7 @@ TEST(ContractSwap, RemoveLiquidityRejectsNegativeBurnLiquidity)
 			0,
 			uint128(0)
 		};
-		poolBasicState.poolID = issuer;
-		poolBasicState.poolID.u64._3 = assetName;
+		poolBasicState.poolID = referencePoolKey(issuer, assetName);
 		poolBasicState.reservedQuAmount = baseQuReserve;
 		poolBasicState.reservedAssetAmount = baseAssetReserve;
 		poolBasicState.totalLiquidity = baseTotalLiquidity;
@@ -1054,6 +1065,8 @@ TEST(ContractSwap, LiquidityKeysSeparateLegacyXorCollision)
 	aliasLiquidityPov.u64._3 ^= aliasPoolID.u64._3;
 	EXPECT_NE(targetPoolID, aliasPoolID);
 	EXPECT_EQ(targetLiquidityPov, aliasLiquidityPov);
+	targetPoolID = referencePoolKey(targetIssuer, targetAssetName);
+	aliasPoolID = referencePoolKey(aliasIssuer, aliasAssetName);
 
 	// Build the target pool with equal contributions from its issuer and an unrelated LP.
 	increaseEnergy(targetIssuer, QSWAP_ISSUE_ASSET_FEE);
@@ -1263,6 +1276,77 @@ TEST(ContractSwap, LiquidityKeysSeparateLegacyXorCollision)
 	EXPECT_EQ(qswap.getLiquidityOf(aliasLockInput).liquidity, QSWAP_MIN_LIQUIDITY);
 }
 
+TEST(ContractSwap, PoolIdentityKeepsCompleteIssuersSeparate)
+{
+	ContractTestingQswap qswap;
+	const id issuerA(101, 102, 103, 104), issuerB(101, 102, 103, 105);
+	const uint64 name = assetNameFromString("BINDING");
+	constexpr sint64 amount = 1000000;
+	constexpr sint64 reward = QSWAP_ADDITIONAL_FEE + 10000;
+	for (const id issuer : { issuerA, issuerB })
+	{
+		increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
+		ASSERT_EQ(qswap.issueAsset(issuer, { name, 10 * amount, 0, 0 }), 10 * amount);
+	}
+	increaseEnergy(issuerA, QSWAP_CREATE_POOL_FEE);
+	ASSERT_TRUE(qswap.createPool(issuerA, name));
+	increaseEnergy(issuerA, amount + QSWAP_ADDITIONAL_FEE);
+	ASSERT_EQ(qswap.addLiquidity(issuerA, { issuerA, name, amount, 0, 0 },
+		amount + QSWAP_ADDITIONAL_FEE).userIncreaseLiquidity, amount - QSWAP_MIN_LIQUIDITY);
+	EXPECT_EQ(qswap.stateData()->mPoolBasicStates.get(0).poolID, referencePoolKey(issuerA, name));
+
+	// A different full issuer must not find or operate the funded pool.
+	ASSERT_FALSE(qswap.getPoolBasicState(issuerB, name).poolExists);
+	EXPECT_EQ(qswap.getLiquidityOf({ issuerB, name, issuerA }).liquidity, 0);
+	EXPECT_EQ(qswap.quoteExactQuInput({ issuerB, name, 1000 }).assetAmountOut, -1);
+	EXPECT_EQ(qswap.quoteExactQuOutput({ issuerB, name, 1000 }).assetAmountIn, -1);
+	EXPECT_EQ(qswap.quoteExactAssetInput({ issuerB, name, 1000 }).quAmountOut, -1);
+	EXPECT_EQ(qswap.quoteExactAssetOutput({ issuerB, name, 1000 }).quAmountIn, -1);
+	id before, after;
+	KangarooTwelve(qswap.stateData(), sizeof(QSWAP::StateData), &before, sizeof(before));
+	increaseEnergy(issuerB, reward);
+	const auto balance = getBalance(issuerB);
+	const auto contractBalance = getBalance(QSWAP_CONTRACT_ID);
+	EXPECT_EQ(qswap.addLiquidity(issuerB, { issuerB, name, 1000, 0, 0 }, reward).quAmount, 0);
+	EXPECT_EQ(qswap.removeLiquidity(issuerB, { issuerB, name, 1000, 0, 0 }, reward).quAmount, 0);
+	EXPECT_EQ(qswap.swapExactQuForAsset(issuerB, { issuerB, name, 0 }, reward).assetAmountOut, 0);
+	EXPECT_EQ(qswap.swapQuForExactAsset(issuerB, { issuerB, name, 1000 }, reward).quAmountIn, 0);
+	EXPECT_EQ(qswap.swapExactAssetForQu(issuerB, { issuerB, name, 1000, 0 }, reward).quAmountOut, 0);
+	EXPECT_EQ(qswap.swapAssetForExactQu(issuerB, { issuerB, name, 10000, 1000 }, reward).assetAmountIn, 0);
+	KangarooTwelve(qswap.stateData(), sizeof(QSWAP::StateData), &after, sizeof(after));
+	EXPECT_EQ(before, after);
+	EXPECT_EQ(getBalance(issuerB), balance);
+	EXPECT_EQ(getBalance(QSWAP_CONTRACT_ID), contractBalance);
+	EXPECT_EQ(numberOfPossessedShares(name, issuerB, issuerB, issuerB,
+		QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), 10 * amount);
+	EXPECT_EQ(numberOfPossessedShares(name, issuerB, QSWAP_CONTRACT_ID, QSWAP_CONTRACT_ID,
+		QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), 0);
+
+	// Both issuers can still create and use their own pools with the same asset name.
+	increaseEnergy(issuerB, QSWAP_CREATE_POOL_FEE);
+	ASSERT_TRUE(qswap.createPool(issuerB, name));
+	EXPECT_EQ(qswap.stateData()->mPoolBasicStates.get(1).poolID, referencePoolKey(issuerB, name));
+	EXPECT_NE(qswap.stateData()->mPoolBasicStates.get(0).poolID,
+		qswap.stateData()->mPoolBasicStates.get(1).poolID);
+	increaseEnergy(issuerB, amount + QSWAP_ADDITIONAL_FEE);
+	ASSERT_EQ(qswap.addLiquidity(issuerB, { issuerB, name, amount, 0, 0 },
+		amount + QSWAP_ADDITIONAL_FEE).userIncreaseLiquidity, amount - QSWAP_MIN_LIQUIDITY);
+	increaseEnergy(issuerB, 4 * reward);
+	EXPECT_GT(qswap.swapExactQuForAsset(issuerB, { issuerB, name, 0 }, reward).assetAmountOut, 0);
+	EXPECT_GT(qswap.swapQuForExactAsset(issuerB, { issuerB, name, 100 }, reward).quAmountIn, 0);
+	EXPECT_GT(qswap.swapExactAssetForQu(issuerB, { issuerB, name, 1000, 0 }, reward).quAmountOut, 0);
+	EXPECT_GT(qswap.swapAssetForExactQu(issuerB, { issuerB, name, 10000, 100 }, reward).assetAmountIn, 0);
+	increaseEnergy(issuerB, QSWAP_ADDITIONAL_FEE);
+	EXPECT_GT(qswap.removeLiquidity(issuerB, { issuerB, name, amount - QSWAP_MIN_LIQUIDITY, 0, 0 },
+		QSWAP_ADDITIONAL_FEE).quAmount, 0);
+	EXPECT_EQ(qswap.getLiquidityOf({ issuerB, name, issuerB }).liquidity, 0);
+	EXPECT_EQ(qswap.getLiquidityOf({ issuerA, name, issuerA }).liquidity, amount - QSWAP_MIN_LIQUIDITY);
+	EXPECT_EQ(qswap.getPoolBasicState(issuerA, name).reservedQuAmount, amount);
+	EXPECT_EQ(qswap.getPoolBasicState(issuerA, name).reservedAssetAmount, amount);
+	EXPECT_EQ(numberOfPossessedShares(name, issuerA, QSWAP_CONTRACT_ID, QSWAP_CONTRACT_ID,
+		QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), amount);
+}
+
 TEST(ContractSwap, LiquidityFeeBookkeepingSurvivesAddPartialRemoveAndReentry)
 {
 	ContractTestingQswap qswap;
@@ -1273,8 +1357,7 @@ TEST(ContractSwap, LiquidityFeeBookkeepingSurvivesAddPartialRemoveAndReentry)
 	constexpr sint64 swapAmount = 100000;
 	QSWAP::GetLiquidityOf_input liquidityInput = { issuer, assetName, issuer };
 	QSWAP::GetLiquidityOf_input lockInput = { issuer, assetName, QSWAP_CONTRACT_ID };
-	id poolID = issuer;
-	poolID.u64._3 = assetName;
+	const id poolID = referencePoolKey(issuer, assetName);
 	const id issuerKey = referenceLiquidityKey(poolID, issuer);
 
 	increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
@@ -1460,8 +1543,7 @@ TEST(ContractSwap, LiquidityCollectionFullRefundsNewProviderAndUpdatesExistingRe
 	increaseEnergy(issuer, QSWAP_TRANSFER_ASSET_FEE);
 	ASSERT_EQ(qswap.transferAsset(issuer, { issuer, positiveName, newProvider, deposit }), deposit);
 
-	id zeroPoolID = issuer;
-	zeroPoolID.u64._3 = zeroName;
+	const id zeroPoolID = referencePoolKey(issuer, zeroName);
 	const id zeroKey = referenceLiquidityKey(zeroPoolID, issuer);
 	auto& liquidities = qswap.stateData()->mLiquidities;
 	const sint64 zeroIndex = liquidities.headIndex(zeroKey, 0);
@@ -1595,8 +1677,7 @@ TEST(ContractSwap, InitialDepositRefundsWhenFewerThanTwoLiquiditySlotsRemain)
 		EXPECT_EQ(poolAfter.reservedQuAmount, poolBefore.reservedQuAmount);
 		EXPECT_EQ(poolAfter.reservedAssetAmount, poolBefore.reservedAssetAmount);
 		EXPECT_EQ(poolAfter.accFeePerLP, poolBefore.accFeePerLP);
-		id poolID = issuer;
-		poolID.u64._3 = name;
+		const id poolID = referencePoolKey(issuer, name);
 		for (const id account : { issuer, QSWAP_CONTRACT_ID })
 		{
 			EXPECT_EQ(liquidities.headIndex(referenceLiquidityKey(poolID, account), 0), NULL_INDEX);
@@ -1665,8 +1746,7 @@ TEST(ContractSwap, InitialDepositStoresBothPositionsWithExactlyTwoLiquiditySlots
 		EXPECT_EQ(pool.reservedAssetAmount, deposit);
 		EXPECT_EQ(pool.accFeePerLP, 0);
 		EXPECT_EQ(qswap.stateData()->mPoolBasicStates.get(0).accFeePerLPX64, uint128(0));
-		id poolID = issuer;
-		poolID.u64._3 = assetName;
+		const id poolID = referencePoolKey(issuer, assetName);
 		const id userKey = referenceLiquidityKey(poolID, issuer);
 		const id lockKey = referenceLiquidityKey(poolID, QSWAP_CONTRACT_ID);
 		const sint64 userIndex = liquidities.headIndex(userKey, 0);
