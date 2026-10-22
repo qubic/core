@@ -600,7 +600,10 @@ struct ContractStateChangeInfo
 // When enabling, replace both lines below, e.g.:
 //constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
 //constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QUSINO_CONTRACT_INDEX, RESET, 234} };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = {
+    { QUSINO_CONTRACT_INDEX, RESET, 234 },
+    { RANDOM_CONTRACT_INDEX, PADDING, 237 }
+};
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 

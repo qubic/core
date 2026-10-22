@@ -63,6 +63,7 @@
     <ClCompile Include="contract_ggwp.cpp" />
     <ClCompile Include="custom_qubic_mining_storage.cpp" />
     <ClCompile Include="contract_quottery.cpp" />
+    <ClCompile Include="contract_random.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_params.h" />
