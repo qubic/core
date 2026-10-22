@@ -233,8 +233,7 @@ protected:
 		state.mut().qpiFunctionsOutputTemp.epoch = qpi.epoch();
 		state.mut().qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
 		state.mut().qpiFunctionsOutputTemp.invocator = qpi.invocator();
-		// testnet: disabled, stale at first tick after seamless transition vs. restarted node
-		// state.mut().qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		state.mut().qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
 		state.mut().qpiFunctionsOutputTemp.originator = qpi.originator();
 		state.mut().qpiFunctionsOutputTemp.tick = qpi.tick();
 
@@ -256,8 +255,7 @@ protected:
 		state.mut().qpiFunctionsOutputTemp.epoch = qpi.epoch();
 		state.mut().qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
 		state.mut().qpiFunctionsOutputTemp.invocator = qpi.invocator();
-		// testnet: disabled, stale at first tick after seamless transition vs. restarted node
-		// state.mut().qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		state.mut().qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
 		state.mut().qpiFunctionsOutputTemp.originator = qpi.originator();
 		state.mut().qpiFunctionsOutputTemp.tick = qpi.tick();
 
