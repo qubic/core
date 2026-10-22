@@ -1537,7 +1537,7 @@ TEST(ContractRandom, EpochWithoutContributionsCarriesProviderPoolAndShareRoundin
     EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 973u);
 }
 
-TEST(ContractRandom, EpochFailedTransfersRemainAvailableWithoutDebtOrDoublePayment)
+TEST(ContractRandom, EpochFailedTransfersRemainAvailableForNextEpoch)
 {
     ContractTestingRandom r;
     const id a = getUser(9300), shareholder = getUser(9301);
@@ -1551,14 +1551,16 @@ TEST(ContractRandom, EpochFailedTransfersRemainAvailableWithoutDebtOrDoublePayme
     EXPECT_EQ(getBalance(a), before);
     EXPECT_EQ(getBalance(shareholder), 0);
     EXPECT_EQ(r.state()->distributedAmount, 0u);
+    EXPECT_EQ(r.state()->earnedAmount, 2704u);
+    EXPECT_EQ(r.state()->totalEpochContributions, 0u);
     increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 2704);
-    r.endEpoch();
-    EXPECT_EQ(r.state()->distributedAmount, 0u);
     r.nextEpoch();
     r.endEpoch();
     EXPECT_EQ(getBalance(a), before);
     EXPECT_EQ(getBalance(shareholder), 1352);
     EXPECT_EQ(r.state()->distributedAmount, 1352u);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 1352);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 1352u);
 }
 
 TEST(ContractRandom, EpochCapacityRejectsNewAddressButAllowsExistingAndResets)
@@ -1663,11 +1665,18 @@ TEST(ContractRandom, EpochProviderRoundingAndShareOwnershipAreProportional)
     EXPECT_EQ(getBalance(s2), 1014);
     EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 2u);
     EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 2);
-    // Even additional revenue cannot trigger a second settlement in this epoch.
+    // The next epoch reuses the remainder, but not the previous providers' contributions.
+    r.nextEpoch();
     r.state()->earnedAmount += 2704;
     increaseEnergy(id(RANDOM_CONTRACT_INDEX, 0, 0, 0), 2704);
     r.endEpoch();
-    EXPECT_EQ(r.state()->distributedAmount, 2703u);
+    EXPECT_EQ(getBalance(a), 901);
+    EXPECT_EQ(getBalance(b), 450);
+    EXPECT_EQ(getBalance(s1), 676);
+    EXPECT_EQ(getBalance(s2), 2028);
+    EXPECT_EQ(r.state()->distributedAmount, 4055u);
+    EXPECT_EQ(r.state()->earnedAmount - r.state()->distributedAmount, 1354u);
+    EXPECT_EQ(getBalance(id(RANDOM_CONTRACT_INDEX, 0, 0, 0)), 1354);
 }
 
 TEST(ContractRandom, EpochSuccessfulProviderPaymentSurvivesFailedDividends)
@@ -1820,6 +1829,8 @@ TEST(ContractRandom, RevenueFreeEpochDoesNotGiveOldProviderFutureRewards)
 TEST(ContractRandom, FundReserveBurnsOnlyAttachedAmount)
 {
     ContractTestingRandom r;
+    r.state()->burnedAmount = 777;
+    r.state()->revenueBurnedAmount = 333;
     const id donor = getUser(30300), provider = getUser(30301);
     QPI::bit_4096 zero; zero.setAll(0);
     increaseEnergy(provider, 1000);
@@ -1837,7 +1848,8 @@ TEST(ContractRandom, FundReserveBurnsOnlyAttachedAmount)
     EXPECT_EQ(r.getProviderStatus(provider).lockedCollateral.get(0), 1000u);
     EXPECT_EQ(r.state()->earnedAmount, 0u);
     EXPECT_EQ(r.state()->distributedAmount, 0u);
-    EXPECT_EQ(r.state()->burnedAmount, 500u);
+    EXPECT_EQ(r.state()->burnedAmount, 777u);
+    EXPECT_EQ(r.state()->revenueBurnedAmount, 333u);
 }
 
 TEST(ContractRandom, FundReserveZeroAmountDoesNotBurnExistingBalance)
