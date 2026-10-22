@@ -841,6 +841,36 @@ TEST_F(NftFeeTest, EveryNewTariffIsGovernedButRecoveryAndDeveloperRatesAreNot)
 	expectQuCollateral();
 }
 
+TEST_F(NftTest, ChangeDeveloperTransfersExclusiveAuthorityAndRefundsReward)
+{
+	auto* state = reinterpret_cast<QNFT::StateData*>(contractStates[QNFT_CONTRACT_INDEX]);
+	const id original = state->developer;
+	increaseEnergy(original, 1000);
+	const auto balanceBefore = getBalance(original);
+	EXPECT_EQ(action(22, QNFT::ChangeDeveloper_input{bob}, alice, 100).code, QNFT::Code::Unauthorized);
+	EXPECT_EQ(state->developer, original);
+	EXPECT_EQ(action(22, QNFT::ChangeDeveloper_input{bob}, original, 100).code, QNFT::Code::Ok);
+	EXPECT_EQ(state->developer, bob);
+	EXPECT_EQ(getBalance(original), balanceBefore);
+	EXPECT_EQ(action(22, QNFT::ChangeDeveloper_input{carol}, original).code, QNFT::Code::Unauthorized);
+	EXPECT_EQ(state->developer, bob);
+	EXPECT_EQ(action(22, QNFT::ChangeDeveloper_input{carol}, bob).code, QNFT::Code::Ok);
+	EXPECT_EQ(state->developer, carol);
+}
+
+TEST_F(NftTest, ChangeDeveloperRejectsInvalidRecipientsAndPreservesPendingRevenue)
+{
+	auto* state = reinterpret_cast<QNFT::StateData*>(contractStates[QNFT_CONTRACT_INDEX]);
+	state->developer = alice;
+	state->developerPending = 123;
+	EXPECT_EQ(action(22, QNFT::ChangeDeveloper_input{NULL_ID}).code, QNFT::Code::InvalidInput);
+	EXPECT_EQ(state->developer, alice);
+	EXPECT_EQ(action(22, QNFT::ChangeDeveloper_input{nftId}).code, QNFT::Code::InvalidInput);
+	EXPECT_EQ(state->developer, alice);
+	EXPECT_EQ(action(22, QNFT::ChangeDeveloper_input{bob}).code, QNFT::Code::Ok);
+	EXPECT_EQ(state->developerPending, 123);
+}
+
 TEST_F(NftTest, StandardQpiShareholderVotingInterfaceIsRegistered)
 {
 	EXPECT_NE(contractUserProcedures[QNFT_CONTRACT_INDEX][65534], nullptr);

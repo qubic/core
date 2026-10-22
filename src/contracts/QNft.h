@@ -852,7 +852,7 @@ struct QNFT : public ContractBase
 		/** @brief Active fixed-price listings keyed by unique listing ID. */
 		HashMap<uint64, Listing, QNFT_LISTING_SLOTS> listings;
 
-		/** @brief Deployment-configured developer beneficiary; zero defers payment. */
+		/** @brief Current developer beneficiary; only this identity can transfer the role. */
 		id developer;
 
 		/** @brief QU commissions retained until end-of-epoch allocation. */
@@ -1285,6 +1285,15 @@ struct QNFT : public ContractBase
 	/** @brief Reuse the shared OperationResult layout for FundReserve_output. */
 	using FundReserve_output = OperationResult;
 
+	/** @brief New beneficiary and authority for developer revenue. */
+	struct ChangeDeveloper_input
+	{
+		id developer;
+	};
+
+	/** @brief Returns Ok, Unauthorized, or InvalidInput in code. */
+	using ChangeDeveloper_output = OperationResult;
+
 	/**
 	 * @brief Arguments supplied to GetItem.
 	 */
@@ -1683,7 +1692,7 @@ struct QNFT : public ContractBase
 	 */
 	struct GetMarket_output
 	{
-		/** @brief Deployment-configured developer beneficiary; zero defers payment. */
+		/** @brief Current developer beneficiary; only this identity can transfer the role. */
 		id developer;
 
 		/** @brief QU commissions retained until end-of-epoch allocation. */
@@ -2929,6 +2938,13 @@ struct QNFT : public ContractBase
 		sint64 pending;
 	};
 
+	/** @brief Return attached QU through the existing deferred-refund mechanism. */
+	struct ChangeDeveloper_locals
+	{
+		Refund_input refundInput;
+		Refund_output refundOutput;
+	};
+
 	/** @brief Tick hook arguments for automatic import delivery and refund repayment. */
 	struct END_TICK_locals
 	{
@@ -4169,6 +4185,7 @@ struct QNFT : public ContractBase
 		// QPI rejects nested contract transfers before debiting QU; retry those outside the callback.
 		if (qpi.transfer(qpi.invocator(), input.amount) < 0)
 		{
+			locals.pending = 0;
 			state.get().contractRefunds.get(qpi.invocator(), locals.pending);
 			state.mut().contractRefunds.set(qpi.invocator(), locals.pending + input.amount);
 		}
@@ -5658,6 +5675,32 @@ struct QNFT : public ContractBase
 	}
 
 	/**
+	 * @brief Transfer developer authority and future revenue payouts to a new beneficiary.
+	 * @param input New nonzero developer ID, excluding this contract.
+	 * @return Unauthorized unless invoked by the current developer; InvalidInput for an invalid ID; otherwise Ok.
+	 * @note Fee-free; attached QU is refunded. Unpaid developer revenue follows the new beneficiary.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(ChangeDeveloper)
+	{
+		if (state.get().developer == NULL_ID || qpi.invocator() != state.get().developer)
+		{
+			output.code = Code::Unauthorized;
+		}
+		else if (input.developer == NULL_ID || input.developer == SELF)
+		{
+			output.code = Code::InvalidInput;
+		}
+		else
+		{
+			state.mut().developer = input.developer;
+			output.code = Code::Ok;
+		}
+
+		locals.refundInput.amount = qpi.invocationReward();
+		CALL(Refund, locals.refundInput, locals.refundOutput);
+	}
+
+	/**
 	 * @brief Accept positive quantities of registered QNFT assets; log rejected acquisitions.
 	 */
 	PRE_ACQUIRE_SHARES_WITH_LOCALS()
@@ -7087,6 +7130,12 @@ struct QNFT : public ContractBase
 		// Reserve funding.
 		REGISTER_USER_PROCEDURE(FundReserve, 20);
 
+		// Fee
+		REGISTER_USER_PROCEDURE(SetFeeProposalBatch, 21);
+
+		// Management
+		REGISTER_USER_PROCEDURE(ChangeDeveloper, 22);
+
 		// Collections, items, ownership and metadata queries.
 		REGISTER_USER_FUNCTION(GetCollection, 1);
 		REGISTER_USER_FUNCTION(ListCollections, 2);
@@ -7111,8 +7160,9 @@ struct QNFT : public ContractBase
 		REGISTER_USER_FUNCTION(GetGovernanceConfig, 17);
 		REGISTER_USER_FUNCTION(GetFeeSchedule, 18);
 
-		REGISTER_USER_PROCEDURE(SetFeeProposalBatch, 21);
+		// Fee
 		REGISTER_USER_FUNCTION(GetFeeProposalBatch, 19);
+
 		REGISTER_SHAREHOLDER_PROPOSAL_VOTING();
 	}
 
