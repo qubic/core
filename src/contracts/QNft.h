@@ -7118,10 +7118,13 @@ struct QNFT : public ContractBase
 
 	/**
 	 * @brief Initialize fee tariffs and the default 20% developer / 60% shareholders / 20% burn split.
-	 * @note The developer recipient remains zero until deployment configuration supplies it; its allocation is retained.
+	 * @note Sets the developer beneficiary for revenue payouts.
 	 */
 	INITIALIZE()
 	{
+		state.mut().developer = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X,
+		                           _B, _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
+
 		// QPI zero-initializes state; set only the nonzero initial tariffs and revenue rates here.
 		state.mut().collectionFee = QNFT_COLLECTION_FEE;
 		state.mut().mintFee = QNFT_MINT_FEE;
