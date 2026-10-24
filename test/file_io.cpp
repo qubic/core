@@ -682,3 +682,83 @@ TEST(TestAsyncFileIO, FindKLargestKDuplicated)
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// #453 / PR #1027: AsyncFileIO failure propagation.
+//
+// Before #1027 the blocking asyncSave()/asyncLoad() paths returned the request
+// size even when the underlying save()/load() failed, so a failed read/write
+// looked identical to success. These tests drive a blocking operation that is
+// guaranteed to fail and assert the real (<0) result is now propagated.
+//
+// Under NO_UEFI, AsyncFileIO::isMainThread() is always false, so a blocking
+// asyncSave()/asyncLoad() parks in its wait loop until another thread runs
+// flushAsyncFileIOBuffer(). We therefore run the blocking op on a worker thread
+// and flush from the test thread, mirroring runTestAsyncSaveFile/LoadFile above.
+//
+// The stop-during-wait -> kStop path is intentionally not covered here: mIsStop
+// is private and only set by deInit(), which also flushes the queue and frees
+// gAsyncFileIO, so that path is not deterministically reachable through the
+// public API without racing a freed object.
+// ---------------------------------------------------------------------------
+
+static long long gFailResult = 0;
+
+static void blockingLoadMissingWorker()
+{
+    CHAR16 fileName[64];
+    setText(fileName, L"nonexistent_file_for_1027_propagation_test.bin");
+    static unsigned int loadBuffer[16];
+    // Blocking load of a file that does not exist -> load() returns -1.
+    gFailResult = asyncLoad(fileName, sizeof(loadBuffer), (unsigned char*)loadBuffer, NULL);
+    threadFinish[0] = 1;
+}
+
+TEST(TestAsyncFileIO, AsyncBlockingLoadMissingFilePropagatesFailure)
+{
+    CHAR16 fileName[64];
+    setText(fileName, L"nonexistent_file_for_1027_propagation_test.bin");
+    _wremove(fileName); // make sure it really is missing
+
+    threadFinish[0] = 0;
+    gFailResult = 0;
+    std::thread worker(blockingLoadMissingWorker);
+
+    while (!threadFinish[0])
+    {
+        flushAsyncFileIOBuffer();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    worker.join();
+
+    // Pre-#1027 this returned totalSize; now it must surface the load failure.
+    EXPECT_LT(gFailResult, 0);
+}
+
+static void blockingSaveBadPathWorker()
+{
+    CHAR16 fileName[96];
+    // A file inside a directory that does not exist cannot be opened for "wb".
+    setText(fileName, L"nonexistent_dir_for_1027/cannot_be_created.bin");
+    static unsigned int saveBuffer[16] = { 0 };
+    // Blocking save (blocking == true) -> save() returns -1 on open failure.
+    gFailResult = asyncSave(fileName, sizeof(saveBuffer), (unsigned char*)saveBuffer, NULL, true);
+    threadFinish[0] = 1;
+}
+
+TEST(TestAsyncFileIO, AsyncBlockingSaveFailurePropagatesFailure)
+{
+    threadFinish[0] = 0;
+    gFailResult = 0;
+    std::thread worker(blockingSaveBadPathWorker);
+
+    while (!threadFinish[0])
+    {
+        flushAsyncFileIOBuffer();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    worker.join();
+
+    // Pre-#1027 this returned totalSize; now it must surface the save failure.
+    EXPECT_LT(gFailResult, 0);
+}
