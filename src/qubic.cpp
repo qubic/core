@@ -958,12 +958,26 @@ static void solutionSettlementBeginEpoch()
 // Wall time of the most recent drain, for F3. Written by the tick processor only.
 static unsigned long long gLastSolutionDrainMilliseconds = 0;
 
-// Epoch boundary force-drain: score what is left alongside the still-running workers, then
-// settle every outstanding tick. Called before the request-processor park-wait so the workers
-// clear the unscored tail in parallel; after that park, only the tick processor could score. Every node
-// runs it at the same tick, the epoch's last, so the drained state is identical network-wide.
+// The epoch switch is decided by etalonTick's date alone. That date is written only when a tick
+// concludes without switching, and every vote compares it, so during tick X this returns the verdict
+// the switch check reads for X, on every node.
+static bool isLastTickInEpoch()
+{
+    const int day = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
+    return (day == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
+        || day > 738570 + system.epoch * 7;
+}
+
+// Settle the whole window: score what is left alongside the still-running workers, then settle
+// every outstanding tick. Every node runs it at END_TICK of the epoch's last tick, so the drained
+// state enters that tick's vote. An empty window is left untouched, so F3 keeps the time and count
+// of the last drain that settled something.
 static void drainPendingSolutions(unsigned long long processorNumber)
 {
+    if (gSettlementWindow.unsettledCount() == 0)
+    {
+        return;
+    }
     const unsigned long long startTsc = __rdtsc();
     gSettlementWindow.drainAll(processorNumber);
     ASSERT(gSettlementWindow.unsettledCount() == 0);
@@ -971,9 +985,16 @@ static void drainPendingSolutions(unsigned long long processorNumber)
 }
 
 // END_TICK, every tick, outside the empty gate: settlement timing is a function of the tick number
-// only, never of tick content.
+// and its voted date only, never of tick content. The epoch's last tick settles the whole window, so
+// every solution of the epoch settles under a vote of the epoch.
 static void settlePendingSolutions(unsigned long long processorNumber)
 {
+    if (isLastTickInEpoch())
+    {
+        drainPendingSolutions(processorNumber);
+        return;
+    }
+
     // Underflow guard, not an activation gate: below W there is no tick T - W to settle, and the
     // unsigned wrap would ask settleTick() to settle everything at once.
     if (system.tick < SOLUTION_SETTLEMENT_WINDOW_TICKS)
@@ -4564,8 +4585,8 @@ static void processTick(unsigned long long processorNumber)
 
     PROFILE_NAMED_SCOPE_BEGIN("processTick(): END_TICK");
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
-    // Outside the empty-tick gate above (settlement timing is a function of the tick number only,
-    // 2.3) and before the salted digest capture, so the vote and timelock include it.
+    // Outside the empty-tick gate above (settlement timing is a function of the tick number and its
+    // voted date only, 2.3) and before the salted digest capture, so the vote and timelock include it.
     settlePendingSolutions(processorNumber);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;
@@ -6852,9 +6873,7 @@ static void tickProcessor(void*)
                             }
                             if (tickDataSuits)
                             {
-                                const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
-                                if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
-                                    || dayIndex > 738570 + system.epoch * 7)
+                                if (isLastTickInEpoch())
                                 {
                                     // start seamless epoch transition
                                     epochTransitionState = 1;
@@ -6932,13 +6951,10 @@ static void tickProcessor(void*)
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
                                 {
-                                    // Before the park-wait: the solution processors are still
-                                    // running (their own park condition also requires unscoredCount()
-                                    // == 0), so drainPendingSolutions() scores the unsettled tail
-                                    // alongside them, then settles every outstanding tick. After the
-                                    // park, only this thread could score - steady state this is the
-                                    // last ~1-2 ticks' worth; a crash-restart that reloaded the ring
-                                    // unscored is the one corner where this runs long.
+                                    // The last tick drained the window at its END_TICK, so this finds
+                                    // it empty. It runs before the park-wait, so anything left would
+                                    // still be scored alongside the solution processors (they park only
+                                    // once unscoredCount() == 0) and settled before endEpoch().
                                     drainPendingSolutions(processorNumber);
 
                                     // wait until all request processors are in waiting state
