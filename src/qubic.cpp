@@ -594,7 +594,7 @@ static void logAntSolutionOutcome(const m256i& sourcePublicKey, const m256i& non
 }
 
 // Phase 1, tx loop: cheap deterministic checks only - dedup, the own-computor RECORDED mark, the
-// future-parent reject, the anchor check - then hand the rest to settlement. The mark comes before
+// unsettled-parent reject, the anchor check - then hand the rest to settlement. The mark comes before
 // the rejects, so a solution rejected here is not republished every tick for a whole window.
 static void recordAntSolution(const AntColonyMiningSolutionTransaction* transaction, unsigned int transactionIndex)
 {
@@ -620,9 +620,9 @@ static void recordAntSolution(const AntColonyMiningSolutionTransaction* transact
         }
     }
 
-    // A real parent is always on-chain from an earlier tick; root is exempt, it is derived rather
-    // than stored.
-    if (!parentRef.isRoot() && parentRef.tick >= system.tick)
+    // A real parent must already be settled into the tree, so every worker resolves it the same way
+    // whenever it runs; root is exempt, it is derived rather than stored.
+    if (!isAntParentSettledBefore(parentRef, system.tick))
     {
         gAntColony.recordReject(ValidityResult::RejectParentNotRegistered);
         logAntSolutionOutcome(transaction->sourcePublicKey, transaction->nonce, transaction->parentTick,
@@ -760,9 +760,9 @@ static void scoreAntSolution(SettlementSlot& slot, unsigned long long processorN
     setMem(&result, sizeof(result), 0);
     result.rating = score_engine::Rating::worst();
 
-    // A parent is always in a strictly earlier tick. Phase 1 already refused anything else, so this
-    // is the same rule restated where the score depends on it.
-    if (!record.parentRef.isRoot() && record.parentRef.tick >= slot.tick)
+    // A parent is always settled before this solution's tick. Phase 1 already refused anything else, so
+    // this is the same rule restated where the score depends on it.
+    if (!isAntParentSettledBefore(record.parentRef, slot.tick))
     {
         copyMem(slot.result, &result, sizeof(result));
         return;
@@ -4586,7 +4586,7 @@ static void processTick(unsigned long long processorNumber)
     PROFILE_NAMED_SCOPE_BEGIN("processTick(): END_TICK");
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     // Outside the empty-tick gate above (settlement timing is a function of the tick number and its
-    // voted date only, 2.3) and before the salted digest capture, so the vote and timelock include it.
+    // voted date only) and before the salted digest capture, so the vote and timelock include it.
     settlePendingSolutions(processorNumber);
     contractProcessorPhase = END_TICK;
     contractProcessorState = 1;

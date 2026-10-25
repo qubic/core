@@ -136,6 +136,30 @@ static long long commitRootChild(AntColonyBpp9000T& colony, const m256i& owner, 
 }
 
 // ---------------------------------------------------------------------------------------------
+// isAntParentSettledBefore()
+
+TEST(TestAntParentSettledBefore, RootIsAlwaysSettled)
+{
+    EXPECT_TRUE(isAntParentSettledBefore(ROOT_REF, TEST_TICK));
+    EXPECT_TRUE(isAntParentSettledBefore(ROOT_REF, 0));
+}
+
+TEST(TestAntParentSettledBefore, ParentInsideTheWindowIsNotSettled)
+{
+    EXPECT_FALSE(isAntParentSettledBefore(SolutionRef{ TEST_TICK - SOLUTION_SETTLEMENT_WINDOW_TICKS, 0 }, TEST_TICK));
+    EXPECT_FALSE(isAntParentSettledBefore(SolutionRef{ TEST_TICK - 1, 0 }, TEST_TICK));
+    EXPECT_TRUE(isAntParentSettledBefore(SolutionRef{ TEST_TICK - SOLUTION_SETTLEMENT_WINDOW_TICKS - 1, 0 }, TEST_TICK));
+    EXPECT_TRUE(isAntParentSettledBefore(SolutionRef{ TEST_INITIAL_TICK, 3 }, TEST_TICK));
+}
+
+TEST(TestAntParentSettledBefore, SameOrLaterTickIsNotSettled)
+{
+    EXPECT_FALSE(isAntParentSettledBefore(SolutionRef{ TEST_TICK, 0 }, TEST_TICK));
+    EXPECT_FALSE(isAntParentSettledBefore(SolutionRef{ TEST_TICK + 1, 0 }, TEST_TICK));
+    EXPECT_FALSE(isAntParentSettledBefore(SolutionRef{ 0xFFFFFFFFu, 0 }, TEST_TICK));
+}
+
+// ---------------------------------------------------------------------------------------------
 // resolveAntParent() status matrix
 //
 // Two sources answer Ready - the derived ROOT and the settled tree. Everything else is Absent,

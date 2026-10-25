@@ -18,8 +18,9 @@
 //
 // Storage is one append-order arena. Appends arrive in (tick, txIndex) order and settlement
 // releases in the same order, so a tick's slots are one contiguous run: _head is the oldest
-// unsettled slot, _cursor the next a worker takes, _tail the next free. A ring keyed by
-// tick & (ring size - 1) maps a tick to its run for lookup().
+// unsettled slot, _cursor the next a worker takes, _tail the next free. _tickIndex, keyed by
+// tick & (index size - 1), maps a tick to its run: append() tests whether the tick is already
+// open, lookup() binary-searches the run, settleOneTick() walks it.
 //
 // Module that writes:
 //  - tick processor   append(): record fields, then the tick index entry's count last.
@@ -31,9 +32,10 @@
 // earlier reads the same bytes until the physical slot is reused, which takes as many appends as
 // the arena has free slots - capacity minus whatever is still unsettled.
 //
-// The ring is a tighter bound than the arena. The caller must call settleTick() often enough that
-// the oldest unsettled tick never falls more than SOLUTION_SETTLEMENT_RING_TICKS behind the newest
-// appended one; further behind, append() silently refuses ticks that alias an unsettled one.
+// The tick index is a tighter bound than the arena. The caller must call settleTick() often enough
+// that the oldest unsettled tick stays fewer than SOLUTION_SETTLEMENT_TICK_INDEX_SIZE ticks behind
+// the newest appended one; at that distance and beyond, append() silently refuses ticks that alias
+// an unsettled one.
 
 // Kinds are the solution transaction types. Each registers two hooks; the loops here call them.
 struct SettlementSlot;
@@ -49,8 +51,10 @@ static constexpr unsigned int MAX_SOLUTION_KINDS = 4;
 static constexpr unsigned long long SOLUTION_SETTLEMENT_CAPACITY =
     (unsigned long long)(SOLUTION_SETTLEMENT_WINDOW_TICKS + 1) * NUMBER_OF_TRANSACTIONS_PER_TICK;
 
-// Per-tick index ring: smallest power of two holding the window plus the tick being processed.
-static constexpr unsigned int solutionSettlementRingSize(unsigned int window)
+// Per-tick index, addressed tick & (size - 1): smallest power of two holding the window plus the
+// tick being processed, which is every tick that can be unsettled at once. A tick further out
+// aliases a live entry and is refused rather than served stale.
+static constexpr unsigned int solutionSettlementTickIndexSize(unsigned int window)
 {
     unsigned int size = 1;
     while (size < window + 1u)
@@ -59,8 +63,8 @@ static constexpr unsigned int solutionSettlementRingSize(unsigned int window)
     }
     return size;
 }
-static constexpr unsigned int SOLUTION_SETTLEMENT_RING_TICKS = solutionSettlementRingSize(SOLUTION_SETTLEMENT_WINDOW_TICKS);
-static constexpr unsigned int SOLUTION_SETTLEMENT_RING_MASK = SOLUTION_SETTLEMENT_RING_TICKS - 1;
+static constexpr unsigned int SOLUTION_SETTLEMENT_TICK_INDEX_SIZE = solutionSettlementTickIndexSize(SOLUTION_SETTLEMENT_WINDOW_TICKS);
+static constexpr unsigned int SOLUTION_SETTLEMENT_TICK_INDEX_MASK = SOLUTION_SETTLEMENT_TICK_INDEX_SIZE - 1;
 
 // Records per chunk file on save. Bounds the serial scratch the save gathers into.
 static constexpr unsigned int SOLUTION_SETTLEMENT_SAVE_CHUNK_RECORDS = 65536;
@@ -180,7 +184,7 @@ public:
     // Any thread. nullptr once the tick is settled or if (tick, txIndex) was never appended.
     const SettlementSlot* lookup(unsigned int tick, unsigned int txIndex) const;
 
-    // Phase 2, tick processor. Settles every unsettled tick up to and including `tick`, ascending;
+    // Phase 2, tick processor. Settles every unsettled tick up to and including tick, ascending;
     // no-op when tick <= settledThroughTick.
     void settleTick(unsigned int tick, unsigned long long processorNumber);
     // Epoch end: score everything left alongside the workers, wait for their in-flight
@@ -226,7 +230,7 @@ private:
     void settleOneTick(unsigned int tick, unsigned long long processorNumber);
 
     SettlementSlot* _slots;
-    TickIndexEntry* _ticks;
+    TickIndexEntry* _tickIndex;
     unsigned char* _scratch;
 
     volatile char _lock;                     // _head, _cursor, _tail
@@ -251,8 +255,8 @@ inline bool SolutionSettlementWindow::init()
     {
         return false;
     }
-    if (!allocPoolWithErrorLog(L"SolutionSettlementWindow::_ticks",
-        (unsigned long long)SOLUTION_SETTLEMENT_RING_TICKS * sizeof(TickIndexEntry), (void**)&_ticks, __LINE__))
+    if (!allocPoolWithErrorLog(L"SolutionSettlementWindow::_tickIndex",
+        (unsigned long long)SOLUTION_SETTLEMENT_TICK_INDEX_SIZE * sizeof(TickIndexEntry), (void**)&_tickIndex, __LINE__))
     {
         return false;
     }
@@ -272,25 +276,25 @@ inline void SolutionSettlementWindow::deinit()
     {
         freePool(_scratch);
     }
-    if (_ticks)
+    if (_tickIndex)
     {
-        freePool(_ticks);
+        freePool(_tickIndex);
     }
     if (_slots)
     {
         freePool(_slots);
     }
     _scratch = nullptr;
-    _ticks = nullptr;
+    _tickIndex = nullptr;
     _slots = nullptr;
 }
 
 inline void SolutionSettlementWindow::reset(unsigned int settledThroughTick)
 {
-    ASSERT(_ticks != nullptr);
+    ASSERT(_tickIndex != nullptr);
 
     LockGuard guard(_lock);
-    setMem(_ticks, (unsigned long long)SOLUTION_SETTLEMENT_RING_TICKS * sizeof(TickIndexEntry), 0);
+    setMem(_tickIndex, (unsigned long long)SOLUTION_SETTLEMENT_TICK_INDEX_SIZE * sizeof(TickIndexEntry), 0);
     _head = 0;
     _cursor = 0;
     _tail = 0;
@@ -359,15 +363,17 @@ inline bool SolutionSettlementWindow::append(unsigned int tick, unsigned int txI
         return false;
     }
 
-    TickIndexEntry& entry = _ticks[tick & SOLUTION_SETTLEMENT_RING_MASK];
-    const bool continuesTick = (entry.count > 0 && entry.tick == tick);
-    if (entry.count > 0 && !continuesTick)
+    TickIndexEntry& entry = _tickIndex[tick & SOLUTION_SETTLEMENT_TICK_INDEX_MASK];
+    // The entry is still held by an unsettled tick an index length back: settlement has fallen
+    // behind by the whole index. Refusing keeps that tick's slots intact.
+    if (entry.count > 0 && entry.tick != tick)
     {
-        // The entry is still held by an unsettled tick a ring length back: settlement has fallen
-        // behind by more than the ring. Refusing keeps that tick's slots intact.
         _stats.refused++;
         return false;
     }
+
+    const bool continuesTick = (entry.count > 0 && entry.tick == tick);
+    // A tick's run stays ascending in txIndex: lookup() binary-searches it and settlement walks it in that order.
     if (continuesTick && txIndex <= slotAt(entry.startIdx + entry.count - 1).txIndex)
     {
         _stats.refused++;
@@ -463,7 +469,7 @@ inline const SettlementSlot* SolutionSettlementWindow::lookup(unsigned int tick,
     {
         return nullptr;
     }
-    const TickIndexEntry& entry = _ticks[tick & SOLUTION_SETTLEMENT_RING_MASK];
+    const TickIndexEntry& entry = _tickIndex[tick & SOLUTION_SETTLEMENT_TICK_INDEX_MASK];
     const unsigned int count = (unsigned int)ATOMIC_LOAD32(entry.count);
     if (count == 0 || entry.tick != tick)
     {
@@ -520,7 +526,7 @@ inline void SolutionSettlementWindow::settleTick(unsigned int tick, unsigned lon
 
 inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned long long processorNumber)
 {
-    TickIndexEntry& entry = _ticks[tick & SOLUTION_SETTLEMENT_RING_MASK];
+    TickIndexEntry& entry = _tickIndex[tick & SOLUTION_SETTLEMENT_TICK_INDEX_MASK];
     if (entry.count == 0 || entry.tick != tick)
     {
         return;
@@ -541,6 +547,7 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
         }
     }
 
+    // Settle all solutions in the tick
     for (unsigned long long i = first; i < end; i++)
     {
         SettlementSlot& slot = slotAt(i);
@@ -549,6 +556,7 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
 
         if (!slot.scored)
         {
+            // Not processed, finisned it
             if (i >= claimedFrom)
             {
                 scoreSlot(slot, processorNumber);
@@ -733,8 +741,8 @@ inline bool SolutionSettlementWindow::load(unsigned short epoch, CHAR16* directo
 
     reset(meta.settledThroughTick);
 
-    // Each record goes back in through append(), so a file that breaks the order, the ring or the
-    // capacity is refused by the same rules a live append is.
+    // Each record goes back in through append(), so a file that breaks the order, the tick index or
+    // the capacity is refused by the same rules a live append is.
     unsigned long long loaded = 0;
     unsigned int chunkId = 0;
     do

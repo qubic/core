@@ -23,7 +23,7 @@ static constexpr unsigned short TEST_EPOCH = 200;
 static constexpr unsigned int TEST_SETTLED_THROUGH = 99999;
 static constexpr unsigned int TEST_TICK = TEST_SETTLED_THROUGH + 1;
 static constexpr unsigned int W = SOLUTION_SETTLEMENT_WINDOW_TICKS;
-static constexpr unsigned int RING = SOLUTION_SETTLEMENT_RING_TICKS;
+static constexpr unsigned int TICK_INDEX_SIZE = SOLUTION_SETTLEMENT_TICK_INDEX_SIZE;
 
 struct HookCall
 {
@@ -406,8 +406,8 @@ TEST(TestSolutionSettlementWindow, RunOfEmptyTicksLongerThanW)
     expectCall(calls, 1, 't', KIND_A, ahead, 0);
     EXPECT_EQ(window->unsettledCount(), 0u);
 
-    // A run of empties longer than the index ring, so every entry is passed over at least once.
-    const unsigned int last = ahead + RING + 10;
+    // A run of empties longer than the tick index, so every entry is passed over at least once.
+    const unsigned int last = ahead + TICK_INDEX_SIZE + 10;
     for (unsigned int t = ahead + 1; t <= last; t++)
     {
         window->settleTick(t, 1);
@@ -425,22 +425,22 @@ TEST(TestSolutionSettlementWindow, RunOfEmptyTicksLongerThanW)
     EXPECT_EQ(window->unsettledCount(), 0u);
 }
 
-// Neither the index ring nor the arena ever overwrites a slot that has not been settled.
-TEST(TestSolutionSettlementWindow, RingDoesNotOverwriteUnsettledSlot)
+// Neither the tick index nor the arena ever overwrites a slot that has not been settled.
+TEST(TestSolutionSettlementWindow, NoOverwriteOfUnsettledSlot)
 {
     SolutionSettlementWindow* window = freshWindow();
     ASSERT_NE(window, nullptr) << "window init failed; needs ~2 GB";
 
-    // Index ring: the tick a ring length later maps to the same entry.
+    // Tick index: the tick an index length later maps to the same entry.
     EXPECT_TRUE(put(window, TEST_TICK, 0, KIND_A, 11));
-    EXPECT_FALSE(put(window, TEST_TICK + RING, 0, KIND_B, 12));
+    EXPECT_FALSE(put(window, TEST_TICK + TICK_INDEX_SIZE, 0, KIND_B, 12));
     EXPECT_TRUE(recordMatches(window->lookup(TEST_TICK, 0), KIND_A, 11));
-    EXPECT_EQ(window->lookup(TEST_TICK + RING, 0), nullptr);
+    EXPECT_EQ(window->lookup(TEST_TICK + TICK_INDEX_SIZE, 0), nullptr);
     EXPECT_EQ(window->unsettledCount(), 1u);
 
     window->settleTick(TEST_TICK, 1);
-    EXPECT_TRUE(put(window, TEST_TICK + RING, 0, KIND_B, 12));
-    EXPECT_TRUE(recordMatches(window->lookup(TEST_TICK + RING, 0), KIND_B, 12));
+    EXPECT_TRUE(put(window, TEST_TICK + TICK_INDEX_SIZE, 0, KIND_B, 12));
+    EXPECT_TRUE(recordMatches(window->lookup(TEST_TICK + TICK_INDEX_SIZE, 0), KIND_B, 12));
     EXPECT_EQ(window->stats().refused, 1u);
 
     // Arena: fill the window plus one tick with a full tick of transactions each, which is exactly

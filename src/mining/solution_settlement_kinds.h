@@ -78,6 +78,16 @@ struct StandaloneSolutionResult
 static_assert(sizeof(StandaloneSolutionResult) <= MAX_SOLUTION_RESULT_BYTES,
     "StandaloneSolutionResult exceeds the settlement result budget");
 
+// The parents a solution recorded at tick T may name: ROOT, or a solution of tick T - W - 1 or earlier.
+// Settlement commits a solution at END_TICK of its tick + W, so while tick T is processed the tree holds
+// every solution of tick T - W - 1 and earlier that will ever commit, and none of a later tick. A parent
+// of a later tick would resolve Absent or Ready depending on when a worker reads the tree.
+static bool isAntParentSettledBefore(const SolutionRef& parentRef, unsigned int tick)
+{
+    return parentRef.isRoot()
+        || (parentRef.tick < tick && tick - parentRef.tick > SOLUTION_SETTLEMENT_WINDOW_TICKS);
+}
+
 // Resolve a parent reference against the two places a usable parent can be:
 // - ROOT                : Ready. Virtual, so no record and no stored network.
 // - the settled tree    : Ready, carrying its record.
