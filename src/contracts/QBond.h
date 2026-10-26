@@ -376,7 +376,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferMBondOwnershipAndPossession)
     {
-        if (input.numberOfMBonds > QBOND_MBONDS_EMISSION || input.numberOfMBonds <= 0 || qpi.invocationReward() < QBOND_MBOND_TRANSFER_FEE)
+        if (input.numberOfMBonds > QBOND_MBONDS_EMISSION || input.numberOfMBonds <= 0 || input.epoch != (uint16)input.epoch || qpi.invocationReward() < QBOND_MBOND_TRANSFER_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -449,6 +449,7 @@ protected:
             || input.numberOfMBonds <= 0
             || input.numberOfMBonds > QBOND_MBONDS_EMISSION
             || smul(input.price, input.numberOfMBonds) > MAX_SUPPLY
+            || input.epoch != (uint16)input.epoch
             || !state.get()._epochMbondInfoMap.get((uint16)input.epoch, locals.tempMbondInfo))
         {
             output.addedMBondsAmount = 0;
@@ -657,6 +658,7 @@ protected:
             || input.numberOfMBonds <= 0
             || input.numberOfMBonds > QBOND_MBONDS_EMISSION
             || smul(input.price, input.numberOfMBonds) > MAX_SUPPLY
+            || input.epoch != (uint16)input.epoch
             || !state.get()._epochMbondInfoMap.get((uint16) input.epoch, locals.tempMbondInfo))
         {
             return;
@@ -713,6 +715,7 @@ protected:
                 || input.numberOfMBonds <= 0
                 || input.numberOfMBonds > QBOND_MBONDS_EMISSION
                 || smul(input.price, input.numberOfMBonds) > MAX_SUPPLY
+                || input.epoch != (uint16)input.epoch
                 || !state.get()._epochMbondInfoMap.get((uint16)input.epoch, locals.tempMbondInfo))
         {
             output.addedMBondsAmount = 0;
@@ -877,6 +880,7 @@ protected:
                 || input.numberOfMBonds > QBOND_MBONDS_EMISSION
                 || smul(input.price, input.numberOfMBonds) > MAX_SUPPLY
                 || smul(input.price, input.numberOfMBonds) < QBOND_MIN_BID_AMOUNT
+                || input.epoch != (uint16)input.epoch
                 || !state.get()._epochMbondInfoMap.get((uint16)input.epoch, locals.tempMbondInfo))
         {
             if (qpi.invocationReward() > 0)
