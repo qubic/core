@@ -398,6 +398,18 @@ TEST(ContractQBond, BurnQu)
     int64_t prevBalance = getBalance(testAddress1);
     EXPECT_EQ(qbond.burnQU(testAddress1, 5000000, 10000000).amount, 5000000);
     EXPECT_EQ(prevBalance - getBalance(testAddress1), 5000000);
+
+    // scenario 4: negative amount must not pay out the contract's balance (escrow, stakes, fees)
+    increaseEnergy(testAddress2, 1000000000);
+    qbond.stake(testAddress1, 50, 50250000);
+    EXPECT_EQ(qbond.addBidOrder(testAddress2, system.epoch, 1500000, 10, 15000000).addedMBondsAmount, 10);
+    const id contract(QBOND_CONTRACT_INDEX, 0, 0, 0);
+    const int64_t contractBalance = getBalance(contract);
+    EXPECT_GT(contractBalance, 0);
+    prevBalance = getBalance(testAddress2);
+    EXPECT_EQ(qbond.burnQU(testAddress2, -contractBalance, 0).amount, 0);
+    EXPECT_EQ(getBalance(contract), contractBalance);
+    EXPECT_EQ(getBalance(testAddress2), prevBalance);
 }
 
 TEST(ContractQBond, UpdateCFA)
