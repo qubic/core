@@ -3795,7 +3795,7 @@ struct QPUMP : public ContractBase
         // forever and stalls the network - but the contract verifier rejects
         // QTREAT:: scope resolution, so the invoke is not available here. The
         // weaker failure mode is bounded: QTREAT constructs in epoch 233 and
-        // Qpump in 235, so QTREAT can never merely be inactive by the time
+        // Qpump in 238, so QTREAT can never merely be inactive by the time
         // this runs, and this is the same exposure QBond, QThirtyFour and
         // Qswap already carry when they transfer to another contract.
         // END_EPOCH runs in descending contract index, so QTREAT (30)

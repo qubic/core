@@ -449,7 +449,7 @@ constexpr struct ContractDescription
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
     {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
 #ifndef NO_QPUMP
-    {"QPUMP", 235, 10000, sizeof(QPUMP::StateData)}, // PLACEHOLDER: proposal in epoch 233, IPO in 234, construction and first use in 235
+    {"QPUMP", 238, 10000, sizeof(QPUMP::StateData)}, // proposal in epoch 236, IPO in 237, construction and first use in 238
 #endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
