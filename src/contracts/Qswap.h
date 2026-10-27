@@ -132,6 +132,70 @@ public:
 		uint32 i0;
 	};
 
+	struct CountIssuerKeyPools_input
+	{
+		uint64 key;
+	};
+	struct CountIssuerKeyPools_output
+	{
+		uint32 count;
+	};
+
+	struct CountIssuerKeyPools_locals
+	{
+		id poolID;
+		id candidate;
+		id r;
+		uint32 i0;
+		bit matched;
+	};
+
+	// Input of the K12 key of an LP record
+	struct LiquidityKeyData
+	{
+		id poolID;
+		id account;
+	};
+	STATIC_ASSERT(sizeof(LiquidityKeyData) == 64, LiquidityKeyDataMustHaveNoPadding);
+
+	struct FindLiquidityRecord_input
+	{
+		id poolID;
+		id account;
+	};
+	struct FindLiquidityRecord_output
+	{
+		sint64 elementIndex;
+		id key;
+		bit legacyKey;
+	};
+
+	struct FindLiquidityRecord_locals
+	{
+		LiquidityKeyData keyData;
+		id r;
+		CountIssuerKeyPools_input cikpIn;
+		CountIssuerKeyPools_output cikpOut;
+	};
+
+	struct ResolveLiquidityRecord_input
+	{
+		id poolID;
+		id account;
+	};
+	struct ResolveLiquidityRecord_output
+	{
+		sint64 elementIndex;
+		id key;
+	};
+
+	struct ResolveLiquidityRecord_locals
+	{
+		FindLiquidityRecord_input findIn;
+		FindLiquidityRecord_output findOut;
+		LiquidityInfo info;
+	};
+
 	struct Fees_input
 	{
 	};
@@ -381,6 +445,15 @@ protected:
 		return r;
 	}
 
+	// True if account equals issuer in words 0..2
+	// its LP key in the issuer's pool is then (0, 0, 0, account.u64._3 ^ assetName)
+	inline static bool sharesIssuerPrefix(const id& account, const id& issuer)
+	{
+		return (account.u64._0 == issuer.u64._0)
+				&& (account.u64._1 == issuer.u64._1)
+				&& (account.u64._2 == issuer.u64._2);
+	}
+
 	// find the sqrt of a*b
 	inline static sint64 sqrt(sint64& a, sint64& b, uint128& prod, uint128& y, uint128& z)
 	{
@@ -560,6 +633,89 @@ protected:
 		}
 	}
 
+	// Number of pools funded before K12 keys whose issuer-side LP key is input.key
+	// Only those pools can own legacy records; their minimum liquidity lock is stored under the legacy key
+	PRIVATE_FUNCTION_WITH_LOCALS(CountIssuerKeyPools)
+	{
+		output.count = 0;
+		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0++)
+		{
+			locals.poolID = state.get().mPoolBasicStates.get(locals.i0).poolID;
+			if (locals.poolID != id(0, 0, 0, 0)
+				&& state.get().mLiquidities.headIndex(liquidityPov(locals.poolID, SELF, locals.r), 0) != NULL_INDEX)
+			{
+				locals.candidate = locals.poolID;
+				locals.candidate.u64._3 = input.key ^ locals.poolID.u64._3;
+				locals.matched = qpi.isAssetIssued(locals.candidate, locals.poolID.u64._3);
+				if (!locals.matched)
+				{
+					locals.candidate.u64._3 ^= 0x8000000000000000ULL;
+					locals.matched = qpi.isAssetIssued(locals.candidate, locals.poolID.u64._3);
+				}
+				if (locals.matched)
+				{
+					output.count++;
+				}
+			}
+		}
+	}
+
+	// LP record of input.account in pool input.poolID: under the K12 key, else under the legacy XOR key
+	PRIVATE_FUNCTION_WITH_LOCALS(FindLiquidityRecord)
+	{
+		locals.keyData.poolID = input.poolID;
+		locals.keyData.account = input.account;
+		output.key = qpi.K12(locals.keyData);
+		output.legacyKey = false;
+		output.elementIndex = state.get().mLiquidities.headIndex(output.key, 0);
+		if (output.elementIndex != NULL_INDEX)
+		{
+			return;
+		}
+
+		// Contracts other than QSwap itself have no records under the legacy key
+		if (input.account != SELF
+			&& input.account.u64._1 == 0 && input.account.u64._2 == 0 && input.account.u64._3 == 0)
+		{
+			return;
+		}
+
+		output.elementIndex = state.get().mLiquidities.headIndex(liquidityPov(input.poolID, input.account, locals.r), 0);
+		if (output.elementIndex == NULL_INDEX)
+		{
+			return;
+		}
+
+		// A legacy issuer-side key is used only if it belongs to this pool alone
+		if (sharesIssuerPrefix(input.account, input.poolID))
+		{
+			locals.cikpIn.key = input.account.u64._3 ^ input.poolID.u64._3;
+			CALL(CountIssuerKeyPools, locals.cikpIn, locals.cikpOut);
+			if (locals.cikpOut.count != 1)
+			{
+				output.elementIndex = NULL_INDEX;
+				return;
+			}
+		}
+		output.legacyKey = true;
+	}
+
+	// LP record of input.account in pool input.poolID, moved to the K12 key if it is under the legacy key
+	PRIVATE_PROCEDURE_WITH_LOCALS(ResolveLiquidityRecord)
+	{
+		locals.findIn.poolID = input.poolID;
+		locals.findIn.account = input.account;
+		CALL(FindLiquidityRecord, locals.findIn, locals.findOut);
+		output.key = locals.findOut.key;
+		output.elementIndex = locals.findOut.elementIndex;
+		if (locals.findOut.legacyKey)
+		{
+			locals.info = state.get().mLiquidities.element(output.elementIndex);
+			state.mut().mLiquidities.remove(output.elementIndex);
+			output.elementIndex = state.mut().mLiquidities.add(output.key, locals.info, 0);
+		}
+	}
+
 	PUBLIC_FUNCTION(Fees)
 	{
 		output.assetIssuanceFee = state.get().cachedIssuanceFee;
@@ -616,14 +772,14 @@ protected:
 	struct GetLiquidityOf_locals
 	{
 		id poolID;
-		id liqPov;
 		sint64 liqElementIndex;
-		id r;
 		sint64 poolSlot;
 		LiquidityInfo li;
 		uint128 pendingFeeX64;
 		FindPoolSlotReadOnly_input  fsRoIn;
 		FindPoolSlotReadOnly_output fsRoOut;
+		FindLiquidityRecord_input flrIn;
+		FindLiquidityRecord_output flrOut;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetLiquidityOf)
@@ -639,8 +795,10 @@ protected:
 		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
 		locals.poolSlot = locals.fsRoOut.poolSlot;
 
-		locals.liqPov = liquidityPov(locals.poolID, input.account, locals.r);
-		locals.liqElementIndex = state.get().mLiquidities.headIndex(locals.liqPov, 0);
+		locals.flrIn.poolID = locals.poolID;
+		locals.flrIn.account = input.account;
+		CALL(FindLiquidityRecord, locals.flrIn, locals.flrOut);
+		locals.liqElementIndex = locals.flrOut.elementIndex;
 		if (locals.liqElementIndex == NULL_INDEX)
 		{
 			return;
@@ -950,6 +1108,8 @@ protected:
 		uint32 i1;
 		FindPoolSlotReadOnly_input fsRoIn;
 		FindPoolSlotReadOnly_output fsRoOut;
+		id legacyKey;
+		bit legacyFound;
 	};
 
 	// create uniswap like pool
@@ -984,6 +1144,16 @@ protected:
 		locals.fsRoIn.assetName = input.assetName;
 		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
 		if (locals.fsRoOut.poolSlot != NULL_INDEX)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
+		// A legacy issuer record under this pool's issuer-side key must stay with its own pool
+		locals.legacyKey = id(0, 0, 0, input.assetIssuer.u64._3 ^ input.assetName);
+		locals.legacyFound = state.get().mLiquidities.headIndex(locals.legacyKey, 0) != NULL_INDEX;
+		locals.legacyKey.u64._3 ^= 0x8000000000000000ULL;
+		if (locals.legacyFound || state.get().mLiquidities.headIndex(locals.legacyKey, 0) != NULL_INDEX)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -1052,6 +1222,9 @@ protected:
 		uint128 pendingFeeX64;
 		FindPoolSlotReadOnly_input fspIn;
 		FindPoolSlotReadOnly_output fspOut;
+		LiquidityKeyData keyData;
+		ResolveLiquidityRecord_input rlrIn;
+		ResolveLiquidityRecord_output rlrOut;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(AddLiquidity)
@@ -1187,6 +1360,13 @@ protected:
 				return;
 			}
 
+			// The initial mint stores both the permanent lock and the depositor's position.
+			if (state.get().mLiquidities.capacity() - state.get().mLiquidities.population() < 2)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				return;
+			}
+
 			locals.reservedAssetAmountBefore = qpi.numberOfPossessedShares(
 				input.assetName,
 				input.assetIssuer,
@@ -1222,11 +1402,14 @@ protected:
 			state.mut().burnEarnedFee += QPI::div(QSWAP_ADDITIONAL_FEE, 4LL);               // 25% to burn
 
 			// permanently lock the first MINIMUM_LIQUIDITY tokens
+			locals.keyData.poolID = locals.poolID;
+			locals.keyData.account = SELF;
 			locals.tmpLiquidity.liquidity = QSWAP_MIN_LIQUIDITY;
-			state.mut().mLiquidities.add(liquidityPov(locals.poolID, SELF, locals.r), locals.tmpLiquidity, 0);
+			state.mut().mLiquidities.add(qpi.K12(locals.keyData), locals.tmpLiquidity, 0);
 
+			locals.keyData.account = qpi.invocator();
 			locals.tmpLiquidity.liquidity = locals.increaseLiquidity - QSWAP_MIN_LIQUIDITY;
-			state.mut().mLiquidities.add(liquidityPov(locals.poolID, qpi.invocator(), locals.r), locals.tmpLiquidity, 0);
+			state.mut().mLiquidities.add(qpi.K12(locals.keyData), locals.tmpLiquidity, 0);
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
@@ -1266,7 +1449,10 @@ protected:
 				return;
 			}
 
-			locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(liquidityPov(locals.poolID, qpi.invocator(), locals.r), 0);
+			locals.rlrIn.poolID = locals.poolID;
+			locals.rlrIn.account = qpi.invocator();
+			CALL(ResolveLiquidityRecord, locals.rlrIn, locals.rlrOut);
+			locals.userLiquidityElementIndex = locals.rlrOut.elementIndex;
 
 			// no more space for new liquidity item
 			if ((locals.userLiquidityElementIndex == NULL_INDEX) && ( state.get().mLiquidities.population() == state.get().mLiquidities.capacity()))
@@ -1315,7 +1501,7 @@ protected:
 			{
 				locals.tmpLiquidity.liquidity = locals.increaseLiquidity;
 				locals.tmpLiquidity.feeDebtX64 = locals.poolBasicState.accFeePerLPX64;
-				state.mut().mLiquidities.add(liquidityPov(locals.poolID, qpi.invocator(), locals.r), locals.tmpLiquidity, 0);
+				state.mut().mLiquidities.add(locals.rlrOut.key, locals.tmpLiquidity, 0);
 			}
 			else
 			{
@@ -1370,6 +1556,8 @@ protected:
 		uint128 pendingFeeX64;
 		FindPoolSlotReadOnly_input fspIn;
 		FindPoolSlotReadOnly_output fspOut;
+		ResolveLiquidityRecord_input rlrIn;
+		ResolveLiquidityRecord_output rlrOut;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(RemoveLiquidity)
@@ -1394,6 +1582,13 @@ protected:
 			return;
 		}
 
+		// the pool's asset must be issued by exactly input.assetIssuer, otherwise its shares cannot be returned
+		if (!qpi.isAssetIssued(input.assetIssuer, input.assetName))
+		{
+			qpi.transfer(qpi.invocator(), QSWAP_ADDITIONAL_FEE);
+			return;
+		}
+
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
@@ -1411,7 +1606,10 @@ protected:
 
 		locals.poolBasicState = state.get().mPoolBasicStates.get(locals.poolSlot);
 
-		locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(liquidityPov(locals.poolID, qpi.invocator(), locals.r), 0);
+		locals.rlrIn.poolID = locals.poolID;
+		locals.rlrIn.account = qpi.invocator();
+		CALL(ResolveLiquidityRecord, locals.rlrIn, locals.rlrOut);
+		locals.userLiquidityElementIndex = locals.rlrOut.elementIndex;
 
 		if (locals.userLiquidityElementIndex == NULL_INDEX)
 		{
@@ -1746,7 +1944,7 @@ protected:
 		locals.totalFee = sint64(locals.feeToShareholders.low) + sint64(locals.feeToQx.low) + sint64(locals.feeToInvestRewards.low) + sint64(locals.feeToBurn.low);
 		if (locals.quAmountIn < locals.totalFee)
 		{
-			qpi.transfer(qpi.invocator(), locals.quAmountIn);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
