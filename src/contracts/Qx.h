@@ -1163,7 +1163,7 @@ protected:
 	BEGIN_TICK_WITH_LOCALS()
 	{
 		// One-shot removal of all orders of frozen entities (see frozen_addresses.h)
-		if (qpi.tick() != FREEZE_FROM_TICK || qpi.epoch() != 236)
+		if (qpi.tick() != FREEZE_FROM_TICK || qpi.epoch() != 237)
 		{
 			return;
 		}
