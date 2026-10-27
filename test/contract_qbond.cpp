@@ -348,6 +348,40 @@ TEST(ContractQBond, AddRemoveBidOrder)
     EXPECT_EQ(userOrders.bidOrders.get(0).price, 0);
 }
 
+TEST(ContractQBond, TestFees)
+{
+    ContractTestingQBond qbond;
+    qbond.beginEpoch();
+    increaseEnergy(testAddress1, 6000000000);
+    increaseEnergy(testAddress2, 6000000000);
+    qbond.stake(testAddress1, 5000, 5025000000);
+
+    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1000000, 1399, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 1399);
+    EXPECT_EQ(qbond.addBidOrder(testAddress2, system.epoch, 1000000, 1400, 1400674800).addedMBondsAmount, 1400);
+
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 3601);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 1399);
+
+    auto fees = qbond.getEarnedFees();
+    EXPECT_EQ(fees.stakeFees, 20000000);
+    EXPECT_EQ(fees.tradeFees, 419700);
+
+    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 900000, 1401, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 1401);
+
+    fees = qbond.getEarnedFees();
+    EXPECT_EQ(fees.stakeFees, 20000000);
+    EXPECT_EQ(fees.tradeFees, 519700);
+
+    QBOND::MBondInfo info;
+    qbond.getState()->_epochMbondInfoMap.get(system.epoch, info);
+    id mbondId = id(QBOND_CONTRACT_INDEX, 0, 0, 0);
+    mbondId.u64._3 = info.name;
+    mbondId.u16._3 = system.epoch;
+    auto index = qbond.getState()->_askOrders.headIndex(mbondId, 0);
+    auto order = qbond.getState()->_askOrders.element(index);
+    EXPECT_EQ(order.feeDebt, 278300);   // (1400 * 900000 * 0.03% + 1 * 1000000 * 0.03%) - QBOND_ASK_ORDER_FEE
+}
+
 TEST(ContractQBond, BurnQu)
 {
     ContractTestingQBond qbond;
