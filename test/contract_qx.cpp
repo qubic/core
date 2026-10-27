@@ -92,6 +92,17 @@ public:
         }
     }
 
+    void fillOrderBook()
+    {
+        QX::AssetOrder assetOrder{};
+        QX::EntityOrder entityOrder{};
+        for (uint64 i = _assetOrders.population(); i < _assetOrders.capacity(); ++i)
+        {
+            _assetOrders.add(id(i, 9, 9, 9), assetOrder, 1);
+            _entityOrders.add(id(i, 9, 9, 9), entityOrder, 1);
+        }
+    }
+
     void cleanupCollections()
     {
         constexpr bool forceCleanup = false;
@@ -258,6 +269,26 @@ TEST(ContractQx, FrozenEntityOrdersRemovedAtCleanupTick)
     EXPECT_EQ(asks.orders.get(0).numberOfShares, 20);
     EXPECT_EQ(asks.orders.get(1).price, 0);
     qx.getState()->checkCollectionConsistency();
+}
+
+TEST(ContractQx, FullOrderBookDoesNotSwallowOrders)
+{
+    ContractTestingQx qx;
+
+    id issuer(1, 2, 3, 4);
+    id user(5, 6, 7, 8);
+    uint64 assetName = assetNameFromString("QUTIL");
+
+    increaseEnergy(issuer, QX_ISSUE_ASSET_FEE);
+    EXPECT_EQ(qx.issueAsset(issuer, assetName, 1000000, 0, 0), 1000000);
+
+    qx.getState()->fillOrderBook();
+
+    increaseEnergy(user, 1000);
+    EXPECT_EQ(qx.addToBidOrder(user, issuer, assetName, 10, 100), 0);
+    EXPECT_EQ(getBalance(user), 1000);
+
+    EXPECT_EQ(qx.addToAskOrder(issuer, issuer, assetName, 20, 20), 0);
 }
 
 

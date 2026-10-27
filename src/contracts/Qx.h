@@ -715,14 +715,22 @@ protected:
 
 					if (input.numberOfShares > 0)
 					{
-						state.mut()._assetOrder.entity = qpi.invocator();
-						state.mut()._assetOrder.numberOfShares = input.numberOfShares;
-						state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, -input.price);
+						if (state.get()._assetOrders.population() < state.get()._assetOrders.capacity()
+							&& state.get()._entityOrders.population() < state.get()._entityOrders.capacity())
+						{
+							state.mut()._assetOrder.entity = qpi.invocator();
+							state.mut()._assetOrder.numberOfShares = input.numberOfShares;
+							state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, -input.price);
 
-						state.mut()._entityOrder.issuer = input.issuer;
-						state.mut()._entityOrder.assetName = input.assetName;
-						state.mut()._entityOrder.numberOfShares = input.numberOfShares;
-						state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, -input.price);
+							state.mut()._entityOrder.issuer = input.issuer;
+							state.mut()._entityOrder.assetName = input.assetName;
+							state.mut()._entityOrder.numberOfShares = input.numberOfShares;
+							state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, -input.price);
+						}
+						else // Order book full: only the matched part is executed
+						{
+							output.addedNumberOfShares -= input.numberOfShares;
+						}
 					}
 				}
 			}
@@ -913,14 +921,23 @@ protected:
 
 				if (input.numberOfShares > 0)
 				{
-					state.mut()._assetOrder.entity = qpi.invocator();
-					state.mut()._assetOrder.numberOfShares = input.numberOfShares;
-					state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, input.price);
+					if (state.get()._assetOrders.population() < state.get()._assetOrders.capacity()
+						&& state.get()._entityOrders.population() < state.get()._entityOrders.capacity())
+					{
+						state.mut()._assetOrder.entity = qpi.invocator();
+						state.mut()._assetOrder.numberOfShares = input.numberOfShares;
+						state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, input.price);
 
-					state.mut()._entityOrder.issuer = input.issuer;
-					state.mut()._entityOrder.assetName = input.assetName;
-					state.mut()._entityOrder.numberOfShares = input.numberOfShares;
-					state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, input.price);
+						state.mut()._entityOrder.issuer = input.issuer;
+						state.mut()._entityOrder.assetName = input.assetName;
+						state.mut()._entityOrder.numberOfShares = input.numberOfShares;
+						state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, input.price);
+					}
+					else // Order book full: only the matched part is executed
+					{
+						output.addedNumberOfShares -= input.numberOfShares;
+						qpi.transfer(qpi.invocator(), input.price * input.numberOfShares);
+					}
 				}
 			}
 		}
