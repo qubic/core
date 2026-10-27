@@ -201,6 +201,11 @@ public:
 
     // TODO: add other procedures
 
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QX_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
     void beginTick(bool expectSuccess = true)
     {
         callSystemProcedure(QX_CONTRACT_INDEX, BEGIN_TICK, expectSuccess);
@@ -548,4 +553,52 @@ TEST(ContractQx, RejectOwnOrdersWithTruncatedIssuerCollision)
     EXPECT_EQ(qx.addToBidOrder(attacker, issuer, assetName, price - 1, 1), 1);
     EXPECT_EQ(qx.addToBidOrder(attacker, bogusIssuer, assetName, price - 1, 1), 0);
     qx.getState()->checkCollectionConsistency();
+}
+
+// Before the twin issuer fix, colliding orders could leave asset and entity orders inconsistent. The sweep in
+// BEGIN_EPOCH of epoch 237 must cancel all orders of that entity under the key, refund exactly the escrow left in
+// its asset orders and leave other entities untouched.
+TEST(ContractQx, TwinFixSweepRepairsInconsistentOrders)
+{
+    ContractTestingQx qx;
+    const auto savedEpoch = system.epoch;
+
+    const id issuer(10, 20, 30, 40);
+    const id attacker(7, 7, 7, 7), buyer(9, 9, 9, 9);
+    const id qxId(QX_CONTRACT_INDEX, 0, 0, 0);
+    const uint64 assetName = assetNameFromString("TOKEN");
+
+    increaseEnergy(issuer, QX_ISSUE_ASSET_FEE);
+    EXPECT_EQ(qx.issueAsset(issuer, assetName, 1000, 0, 0), 1000);
+
+    increaseEnergy(attacker, 5 * 2);
+    EXPECT_EQ(qx.addToBidOrder(attacker, issuer, assetName, 5, 2), 2);
+    increaseEnergy(buyer, 4);
+    EXPECT_EQ(qx.addToBidOrder(buyer, issuer, assetName, 4, 1), 1);
+
+    // leftover of the old bug: escrowed asset order of attacker at 10 without entity order
+    id key = issuer;
+    key.u64._3 = assetName;
+    QX::AssetOrder leftover{ attacker, 2 };
+    qx.getState()->_assetOrders.add(key, leftover, 10);
+    increaseEnergy(qxId, 2 * 10);
+
+    system.epoch = 236;
+    qx.beginEpoch();
+    EXPECT_EQ(qx.assetBidOrders(issuer, assetName, 0).orders.get(0).price, 10);
+
+    const long long qxBalanceBefore = getBalance(qxId);
+    system.epoch = 237;
+    qx.beginEpoch();
+
+    EXPECT_EQ(getBalance(attacker), 2 * 10 + 2 * 5);
+    EXPECT_EQ(qxBalanceBefore - getBalance(qxId), 2 * 10 + 2 * 5);
+    EXPECT_EQ(qx.entityBidOrders(attacker, 0).orders.get(0).price, 0);
+    auto bids = qx.assetBidOrders(issuer, assetName, 0);
+    EXPECT_EQ(bids.orders.get(0).entity, buyer);
+    EXPECT_EQ(bids.orders.get(0).price, 4);
+    EXPECT_EQ(bids.orders.get(1).price, 0);
+    qx.getState()->checkCollectionConsistency();
+
+    system.epoch = savedEpoch;
 }
