@@ -1011,14 +1011,6 @@ static bool solutionWorkerStep(unsigned long long processorNumber)
     return gSettlementWindow.workerStep(processorNumber);
 }
 
-// A solution worker may park on epochTransitionState only once nothing is left to score - an idle
-// worker that parked immediately would leave drainPendingSolutions() to score the whole backlog
-// alone on the tick processor thread.
-static bool solutionWorkerMayPark()
-{
-    return gSettlementWindow.unscoredCount() == 0;
-}
-
 static bool saveSolutionSettlement(CHAR16* directory)
 {
     return gSettlementWindow.save(system.epoch, directory, resourceTestingDigest);
@@ -2834,12 +2826,8 @@ static void requestProcessor(void* ProcedureArgument)
     while (!shutDownNode)
     {
         checkinTime(processorNumber);
-        // In epoch transition, wait here - except a solution processor with unscored work left,
-        // which must keep draining the settlement window (below) until drainPendingSolutions() has
-        // nothing left for it; parking here first would leave the tick processor to score the whole
-        // backlog alone.
-        if (epochTransitionState
-            && (!solutionProcessorFlags[processorNumber] || solutionWorkerMayPark()))
+        // in epoch transition, wait here
+        if (epochTransitionState)
         {
             _InterlockedIncrement(&epochTransitionWaitingRequestProcessors);
             BEGIN_WAIT_WHILE(epochTransitionState)
@@ -6951,10 +6939,9 @@ static void tickProcessor(void*)
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
                                 {
-                                    // The last tick drained the window at its END_TICK, so this finds
-                                    // it empty. It runs before the park-wait, so anything left would
-                                    // still be scored alongside the solution processors (they park only
-                                    // once unscoredCount() == 0) and settled before endEpoch().
+                                    // The last tick's END_TICK took the same isLastTickInEpoch() branch and
+                                    // drained the window, so this returns at once. endEpoch() requires an
+                                    // empty window.
                                     drainPendingSolutions(processorNumber);
 
                                     // wait until all request processors are in waiting state
