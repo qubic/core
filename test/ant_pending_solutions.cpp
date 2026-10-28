@@ -231,3 +231,79 @@ TEST(TestAntColonyPending, FinishedSlotsAreReclaimed)
     EXPECT_EQ(pool->selectForPublish(key(1), 5000, out), AntPendingSolutions::NO_ENTRY);
     EXPECT_TRUE(pool->add(key(1), ref(200, 0), 5000, score_engine::Rating{ 0, 0 }, key(1000)));
 }
+
+// A publish queue that fills to capacity refuses the overflow and counts it in droppedFull,
+// rather than overwriting a live entry. This is the fail-safe when one computor saturates.
+TEST(TestAntColonyPending, FullPoolRefusesAndCounts)
+{
+    AntPendingSolutions* pool = freshPool();
+    ASSERT_NE(pool, nullptr);
+
+    for (unsigned int i = 0; i < AntPendingSolutions::CAPACITY; i++)
+    {
+        ASSERT_TRUE(pool->add(key(i), ref(100, 0), 5000,
+                              score_engine::Rating{ 0, 0 }, key(1000000 + i)));
+    }
+    // One past capacity: every slot holds a live entry, so there is nothing to reclaim.
+    EXPECT_FALSE(pool->add(key(777777), ref(100, 0), 5000,
+                           score_engine::Rating{ 0, 0 }, key(2000000)));
+
+    AntPendingSolutions::Stats stats;
+    unsigned int count = 0;
+    pool->getStats(stats, count);
+    EXPECT_EQ(stats.droppedFull, 1u);
+    EXPECT_EQ(count, AntPendingSolutions::CAPACITY);
+}
+
+// An entry the publisher explicitly retires (gate rejected it) is counted, stops being selected,
+// and is NOT treated as a duplicate: a corrected resubmission on the same key revives it in place.
+TEST(TestAntColonyPending, ExplicitRetireIsCountedAndAllowsRevival)
+{
+    AntPendingSolutions* pool = freshPool();
+    ASSERT_NE(pool, nullptr);
+    ASSERT_TRUE(pool->add(key(1), ref(100, 0), 5000, score_engine::Rating{ 0, 0 }, key(900)));
+
+    AntPendingSolution out;
+    const unsigned int idx = pool->selectForPublish(key(1), 5000, out);
+    ASSERT_NE(idx, AntPendingSolutions::NO_ENTRY);
+
+    pool->markObsoleteGateRejected(idx);
+
+    AntPendingSolutions::Stats stats;
+    unsigned int count = 0;
+    pool->getStats(stats, count);
+    EXPECT_EQ(stats.obsoleteGateRejected, 1u);
+
+    // OBSOLETE: not selectable, and not a duplicate - the resend revives it.
+    EXPECT_EQ(pool->selectForPublish(key(1), 5000, out), AntPendingSolutions::NO_ENTRY);
+    EXPECT_TRUE(pool->add(key(1), ref(100, 0), 6000, score_engine::Rating{ 0, 0 }, key(900)));
+
+    const unsigned int revived = pool->selectForPublish(key(1), 6000, out);
+    ASSERT_NE(revived, AntPendingSolutions::NO_ENTRY);
+    EXPECT_EQ(out.anchorTick, 6000u);
+}
+
+// markObsoleteParentGone retires the entry and increments its own counter, kept distinct from the
+// gate-rejected and expiry counters.
+TEST(TestAntColonyPending, ParentGoneRetireIsCountedSeparately)
+{
+    AntPendingSolutions* pool = freshPool();
+    ASSERT_NE(pool, nullptr);
+    ASSERT_TRUE(pool->add(key(1), ref(100, 0), 5000, score_engine::Rating{ 0, 0 }, key(900)));
+
+    AntPendingSolution out;
+    const unsigned int idx = pool->selectForPublish(key(1), 5000, out);
+    ASSERT_NE(idx, AntPendingSolutions::NO_ENTRY);
+
+    pool->markObsoleteParentGone(idx);
+
+    AntPendingSolutions::Stats stats;
+    unsigned int count = 0;
+    pool->getStats(stats, count);
+    EXPECT_EQ(stats.obsoleteParentGone, 1u);
+    EXPECT_EQ(stats.obsoleteGateRejected, 0u);
+    EXPECT_EQ(stats.obsoleteExpired, 0u);
+
+    // Retired: no longer selectable.
+    EXPECT_EQ(pool->selectForPublish(key(1), 5000, out), AntPendingSolutions::NO_ENTRY);
+}

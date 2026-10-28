@@ -73,12 +73,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 309
+#define VERSION_B 310
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 236
-#define TICK 86000000
+#define EPOCH 237
+#define TICK 87500000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -134,7 +134,7 @@ static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365 + 24 * 7;
 static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 365;
 // How far the frame may slide: production predicts one week ahead.
 static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
-static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 2190;
+static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 2920;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4350;
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.

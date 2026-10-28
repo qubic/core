@@ -223,7 +223,7 @@ TEST(ContractQx, FrozenEntityOrdersRemovedAtCleanupTick)
 
     // wrong tick: nothing happens
     system.tick = FREEZE_FROM_TICK - 1;
-    system.epoch = 235;
+    system.epoch = 237;
     qx.beginTick();
     EXPECT_EQ(getBalance(frozen), 0);
 
