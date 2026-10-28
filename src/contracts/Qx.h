@@ -578,6 +578,17 @@ protected:
 
 					state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex);
 					if (state.get()._entityOrder.assetName == input.assetName
+						&& state.get()._entityOrder.issuer != input.issuer
+						&& state.get()._entityOrder.issuer.u64._0 == input.issuer.u64._0
+						&& state.get()._entityOrder.issuer.u64._1 == input.issuer.u64._1
+						&& state.get()._entityOrder.issuer.u64._2 == input.issuer.u64._2)
+					{
+						// Issuer collides with an own order in the asset order key, so the asset orders could not be told apart
+						output.addedNumberOfShares = 0;
+
+						break;
+					}
+					if (state.get()._entityOrder.assetName == input.assetName
 						&& state.get()._entityOrder.issuer == input.issuer)
 					{
 						state.mut()._entityOrder.numberOfShares += input.numberOfShares;
@@ -618,24 +629,37 @@ protected:
 						}
 
 						state.mut()._assetOrder = state.get()._assetOrders.element(state.get()._elementIndex);
+
+						state.mut()._elementIndex2 = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, state.get()._price);
+						while (state.get()._elementIndex2 != NULL_INDEX)
+						{
+							if (state.get()._entityOrders.priority(state.get()._elementIndex2) != state.get()._price)
+							{
+								state.mut()._elementIndex2 = NULL_INDEX;
+
+								break;
+							}
+
+							state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex2);
+							if (state.get()._entityOrder.assetName == input.assetName
+								&& state.get()._entityOrder.issuer == input.issuer)
+							{
+								break;
+							}
+
+							state.mut()._elementIndex2 = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex2);
+						}
+						if (state.get()._elementIndex2 == NULL_INDEX) // Asset order of a different issuer colliding in the asset order key
+						{
+							state.mut()._elementIndex = state.get()._assetOrders.nextElementIndex(state.get()._elementIndex);
+
+							continue;
+						}
+
 						if (state.get()._assetOrder.numberOfShares <= input.numberOfShares)
 						{
 							state.mut()._elementIndex = state.mut()._assetOrders.remove(state.get()._elementIndex);
-
-							state.mut()._elementIndex2 = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, state.get()._price);
-							while (true) // Impossible for the corresponding entity order to not exist
-							{
-								state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex2);
-								if (state.get()._entityOrder.assetName == input.assetName
-									&& state.get()._entityOrder.issuer == input.issuer)
-								{
-									state.mut()._entityOrders.remove(state.get()._elementIndex2);
-
-									break;
-								}
-
-								state.mut()._elementIndex2 = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex2);
-							}
+							state.mut()._entityOrders.remove(state.get()._elementIndex2);
 							if (smul(state.get()._price, state.get()._assetOrder.numberOfShares) >= div<sint64>(INT64_MAX, state.get()._tradeFee))
 							{
 								// in this case, traders will pay more fee because it's rounding down, it's better to split the trade into multiple smaller trades
@@ -662,21 +686,8 @@ protected:
 							state.mut()._assetOrder.numberOfShares -= input.numberOfShares;
 							state.mut()._assetOrders.replace(state.get()._elementIndex, state.get()._assetOrder);
 
-							state.mut()._elementIndex = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, state.get()._price);
-							while (true) // Impossible for the corresponding entity order to not exist
-							{
-								state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex);
-								if (state.get()._entityOrder.assetName == input.assetName
-									&& state.get()._entityOrder.issuer == input.issuer)
-								{
-									state.mut()._entityOrder.numberOfShares -= input.numberOfShares;
-									state.mut()._entityOrders.replace(state.get()._elementIndex, state.get()._entityOrder);
-
-									break;
-								}
-
-								state.mut()._elementIndex = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex);
-							}
+							state.mut()._entityOrder.numberOfShares -= input.numberOfShares;
+							state.mut()._entityOrders.replace(state.get()._elementIndex2, state.get()._entityOrder);
 							if (smul(state.get()._price, input.numberOfShares) >= div<sint64>(INT64_MAX, state.get()._tradeFee))
 							{
 								// in this case, traders will pay more fee because it's rounding down, it's better to split the trade into multiple smaller trades
@@ -704,14 +715,22 @@ protected:
 
 					if (input.numberOfShares > 0)
 					{
-						state.mut()._assetOrder.entity = qpi.invocator();
-						state.mut()._assetOrder.numberOfShares = input.numberOfShares;
-						state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, -input.price);
+						if (state.get()._assetOrders.population() < state.get()._assetOrders.capacity()
+							&& state.get()._entityOrders.population() < state.get()._entityOrders.capacity())
+						{
+							state.mut()._assetOrder.entity = qpi.invocator();
+							state.mut()._assetOrder.numberOfShares = input.numberOfShares;
+							state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, -input.price);
 
-						state.mut()._entityOrder.issuer = input.issuer;
-						state.mut()._entityOrder.assetName = input.assetName;
-						state.mut()._entityOrder.numberOfShares = input.numberOfShares;
-						state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, -input.price);
+							state.mut()._entityOrder.issuer = input.issuer;
+							state.mut()._entityOrder.assetName = input.assetName;
+							state.mut()._entityOrder.numberOfShares = input.numberOfShares;
+							state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, -input.price);
+						}
+						else // Order book full: only the matched part is executed
+						{
+							output.addedNumberOfShares -= input.numberOfShares;
+						}
 					}
 				}
 			}
@@ -756,6 +775,18 @@ protected:
 
 				state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex);
 				if (state.get()._entityOrder.assetName == input.assetName
+					&& state.get()._entityOrder.issuer != input.issuer
+					&& state.get()._entityOrder.issuer.u64._0 == input.issuer.u64._0
+					&& state.get()._entityOrder.issuer.u64._1 == input.issuer.u64._1
+					&& state.get()._entityOrder.issuer.u64._2 == input.issuer.u64._2)
+				{
+					// Issuer collides with an own order in the asset order key, so the asset orders could not be told apart
+					output.addedNumberOfShares = 0;
+					qpi.transfer(qpi.invocator(), smul(input.price, input.numberOfShares));
+
+					break;
+				}
+				if (state.get()._entityOrder.assetName == input.assetName
 					&& state.get()._entityOrder.issuer == input.issuer)
 				{
 					state.mut()._entityOrder.numberOfShares += input.numberOfShares;
@@ -796,24 +827,37 @@ protected:
 					}
 
 					state.mut()._assetOrder = state.get()._assetOrders.element(state.get()._elementIndex);
+
+					state.mut()._elementIndex2 = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, -state.get()._price);
+					while (state.get()._elementIndex2 != NULL_INDEX)
+					{
+						if (state.get()._entityOrders.priority(state.get()._elementIndex2) != -state.get()._price)
+						{
+							state.mut()._elementIndex2 = NULL_INDEX;
+
+							break;
+						}
+
+						state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex2);
+						if (state.get()._entityOrder.assetName == input.assetName
+							&& state.get()._entityOrder.issuer == input.issuer)
+						{
+							break;
+						}
+
+						state.mut()._elementIndex2 = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex2);
+					}
+					if (state.get()._elementIndex2 == NULL_INDEX) // Asset order of a different issuer colliding in the asset order key
+					{
+						state.mut()._elementIndex = state.get()._assetOrders.nextElementIndex(state.get()._elementIndex);
+
+						continue;
+					}
+
 					if (state.get()._assetOrder.numberOfShares <= input.numberOfShares)
 					{
 						state.mut()._elementIndex = state.mut()._assetOrders.remove(state.get()._elementIndex);
-
-						state.mut()._elementIndex2 = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, -state.get()._price);
-						while (true) // Impossible for the corresponding entity order to not exist
-						{
-							state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex2);
-							if (state.get()._entityOrder.assetName == input.assetName
-								&& state.get()._entityOrder.issuer == input.issuer)
-							{
-								state.mut()._entityOrders.remove(state.get()._elementIndex2);
-
-								break;
-							}
-
-							state.mut()._elementIndex2 = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex2);
-						}
+						state.mut()._entityOrders.remove(state.get()._elementIndex2);
 
 						if (smul(state.get()._price, state.get()._assetOrder.numberOfShares) >= div<sint64>(INT64_MAX, state.get()._tradeFee))
 						{
@@ -844,21 +888,8 @@ protected:
 						state.mut()._assetOrder.numberOfShares -= input.numberOfShares;
 						state.mut()._assetOrders.replace(state.get()._elementIndex, state.get()._assetOrder);
 
-						state.mut()._elementIndex = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, -state.get()._price);
-						while (true) // Impossible for the corresponding entity order to not exist
-						{
-							state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex);
-							if (state.get()._entityOrder.assetName == input.assetName
-								&& state.get()._entityOrder.issuer == input.issuer)
-							{
-								state.mut()._entityOrder.numberOfShares -= input.numberOfShares;
-								state.mut()._entityOrders.replace(state.get()._elementIndex, state.get()._entityOrder);
-
-								break;
-							}
-
-							state.mut()._elementIndex = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex);
-						}
+						state.mut()._entityOrder.numberOfShares -= input.numberOfShares;
+						state.mut()._entityOrders.replace(state.get()._elementIndex2, state.get()._entityOrder);
 
 						if (smul(state.get()._price, input.numberOfShares) >= div<sint64>(INT64_MAX, state.get()._tradeFee))
 						{
@@ -890,14 +921,23 @@ protected:
 
 				if (input.numberOfShares > 0)
 				{
-					state.mut()._assetOrder.entity = qpi.invocator();
-					state.mut()._assetOrder.numberOfShares = input.numberOfShares;
-					state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, input.price);
+					if (state.get()._assetOrders.population() < state.get()._assetOrders.capacity()
+						&& state.get()._entityOrders.population() < state.get()._entityOrders.capacity())
+					{
+						state.mut()._assetOrder.entity = qpi.invocator();
+						state.mut()._assetOrder.numberOfShares = input.numberOfShares;
+						state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, input.price);
 
-					state.mut()._entityOrder.issuer = input.issuer;
-					state.mut()._entityOrder.assetName = input.assetName;
-					state.mut()._entityOrder.numberOfShares = input.numberOfShares;
-					state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, input.price);
+						state.mut()._entityOrder.issuer = input.issuer;
+						state.mut()._entityOrder.assetName = input.assetName;
+						state.mut()._entityOrder.numberOfShares = input.numberOfShares;
+						state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, input.price);
+					}
+					else // Order book full: only the matched part is executed
+					{
+						output.addedNumberOfShares -= input.numberOfShares;
+						qpi.transfer(qpi.invocator(), input.price * input.numberOfShares);
+					}
 				}
 			}
 		}
@@ -1147,6 +1187,170 @@ protected:
 		// New values since epoch 138
 		state.mut()._transferFee = 100;
 		state.mut()._tradeFee = 3000000; // 0.3%
+	}
+
+	struct _TwinFixRepair_input
+	{
+		id entity;
+		id issuerAndAssetName;
+		sint64 priority;
+	};
+	struct _TwinFixRepair_output
+	{
+		bit repaired;
+	};
+	struct _TwinFixRepair_locals
+	{
+		sint64 index;
+		sint64 entityShares;
+		sint64 assetShares;
+		sint64 refund;
+		id issuer;
+		bit issuerFound;
+		bit colliding;
+		EntityOrder entityOrder;
+		AssetOrder assetOrder;
+	};
+
+	// Before the twin issuer fix, orders of issuers colliding in the asset order key could be matched against the
+	// wrong entity order. If the entity and asset orders of input.entity at input.priority disagree or mix
+	// issuers, cancel all of its orders under the key and refund bids from the asset orders, which track the
+	// escrowed qus exactly.
+	PRIVATE_PROCEDURE_WITH_LOCALS(_TwinFixRepair)
+	{
+		output.repaired = 0;
+		locals.entityShares = 0;
+		locals.assetShares = 0;
+		locals.issuerFound = 0;
+		locals.colliding = 0;
+
+		locals.index = state.get()._entityOrders.headIndex(input.entity, input.priority);
+		while (locals.index != NULL_INDEX
+			&& state.get()._entityOrders.priority(locals.index) == input.priority)
+		{
+			locals.entityOrder = state.get()._entityOrders.element(locals.index);
+			if (locals.entityOrder.assetName == input.issuerAndAssetName.u64._3
+				&& locals.entityOrder.issuer.u64._0 == input.issuerAndAssetName.u64._0
+				&& locals.entityOrder.issuer.u64._1 == input.issuerAndAssetName.u64._1
+				&& locals.entityOrder.issuer.u64._2 == input.issuerAndAssetName.u64._2)
+			{
+				if (!locals.issuerFound)
+				{
+					locals.issuer = locals.entityOrder.issuer;
+					locals.issuerFound = 1;
+				}
+				else if (locals.entityOrder.issuer != locals.issuer)
+				{
+					locals.colliding = 1;
+				}
+				locals.entityShares += locals.entityOrder.numberOfShares;
+			}
+
+			locals.index = state.get()._entityOrders.nextElementIndex(locals.index);
+		}
+
+		locals.index = state.get()._assetOrders.headIndex(input.issuerAndAssetName, input.priority);
+		while (locals.index != NULL_INDEX
+			&& state.get()._assetOrders.priority(locals.index) == input.priority)
+		{
+			locals.assetOrder = state.get()._assetOrders.element(locals.index);
+			if (locals.assetOrder.entity == input.entity)
+			{
+				locals.assetShares += locals.assetOrder.numberOfShares;
+			}
+
+			locals.index = state.get()._assetOrders.nextElementIndex(locals.index);
+		}
+
+		if (!locals.colliding && locals.entityShares == locals.assetShares)
+		{
+			return;
+		}
+
+		locals.index = state.get()._entityOrders.headIndex(input.entity);
+		while (locals.index != NULL_INDEX)
+		{
+			locals.entityOrder = state.get()._entityOrders.element(locals.index);
+			if (locals.entityOrder.assetName == input.issuerAndAssetName.u64._3
+				&& locals.entityOrder.issuer.u64._0 == input.issuerAndAssetName.u64._0
+				&& locals.entityOrder.issuer.u64._1 == input.issuerAndAssetName.u64._1
+				&& locals.entityOrder.issuer.u64._2 == input.issuerAndAssetName.u64._2)
+			{
+				locals.index = state.mut()._entityOrders.remove(locals.index);
+			}
+			else
+			{
+				locals.index = state.get()._entityOrders.nextElementIndex(locals.index);
+			}
+		}
+
+		locals.refund = 0;
+		locals.index = state.get()._assetOrders.headIndex(input.issuerAndAssetName);
+		while (locals.index != NULL_INDEX)
+		{
+			locals.assetOrder = state.get()._assetOrders.element(locals.index);
+			if (locals.assetOrder.entity == input.entity)
+			{
+				if (state.get()._assetOrders.priority(locals.index) > 0 && locals.assetOrder.numberOfShares > 0) // bid order
+				{
+					locals.refund += state.get()._assetOrders.priority(locals.index) * locals.assetOrder.numberOfShares;
+				}
+				locals.index = state.mut()._assetOrders.remove(locals.index);
+			}
+			else
+			{
+				locals.index = state.get()._assetOrders.nextElementIndex(locals.index);
+			}
+		}
+		if (locals.refund > 0)
+		{
+			qpi.transfer(input.entity, locals.refund);
+		}
+
+		output.repaired = 1;
+	}
+
+	struct BEGIN_EPOCH_locals
+	{
+		sint64 entityIndex;
+		sint64 assetIndex;
+		EntityOrder entityOrder;
+		AssetOrder assetOrder;
+		_TwinFixRepair_input twinFixRepairInput;
+		_TwinFixRepair_output twinFixRepairOutput;
+	};
+
+	BEGIN_EPOCH_WITH_LOCALS()
+	{
+		// One-shot repair of orders placed with colliding issuers before the twin issuer fix. Entity orders first, then
+		// asset orders to also catch asset orders without entity order. remove() moves elements, so restart after a repair.
+		if (qpi.epoch() != 237)
+		{
+			return;
+		}
+
+		locals.entityIndex = 0;
+		while (locals.entityIndex < sint64(state.get()._entityOrders.population()))
+		{
+			locals.entityOrder = state.get()._entityOrders.element(locals.entityIndex);
+			locals.twinFixRepairInput.entity = state.get()._entityOrders.pov(locals.entityIndex);
+			locals.twinFixRepairInput.issuerAndAssetName = locals.entityOrder.issuer;
+			locals.twinFixRepairInput.issuerAndAssetName.u64._3 = locals.entityOrder.assetName;
+			locals.twinFixRepairInput.priority = state.get()._entityOrders.priority(locals.entityIndex);
+			CALL(_TwinFixRepair, locals.twinFixRepairInput, locals.twinFixRepairOutput);
+			locals.entityIndex = locals.twinFixRepairOutput.repaired ? 0 : locals.entityIndex + 1;
+		}
+
+		locals.assetIndex = 0;
+		while (locals.assetIndex < sint64(state.get()._assetOrders.population()))
+		{
+			locals.assetOrder = state.get()._assetOrders.element(locals.assetIndex);
+			locals.twinFixRepairInput.entity = locals.assetOrder.entity;
+			locals.twinFixRepairInput.issuerAndAssetName = state.get()._assetOrders.pov(locals.assetIndex);
+			locals.twinFixRepairInput.priority = state.get()._assetOrders.priority(locals.assetIndex);
+			CALL(_TwinFixRepair, locals.twinFixRepairInput, locals.twinFixRepairOutput);
+			locals.assetIndex = locals.twinFixRepairOutput.repaired ? 0 : locals.assetIndex + 1;
+		}
 	}
 
 	struct BEGIN_TICK_locals
