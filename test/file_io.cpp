@@ -762,3 +762,99 @@ TEST(TestAsyncFileIO, AsyncBlockingSaveFailurePropagatesFailure)
     // Pre-#1027 this returned totalSize; now it must surface the save failure.
     EXPECT_LT(gFailResult, 0);
 }
+
+// ---------------------------------------------------------------------------
+// #453 / PR #1027: a failing blocking op must still FREE its queue slot.
+//
+// The blocking read/write queues have a fixed depth
+// (ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS). requestFreeSlot() only ever hands
+// back a slot whose state is kFree, so if a failing operation forgot to free
+// its slot, the (depth+1)-th call would fail with kBufferFull even though every
+// earlier op had completed. These tests drive MORE than a full queue depth of
+// guaranteed-failing blocking ops and assert that (a) each one propagates a real
+// (<0) failure and (b) we never run out of slots -> the slot is recycled on the
+// failure path, not leaked.
+//
+// Scope note: under NO_UEFI isMainThread() is always false, so this exercises
+// the worker-thread (non-main) blocking path. The main-thread flush path that
+// PR #1027 also fixes (read mResult, set kFree, return) is only reachable on
+// bare metal; see the BM test strategy in the PR for how the test team forces
+// and asserts that one.
+// ---------------------------------------------------------------------------
+
+static long long gLeakWorstResult = -1;   // becomes >=0 if any op failed to propagate failure
+static int gLeakSawBufferFull = 0;        // set if the fixed queue was ever exhausted
+
+static void blockingLoadLeakWorker()
+{
+    CHAR16 fileName[64];
+    setText(fileName, L"nonexistent_file_for_1027_leak_test.bin");
+    static unsigned int loadBuffer[16];
+    const int kIters = ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS * 2; // > one full queue depth
+    for (int i = 0; i < kIters; i++)
+    {
+        long long r = asyncLoad(fileName, sizeof(loadBuffer), (unsigned char*)loadBuffer, NULL);
+        if (r >= 0) gLeakWorstResult = r;
+        if (r == (long long)AsyncFileIO::kBufferFull) gLeakSawBufferFull = 1;
+    }
+    threadFinish[0] = 1;
+}
+
+TEST(TestAsyncFileIO, AsyncBlockingLoadFailureDoesNotLeakSlots)
+{
+    CHAR16 fileName[64];
+    setText(fileName, L"nonexistent_file_for_1027_leak_test.bin");
+    _wremove(fileName);
+
+    threadFinish[0] = 0;
+    gLeakWorstResult = -1;
+    gLeakSawBufferFull = 0;
+    std::thread worker(blockingLoadLeakWorker);
+
+    while (!threadFinish[0])
+    {
+        flushAsyncFileIOBuffer();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    worker.join();
+
+    // Every failing blocking load must surface a real failure...
+    EXPECT_LT(gLeakWorstResult, 0);
+    // ...and recycling the slot means we must never exhaust the fixed queue.
+    EXPECT_EQ(gLeakSawBufferFull, 0);
+}
+
+static void blockingSaveLeakWorker()
+{
+    CHAR16 fileName[96];
+    setText(fileName, L"nonexistent_dir_for_1027/cannot_be_created.bin");
+    static unsigned int saveBuffer[16] = { 0 };
+    const int kIters = ASYNC_FILE_IO_BLOCKING_MAX_QUEUE_ITEMS * 2; // > one full queue depth
+    for (int i = 0; i < kIters; i++)
+    {
+        long long r = asyncSave(fileName, sizeof(saveBuffer), (unsigned char*)saveBuffer, NULL, true);
+        if (r >= 0) gLeakWorstResult = r;
+        if (r == (long long)AsyncFileIO::kBufferFull) gLeakSawBufferFull = 1;
+    }
+    threadFinish[0] = 1;
+}
+
+TEST(TestAsyncFileIO, AsyncBlockingSaveFailureDoesNotLeakSlots)
+{
+    threadFinish[0] = 0;
+    gLeakWorstResult = -1;
+    gLeakSawBufferFull = 0;
+    std::thread worker(blockingSaveLeakWorker);
+
+    while (!threadFinish[0])
+    {
+        flushAsyncFileIOBuffer();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    worker.join();
+
+    // Every failing blocking save must surface a real failure...
+    EXPECT_LT(gLeakWorstResult, 0);
+    // ...and recycling the slot means we must never exhaust the fixed queue.
+    EXPECT_EQ(gLeakSawBufferFull, 0);
+}
