@@ -3,6 +3,9 @@ using namespace QPI;
 constexpr uint32 RANDOM_BITFEE = 100;
 constexpr uint32 RANDOM_STREAM_CAPACITY = 1365;
 constexpr uint32 RANDOM_MAX_PROVIDERS = 4096;
+constexpr uint64 RANDOM_PROVIDER_REWARD_PERCENT = 50;
+constexpr uint64 RANDOM_SHAREHOLDER_REWARD_PERCENT = 50;
+constexpr uint64 RANDOM_BURN_PERCENT = 0;
 
 struct RANDOM2
 {
@@ -11,6 +14,10 @@ struct RANDOM2
 struct RANDOM : public ContractBase
 {
 public:
+	STATIC_ASSERT(RANDOM_PROVIDER_REWARD_PERCENT <= 100 && RANDOM_SHAREHOLDER_REWARD_PERCENT <= 100 && RANDOM_BURN_PERCENT <= 100 &&
+	                  RANDOM_PROVIDER_REWARD_PERCENT + RANDOM_SHAREHOLDER_REWARD_PERCENT + RANDOM_BURN_PERCENT == 100,
+	              RANDOM_REVENUE_PERCENTAGES_MUST_TOTAL_100);
+
 	struct RevealAndCommit_input
 	{
 		bit_4096 reveal;
@@ -33,9 +40,26 @@ public:
 	{
 	};
 
+	using FundReserve_input = NoData;
+
+	struct FundReserve_output
+	{
+		sint64 amount;
+	};
+
 	struct Fees_output
 	{
 		Array<uint32, 16> fees;
+	};
+
+	using GetRevenueInfo_input = NoData;
+
+	struct GetRevenueInfo_output
+	{
+		uint64 burnedAmount;
+		uint64 revenueBurnedAmount;
+		uint64 distributedAmount;
+		uint64 earnedAmount;
 	};
 
 	struct BuyEntropy_input
@@ -93,6 +117,74 @@ public:
 		uint32 count;
 	};
 
+	struct END_TICK_locals
+	{
+		bit_4096 entropy;
+		uint64 lockedAmount;
+		uint64 contributions;
+		uint32 stream;
+		uint32 i, j;
+		uint32 index;
+		uint32 lastIndex;
+		uint32 tier;
+		uint16 collateralTierFlags;
+	};
+
+	struct ProviderDividend_input
+	{
+		uint64 pool;
+		uint64 contributions;
+		uint64 total;
+	};
+
+	struct ProviderDividend_output
+	{
+		uint64 amount;
+	};
+
+	struct ProviderDividend_locals
+	{
+		uint128 weightedPool;
+	};
+
+	using RestoreProviderAccounting_input = NoData;
+
+	using RestoreProviderAccounting_output = NoData;
+
+	struct RestoreProviderAccounting_locals
+	{
+		id provider;
+		uint32 stream;
+		uint32 i;
+	};
+
+	struct BEGIN_EPOCH_locals
+	{
+		RestoreProviderAccounting_input restoreInput;
+		RestoreProviderAccounting_output restoreOutput;
+	};
+
+	using DistributeEpochRewards_input = NoData;
+
+	using DistributeEpochRewards_output = NoData;
+
+	struct DistributeEpochRewards_locals
+	{
+		ProviderDividend_input dividendInput;
+		ProviderDividend_output dividendOutput;
+		uint64 revenue;
+		uint64 shareholderPool;
+		uint64 burnAmount;
+		uint64 amountPerShare;
+		sint64 element;
+	};
+
+	struct END_EPOCH_locals
+	{
+		DistributeEpochRewards_input rewardsInput;
+		DistributeEpochRewards_output rewardsOutput;
+	};
+
 	struct StateData
 	{
 		uint64 earnedAmount;
@@ -119,7 +211,25 @@ public:
 		// on a rejected call, so it is a durable, tick-precise signal off-chain clients
 		// can use (via GetProviderStatus) to tell whether a submitted tx took effect.
 		Array<uint32, RANDOM_MAX_PROVIDERS> lastUpdateTick;
+
+		// Append-only state extension. Entries survive slot removal until epoch settlement.
+		HashMap<id, uint64, RANDOM_MAX_PROVIDERS> epochContributions;
+		uint64 totalEpochContributions;
+		// Only burns paid from sales revenue reduce the amount available for future distributions.
+		uint64 revenueBurnedAmount;
 	};
+
+	/** @brief Returns the cumulative accounting counters in QU without changing state.
+	 * @param input No parameters.
+	 * @param output Recorded burns, revenue burns, distributions, and earned revenue.
+	 */
+	PUBLIC_FUNCTION(GetRevenueInfo)
+	{
+		output.burnedAmount = state.get().burnedAmount;
+		output.revenueBurnedAmount = state.get().revenueBurnedAmount;
+		output.distributedAmount = state.get().distributedAmount;
+		output.earnedAmount = state.get().earnedAmount;
+	}
 
 	PUBLIC_FUNCTION(Fees)
 	{
@@ -178,7 +288,7 @@ public:
 
 			locals.trusteeOk = (input.trustee == id::zero()) ? 1 : 0;
 
-			if(!locals.trusteeOk)
+			if (!locals.trusteeOk)
 			{
 				for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 				{
@@ -376,6 +486,13 @@ private:
 
 		locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
 
+		// Reserve accounting capacity before accepting a new address or locking its collateral.
+		if (!state.get().epochContributions.contains(qpi.invocator()) && state.mut().epochContributions.set(qpi.invocator(), 0) == NULL_INDEX)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
 		state.mut().providers.set(locals.index, qpi.invocator());
 		state.mut().collateralTiers.set(locals.index, locals.collateralTier);
 		state.mut().commits.set(locals.index, input.commit);
@@ -390,18 +507,6 @@ private:
 
 		state.mut().populations.set(locals.stream, locals.i + 1);
 	}
-
-	struct END_TICK_locals
-	{
-		bit_4096 entropy;
-		uint32 stream;
-		uint32 i, j;
-		uint32 index;
-		uint32 lastIndex;
-		uint32 tier;
-		uint16 collateralTierFlags;
-		uint64 lockedAmount;
-	};
 
 	END_TICK_WITH_LOCALS()
 	{
@@ -500,6 +605,12 @@ private:
 						state.mut().entropy.set(locals.stream * 10 + locals.tier, locals.entropy);
 						// Mark contribution for BuyEntropy trustee verification.
 						state.mut().contributedToEntropyFlags.set(locals.index, 1);
+
+						// Count the mixing event, even if this tier is invalidated later.
+						locals.contributions = 0;
+						state.get().epochContributions.get(state.get().providers.get(locals.index), locals.contributions);
+						state.mut().epochContributions.set(state.get().providers.get(locals.index), locals.contributions + 1);
+						state.mut().totalEpochContributions++;
 					}
 					// Clear reveal regardless — provider can reveal again next round.
 					state.mut().reveals.set(locals.index, BIT4096_ZERO);
@@ -592,13 +703,122 @@ private:
 		}
 	}
 
+	BEGIN_EPOCH_WITH_LOCALS()
+	{
+		CALL(RestoreProviderAccounting, locals.restoreInput, locals.restoreOutput);
+	}
+
+	END_EPOCH_WITH_LOCALS()
+	{
+		CALL(DistributeEpochRewards, locals.rewardsInput, locals.rewardsOutput);
+	}
+
+	/**
+	 * Burns the attached QU to replenish RANDOM's execution fee reserve.
+	 * @param input Empty; the amount is supplied as the invocation reward.
+	 * @param output Amount burned, or -1 for a nonpositive amount or failed burn.
+	 * @note Failed burns are refunded. Funding is excluded from dividend revenue.
+	 */
+	PUBLIC_PROCEDURE(FundReserve)
+	{
+		output.amount = -1;
+
+		if (qpi.invocationReward() <= 0)
+		{
+			return;
+		}
+
+		if (qpi.burn(qpi.invocationReward()) >= 0)
+		{
+			output.amount = qpi.invocationReward();
+		}
+		else
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(RestoreProviderAccounting)
+	{
+		// Also seeds existing providers on activation of the appended, zero-padded state.
+		for (locals.stream = 0; locals.stream < 3; locals.stream++)
+		{
+			for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
+			{
+				locals.provider = state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i);
+				if (!state.get().epochContributions.contains(locals.provider))
+				{
+					state.mut().epochContributions.set(locals.provider, 0);
+				}
+			}
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(ProviderDividend)
+	{
+		output.amount = 0;
+
+		if (input.total == 0 || input.contributions == 0 || input.pool == 0 || input.contributions > input.total)
+		{
+			return;
+		}
+
+		// A 128-bit product holds two uint64 factors; contributions <= total bounds the result by pool.
+		locals.weightedPool = static_cast<uint128>(input.pool) * static_cast<uint128>(input.contributions);
+		output.amount = div<uint128>(locals.weightedPool, input.total).low;
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(DistributeEpochRewards)
+	{
+		if (state.get().earnedAmount > state.get().distributedAmount &&
+		    state.get().earnedAmount - state.get().distributedAmount > state.get().revenueBurnedAmount)
+		{
+			locals.revenue = state.get().earnedAmount - state.get().distributedAmount - state.get().revenueBurnedAmount;
+			locals.dividendInput.pool = div(smul(locals.revenue, RANDOM_PROVIDER_REWARD_PERCENT), 100ULL);
+			locals.shareholderPool = div(smul(locals.revenue, RANDOM_SHAREHOLDER_REWARD_PERCENT), 100ULL);
+			locals.burnAmount = div(smul(locals.revenue, RANDOM_BURN_PERCENT), 100ULL);
+			locals.dividendInput.total = state.get().totalEpochContributions;
+			locals.amountPerShare = div(locals.shareholderPool, static_cast<uint64>(NUMBER_OF_COMPUTORS));
+
+			for (locals.element = state.get().epochContributions.nextElementIndex(NULL_INDEX); locals.element != NULL_INDEX;
+			     locals.element = state.get().epochContributions.nextElementIndex(locals.element))
+			{
+				locals.dividendInput.contributions = state.get().epochContributions.value(locals.element);
+				CALL(ProviderDividend, locals.dividendInput, locals.dividendOutput);
+
+				if (locals.dividendOutput.amount > 0 &&
+				    qpi.transfer(state.get().epochContributions.key(locals.element), static_cast<sint64>(locals.dividendOutput.amount)) >= 0)
+				{
+					state.mut().distributedAmount += locals.dividendOutput.amount;
+				}
+			}
+
+			if (locals.amountPerShare > 0 && qpi.distributeDividends(static_cast<sint64>(locals.amountPerShare)))
+			{
+				state.mut().distributedAmount += locals.amountPerShare * NUMBER_OF_COMPUTORS;
+			}
+
+			if (locals.burnAmount > 0 && qpi.burn(static_cast<sint64>(locals.burnAmount)) >= 0)
+			{
+				state.mut().revenueBurnedAmount += locals.burnAmount;
+				state.mut().burnedAmount += locals.burnAmount;
+			}
+		}
+
+		// Unspent revenue (excluding successful revenue burns) is shared again next epoch.
+		state.mut().epochContributions.reset();
+		state.mut().totalEpochContributions = 0;
+	}
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(Fees, 1);
 		REGISTER_USER_FUNCTION(GetProviderStatus, 2);
+		REGISTER_USER_FUNCTION(GetRevenueInfo, 3);
 
 		REGISTER_USER_PROCEDURE(RevealAndCommit, 1);
 		REGISTER_USER_PROCEDURE(BuyEntropy, 2);
+		REGISTER_USER_PROCEDURE(FundReserve, 3);
 	}
 
 	INITIALIZE()
