@@ -65,7 +65,7 @@ public:
 
 	bool loadState(const CHAR16* filename)
 	{
-		return load(filename, sizeof(QSWAP), contractStates[QSWAP_CONTRACT_INDEX]) == sizeof(QSWAP);
+		return loadContractState(QSWAP_CONTRACT_INDEX, filename);
 	}
 
 	QSWAP::InvestRewardsInfo_output investRewardsInfo()
