@@ -910,7 +910,12 @@ public:
         if (isMainThread())
         {
             mFileBlockingWriteQueue.flushWrite();
-            return pFileItem->mResult;
+            // flushWrite() ran markAsDone(), which leaves a kBlockingWait slot in kProcessed,
+            // not kFree. Free it here (as the non-main-thread path below does) after reading
+            // mResult; otherwise every main-thread call permanently consumes one blocking slot.
+            const long long result = pFileItem->mResult;
+            pFileItem->mState = FileItem::kFree;
+            return result;
         }
 
         // Blocking wait for the save operator finish
@@ -950,7 +955,12 @@ public:
         if (mainThread)
         {
             mFileBlockingReadQueue.flushRead();
-            return pFileItem->mResult;
+            // flushRead() ran markAsDone(), which leaves a kBlockingWait slot in kProcessed,
+            // not kFree. Free it here (as the non-main-thread path below does) after reading
+            // mResult; otherwise every main-thread call permanently consumes one blocking slot.
+            const long long result = pFileItem->mResult;
+            pFileItem->mState = FileItem::kFree;
+            return result;
         }
 
         // Wait for data is processed
