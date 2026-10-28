@@ -200,6 +200,12 @@ private:
 #if !defined(NDEBUG)
             addDebugMessage(L"Failed to load virtualMemory from disk");
 #endif
+            // The failed/partial asyncLoad may have overwritten cache[cache_page_id] with
+            // corrupt data while cachePageId[] still points at the page that previously lived
+            // in this slot. Invalidate the slot (same empty-slot sentinel reset() fills with:
+            // setMem(cachePageId, ..., 0xff) => (unsigned long long)-1) so a later
+            // findCachePage() cannot return this slot and serve the corrupt data.
+            cachePageId[cache_page_id] = (unsigned long long)-1;
             return -1;
         }
         lastAccessedTimestamp[cache_page_id] = now_ms();
