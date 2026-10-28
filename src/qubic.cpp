@@ -434,18 +434,31 @@ static void computeAntAnchorDigest(unsigned int tick, const m256i& transactionDi
 
 // ---- ant parent resolution ----
 //
-// Thin wrappers binding this node's globals to the parameterized helpers in
-// mining/solution_settlement_kinds.h.
-//
 // Every reader of a parent reference goes through resolveAntParent(), which answers from the settled
-// tree alone. A solution recorded at tick T joins the tree at T + SOLUTION_SETTLEMENT_WINDOW_TICKS, so
-// that width is also the cadence at which one generation can build on the last.
+// tree alone, so one generation can build on the last only every SOLUTION_SETTLEMENT_WINDOW_TICKS.
 static SolutionSettlementWindow gSettlementWindow;
 
 static void resolveAntParent(const SolutionRef& parentRef, unsigned long long processorNumber,
     AntParentView& out)
 {
     ::resolveAntParent(gAntColony, gAntParentAnnScratch[processorNumber], parentRef, out);
+}
+
+// The child's rating: from the replay cache on a hit, by a full walk otherwise. Every walk is cached,
+// invalid ones too: the walk is deterministic, so a doomed solution is walked only once.
+static score_engine::Rating scoreAntChildCached(unsigned long long processorNumber, const m256i& sourcePublicKey,
+    const m256i& nonce, const AntParentView& parent, const m256i& anchorDigest, AntColonyBpp9000T::Ann& childAnn)
+{
+    const AntColonyBpp9000T::ReplayKey replayKey =
+        makeAntReplayKey(sourcePublicKey, nonce, parent.ann, parent.shift, anchorDigest);
+    score_engine::Rating rating = score_engine::Rating::worst();
+    if (!gAntColony.tryGetReplayScore(replayKey, rating, childAnn))
+    {
+        rating = score->computeAntChildScore(processorNumber, parent.ann, parent.shift,
+            sourcePublicKey, nonce, anchorDigest, childAnn);
+        gAntColony.putReplayScore(replayKey, rating, childAnn);
+    }
+    return rating;
 }
 
 // A pool miner's solution, arriving over BroadcastMessage
@@ -497,19 +510,8 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
         return;
     }
 
-    // Building the key is far cheaper than a miss, so the cache is consulted first.
-    const AntColonyBpp9000T::ReplayKey replayKey =
-        makeAntReplayKey(computorPublicKey, payload.nonce, parentView.ann, parentView.shift, anchorDigest);
-    score_engine::Rating childRating = score_engine::Rating::worst();
-    if (!gAntColony.tryGetReplayScore(replayKey, childRating, gAntChildAnnScratch[processorNumber]))
-    {
-        childRating = score->computeAntChildScore(processorNumber, parentView.ann, parentView.shift,
-            computorPublicKey, payload.nonce, anchorDigest, gAntChildAnnScratch[processorNumber]);
-        // Cached whatever the outcome: a timed-out network scores invalid, and the walk is
-        // deterministic, so the cached rejection stays right - without the entry the same doomed
-        // solution costs a full walk again on every path that sees it.
-        gAntColony.putReplayScore(replayKey, childRating, gAntChildAnnScratch[processorNumber]);
-    }
+    const score_engine::Rating childRating = scoreAntChildCached(processorNumber, computorPublicKey,
+        payload.nonce, parentView, anchorDigest, gAntChildAnnScratch[processorNumber]);
     if (!childRating.isValid())
     {
         antDebugPoolDrop(L"unscorable", payload);
@@ -529,8 +531,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     // publisher re-checks. Failing now is final enough to refuse the slot.
     const unsigned int childCount = gAntColony.childCountForQuery(parentRef, computorPublicKey);
     const ChildCandidate candidate{ computorPublicKey, childRating, payload.anchorTick, system.tick };
-    const AntSolutionRecord* parentForValidation = antParentRecordForValidation(parentView);
-    if (AntColonyBpp9000T::validateChild(candidate, parentForValidation, childCount,
+    if (AntColonyBpp9000T::validateChild(candidate, parentView.treeRecord, childCount,
         gAntColony.errorThreshold()) != ValidityResult::Valid)
     {
         antDebugPoolDrop(L"unacceptable", payload);
@@ -568,13 +569,9 @@ static void antColonyBeginEpoch()
 
 // ---- solution settlement glue ----
 //
-// Solutions are recorded at tick T (phase 1, in the tx loop below) and settled - digest fold,
-// tree commit, deposit refund, ranking - at T + SOLUTION_SETTLEMENT_WINDOW_TICKS, in canonical
-// (tick, txIndex) order, at END_TICK. Everything here is the two kinds' bodies and the
-// wrappers the window's registry dispatches to.
+// The two kinds' record, score and settle bodies, and the wrappers the window's registry dispatches to.
 
-// One line per ant solution transaction, whatever became of it. The body follows the logger's own
-// convention: compiled out with LOG_CUSTOM_MESSAGES, so a build without qlogging pays nothing here.
+// One line per ant solution transaction, whatever became of it. Compiled out without LOG_CUSTOM_MESSAGES.
 static void logAntSolutionOutcome(const m256i& sourcePublicKey, const m256i& nonce,
     unsigned int parentTick, unsigned int parentSolutionIndexInTick, unsigned int anchorTick,
     unsigned int score, ValidityResult result)
@@ -593,9 +590,16 @@ static void logAntSolutionOutcome(const m256i& sourcePublicKey, const m256i& non
 #endif
 }
 
-// Phase 1, tx loop: cheap deterministic checks only - dedup, the own-computor RECORDED mark, the
-// unsettled-parent reject, the anchor check - then hand the rest to settlement. The mark comes before
-// the rejects, so a solution rejected here is not republished every tick for a whole window.
+// A rejection before commit(): counted in the colony's stats and logged with score 0.
+static void rejectAntSolution(const m256i& sourcePublicKey, const m256i& nonce, const SolutionRef& parentRef,
+    unsigned int anchorTick, ValidityResult reason)
+{
+    gAntColony.recordReject(reason);
+    logAntSolutionOutcome(sourcePublicKey, nonce, parentRef.tick, parentRef.solutionIndexInTick, anchorTick, 0, reason);
+}
+
+// Phase 1, tx loop: cheap deterministic checks, then append. The own-computor RECORDED mark comes
+// before the rejects, so a solution rejected here is not republished every tick.
 static void recordAntSolution(const AntColonyMiningSolutionTransaction* transaction, unsigned int transactionIndex)
 {
     const SolutionRef parentRef = { transaction->parentTick, transaction->parentSolutionIndexInTick };
@@ -604,9 +608,8 @@ static void recordAntSolution(const AntColonyMiningSolutionTransaction* transact
     computeAntSolutionFlagIndices(transaction->sourcePublicKey, transaction->nonce, parentRef, antFlagIndices);
     if (isAntSolutionSeen(antFlagIndices))
     {
-        gAntColony.recordReject(ValidityResult::RejectReplay);
-        logAntSolutionOutcome(transaction->sourcePublicKey, transaction->nonce, transaction->parentTick,
-            transaction->parentSolutionIndexInTick, transaction->anchorTick, 0, ValidityResult::RejectReplay);
+        rejectAntSolution(transaction->sourcePublicKey, transaction->nonce, parentRef, transaction->anchorTick,
+            ValidityResult::RejectReplay);
         return;
     }
     markAntSolutionSeen(antFlagIndices);
@@ -624,9 +627,8 @@ static void recordAntSolution(const AntColonyMiningSolutionTransaction* transact
     // whenever it runs; root is exempt, it is derived rather than stored.
     if (!isAntParentSettledBefore(parentRef, system.tick))
     {
-        gAntColony.recordReject(ValidityResult::RejectParentNotRegistered);
-        logAntSolutionOutcome(transaction->sourcePublicKey, transaction->nonce, transaction->parentTick,
-            transaction->parentSolutionIndexInTick, transaction->anchorTick, 0, ValidityResult::RejectParentNotRegistered);
+        rejectAntSolution(transaction->sourcePublicKey, transaction->nonce, parentRef, transaction->anchorTick,
+            ValidityResult::RejectParentNotRegistered);
         return;
     }
 
@@ -636,14 +638,12 @@ static void recordAntSolution(const AntColonyMiningSolutionTransaction* transact
     m256i anchorDigest;
     if (!gAntColony.getAnchorDigest(transaction->anchorTick, anchorDigest))
     {
-        gAntColony.recordReject(ValidityResult::RejectStale);
-        logAntSolutionOutcome(transaction->sourcePublicKey, transaction->nonce, transaction->parentTick,
-            transaction->parentSolutionIndexInTick, transaction->anchorTick, 0, ValidityResult::RejectStale);
+        rejectAntSolution(transaction->sourcePublicKey, transaction->nonce, parentRef, transaction->anchorTick,
+            ValidityResult::RejectStale);
         return;
     }
 
-    // Zeroed before filling: the whole struct is hashed into the window digest, so any padding the
-    // compiler leaves must hold the same bytes on every node.
+    // Zeroed first: the window digest hashes the padding too.
     AntSolutionRecordCapture record;
     setMem(&record, sizeof(record), 0);
     record.sourcePublicKey = transaction->sourcePublicKey;
@@ -658,9 +658,8 @@ static void recordAntSolution(const AntColonyMiningSolutionTransaction* transact
     {
         // Refused only by a caller-cadence bug (settlement behind the tick-index ring) or a full
         // arena, both counted in the window's stats. RejectTickOutOfRange is the closest verdict.
-        gAntColony.recordReject(ValidityResult::RejectTickOutOfRange);
-        logAntSolutionOutcome(transaction->sourcePublicKey, transaction->nonce, transaction->parentTick,
-            transaction->parentSolutionIndexInTick, transaction->anchorTick, 0, ValidityResult::RejectTickOutOfRange);
+        rejectAntSolution(transaction->sourcePublicKey, transaction->nonce, parentRef, transaction->anchorTick,
+            ValidityResult::RejectTickOutOfRange);
     }
 }
 
@@ -721,8 +720,7 @@ static void recordStandaloneSolution(const MiningSolutionTransaction* transactio
         }
     }
 
-    // Zeroed before filling: the whole struct is hashed into the window digest, so the four padding
-    // bytes after claimedScore must hold the same value on every node.
+    // Zeroed first: the window digest hashes the padding too.
     StandaloneSolutionRecord record;
     setMem(&record, sizeof(record), 0);
     record.sourcePublicKey = transaction->sourcePublicKey;
@@ -731,13 +729,12 @@ static void recordStandaloneSolution(const MiningSolutionTransaction* transactio
     record.amount = transaction->amount;
     record.claimedScore = transaction->score;
 
-    // Refusal is counted in the window's own stats and shown on F3; standalone has no outcome log to
-    // mirror the ant path's rejection line into.
+    // A refusal is counted in the window's stats, shown on F3.
     gSettlementWindow.append(system.tick, transactionIndex, MiningSolutionTransaction::transactionType(),
         &record, sizeof(record));
 }
 
-// Registered scoreFn: run on whichever processor drains this slot via the window's shared cursor.
+// Registered scoreFn for standalone solutions, on whichever processor claims the slot.
 static void scoreStandaloneSolution(SettlementSlot& slot, unsigned long long processorNumber)
 {
     StandaloneSolutionRecord record;
@@ -748,9 +745,8 @@ static void scoreStandaloneSolution(SettlementSlot& slot, unsigned long long pro
     copyMem(slot.result, &result, sizeof(result));
 }
 
-// Registered scoreFn for ant solutions: resolve the parent, then score the child. Writes an invalid
-// rating for any unscorable outcome; settlement resolves the same dependencies the same way and
-// rejects identically.
+// Registered scoreFn for ant solutions. Any unscorable outcome writes an invalid rating, which
+// settlement rejects the same way on every node.
 static void scoreAntSolution(SettlementSlot& slot, unsigned long long processorNumber)
 {
     AntSolutionRecordCapture record;
@@ -784,15 +780,9 @@ static void scoreAntSolution(SettlementSlot& slot, unsigned long long processorN
         return;
     }
 
-    const AntColonyBpp9000T::ReplayKey replayKey =
-        makeAntReplayKey(record.sourcePublicKey, record.nonce, parentView.ann, parentView.shift, anchorDigest);
     AntColonyBpp9000T::Ann childAnn;
-    if (!gAntColony.tryGetReplayScore(replayKey, result.rating, childAnn))
-    {
-        result.rating = score->computeAntChildScore(processorNumber, parentView.ann, parentView.shift,
-            record.sourcePublicKey, record.nonce, anchorDigest, childAnn);
-        gAntColony.putReplayScore(replayKey, result.rating, childAnn);
-    }
+    result.rating = scoreAntChildCached(processorNumber, record.sourcePublicKey, record.nonce, parentView,
+        anchorDigest, childAnn);
     if (!result.rating.isValid())
     {
         copyMem(slot.result, &result, sizeof(result));
@@ -801,16 +791,14 @@ static void scoreAntSolution(SettlementSlot& slot, unsigned long long processorN
 
     score_engine::ScoreBpp9000T::store(childAnn, result.ann);
     KangarooTwelve(&childAnn, sizeof(childAnn), &result.annHash, sizeof(result.annHash));
-    result.depth = parentView.depth + 1;
 
     copyMem(slot.result, &result, sizeof(result));
 }
 
-// Registered settleFn: the verdict tail, at T+W on the tick processor. Uses slot.tick as "now"
-// throughout, never system.tick, which is W ticks ahead of this solution's freshness window.
-// Re-reads the parent from the tree and the anchor from the anchor ring, because the worker read both
-// on its own schedule. Takes the rating and network from the worker's result, which every node
-// computes identically. depth feeds the debug line only.
+// Registered settleFn for ant solutions, on the tick processor. "Now" is slot.tick, never system.tick.
+// The parent is resolved again for the record commit() takes. The anchor is checked again: it only
+// ever leaves the ring, so one present now was present when the worker read it. The rating and network
+// come from the worker's result, which every node computes identically.
 static void settleAntSolution(const SettlementSlot& slot, unsigned long long processorNumber)
 {
     AntSolutionRecordCapture record;
@@ -822,26 +810,23 @@ static void settleAntSolution(const SettlementSlot& slot, unsigned long long pro
     resolveAntParent(record.parentRef, processorNumber, parentView);
     if (parentView.status != AntParentReady)
     {
-        gAntColony.recordReject(ValidityResult::RejectParentNotRegistered);
-        logAntSolutionOutcome(record.sourcePublicKey, record.nonce, record.parentRef.tick,
-            record.parentRef.solutionIndexInTick, record.anchorTick, 0, ValidityResult::RejectParentNotRegistered);
+        rejectAntSolution(record.sourcePublicKey, record.nonce, record.parentRef, record.anchorTick,
+            ValidityResult::RejectParentNotRegistered);
         return;
     }
 
     m256i anchorDigest;
     if (!gAntColony.getAnchorDigest(record.anchorTick, anchorDigest))
     {
-        gAntColony.recordReject(ValidityResult::RejectStale);
-        logAntSolutionOutcome(record.sourcePublicKey, record.nonce, record.parentRef.tick,
-            record.parentRef.solutionIndexInTick, record.anchorTick, 0, ValidityResult::RejectStale);
+        rejectAntSolution(record.sourcePublicKey, record.nonce, record.parentRef, record.anchorTick,
+            ValidityResult::RejectStale);
         return;
     }
 
     if (!result.rating.isValid())
     {
-        gAntColony.recordReject(ValidityResult::RejectNonCanonicalNonce);
-        logAntSolutionOutcome(record.sourcePublicKey, record.nonce, record.parentRef.tick,
-            record.parentRef.solutionIndexInTick, record.anchorTick, 0, ValidityResult::RejectNonCanonicalNonce);
+        rejectAntSolution(record.sourcePublicKey, record.nonce, record.parentRef, record.anchorTick,
+            ValidityResult::RejectNonCanonicalNonce);
         return;
     }
 
@@ -865,7 +850,7 @@ static void settleAntSolution(const SettlementSlot& slot, unsigned long long pro
     const ValidityResult outcome = gAntColony.commit(in, parentView.treeRecord, result.rating, childAnn, result.annHash);
     logAntSolutionOutcome(record.sourcePublicKey, record.nonce, record.parentRef.tick,
         record.parentRef.solutionIndexInTick, record.anchorTick, result.rating.error, outcome);
-    antDebugAccepted(slot.tick, result.rating.error, result.depth, slot.txIndex, outcome);
+    antDebugAccepted(slot.tick, result.rating.error, parentView.depth + 1, slot.txIndex, outcome);
 
     // ValidNotStored is the store being full: the solution passed every rule and only missed a slot,
     // so it earns its refund and its ranking exactly like a stored one.
@@ -885,7 +870,7 @@ static void settleAntSolution(const SettlementSlot& slot, unsigned long long pro
     }
 }
 
-// Registered settleFn for standalone solutions: the verdict tail at T+W, slot.tick as "now".
+// Registered settleFn for standalone solutions: the verdict tail at settlement, slot.tick as "now".
 // Takes processorNumber only to match SolutionSettleFn's signature.
 static void settleStandaloneSolution(const SettlementSlot& slot, unsigned long long)
 {
@@ -913,9 +898,7 @@ static void settleStandaloneSolution(const SettlementSlot& slot, unsigned long l
     const QuTransfer quTransfer = { m256i::zero(), record.sourcePublicKey, record.amount };
     logger.logQuTransfer(quTransfer);
 
-    // system.solutions[] and solutionPublicationTicks[] were marked RECORDED at phase 1, on first
-    // sight regardless of verdict. The claimedScore == solutionScore check above already
-    // guarantees the entry's score field is correct.
+    // The RECORDED marks were set at phase 1; the claim check above makes the entry's score correct.
 
     // A miner is ranked by its single best rating of the epoch, not by the number of accepted
     // solutions. A standalone solution carries no reach, so it ranks at frame 0.
@@ -958,6 +941,18 @@ static void solutionSettlementBeginEpoch()
 // Wall time of the most recent drain, for F3. Written by the tick processor only.
 static unsigned long long gLastSolutionDrainMilliseconds = 0;
 
+// Solutions still pending when the epoch switch began: END_TICK of the last tick did not drain them,
+// so the switch settled them after the last vote. Written by the tick processor, count last; the main
+// loop logs it every second while count is not 0.
+struct SolutionsSettledLateAtEpochEnd
+{
+    unsigned int epoch;
+    unsigned int lastTick;
+    unsigned int settledThroughTick;
+    volatile unsigned int count;
+};
+static SolutionsSettledLateAtEpochEnd gSolutionsSettledLateAtEpochEnd;
+
 // The epoch switch is decided by etalonTick's date alone. That date is written only when a tick
 // concludes without switching, and every vote compares it, so during tick X this returns the verdict
 // the switch check reads for X, on every node.
@@ -968,10 +963,8 @@ static bool isLastTickInEpoch()
         || day > 738570 + system.epoch * 7;
 }
 
-// Settle the whole window: score what is left alongside the still-running workers, then settle
-// every outstanding tick. Every node runs it at END_TICK of the epoch's last tick, so the drained
-// state enters that tick's vote. An empty window is left untouched, so F3 keeps the time and count
-// of the last drain that settled something.
+// Settle the whole window: score what is left alongside the workers, then settle every outstanding
+// tick. An empty window is left untouched, so F3 keeps the time of the last drain that settled something.
 static void drainPendingSolutions(unsigned long long processorNumber)
 {
     if (gSettlementWindow.unsettledCount() == 0)
@@ -980,7 +973,6 @@ static void drainPendingSolutions(unsigned long long processorNumber)
     }
     const unsigned long long startTsc = __rdtsc();
     gSettlementWindow.drainAll(processorNumber);
-    ASSERT(gSettlementWindow.unsettledCount() == 0);
     gLastSolutionDrainMilliseconds = (__rdtsc() - startTsc) * 1000 / frequency;
 }
 
@@ -995,8 +987,7 @@ static void settlePendingSolutions(unsigned long long processorNumber)
         return;
     }
 
-    // Underflow guard, not an activation gate: below W there is no tick T - W to settle, and the
-    // unsigned wrap would ask settleTick() to settle everything at once.
+    // Below W there is no tick T - W; the unsigned wrap would settle everything at once.
     if (system.tick < SOLUTION_SETTLEMENT_WINDOW_TICKS)
     {
         return;
@@ -1004,8 +995,7 @@ static void settlePendingSolutions(unsigned long long processorNumber)
     gSettlementWindow.settleTick(system.tick - SOLUTION_SETTLEMENT_WINDOW_TICKS, processorNumber);
 }
 
-// Request processor idle path: pull the next unscored slot and score it. Returns true if it scored
-// something, so the idle loop can decide whether to _mm_pause() or try again immediately.
+// Request processor idle path: score the next unscored slot; true if there was one.
 static bool solutionWorkerStep(unsigned long long processorNumber)
 {
     return gSettlementWindow.workerStep(processorNumber);
@@ -1016,9 +1006,8 @@ static bool saveSolutionSettlement(CHAR16* directory)
     return gSettlementWindow.save(system.epoch, directory, resourceTestingDigest);
 }
 
-// Takes the expected digest rather than reading the global: the window is loaded before the global
-// is restored, so the only value to pair against is the one still in the buffer. false means refuse
-// to start - the caller falls back to loading from scratch.
+// Pairs against the digest still in the node state buffer: the window loads before the global is
+// restored. false refuses the snapshot, and the caller falls back to loading from scratch.
 static bool loadSolutionSettlement(CHAR16* directory, unsigned int resourceTestingDigestExpected)
 {
     return gSettlementWindow.load(system.epoch, directory, resourceTestingDigestExpected);
@@ -3740,9 +3729,6 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                     if (transaction->amount >= MiningSolutionTransaction::minAmount()
                         && transaction->inputSize >= MiningSolutionTransaction::minInputSize())
                     {
-                        // Phase 1 only: cheap deterministic checks, then append to the settlement
-                        // window. Verification, the digest fold, refund and ranking move to
-                        // settlePendingSolutions() at END_TICK, W ticks later.
                         recordStandaloneSolution((MiningSolutionTransaction*)transaction, transactionIndex);
                     }
                 }
@@ -4105,8 +4091,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
     const unsigned int childCount = gAntColony.childCountForQuery(entry.parentRef,
         entry.computorPublicKey);
     const ChildCandidate candidate{ entry.computorPublicKey, entry.rating, entry.anchorTick, publishTick };
-    const AntSolutionRecord* parentForValidation = antParentRecordForValidation(parentView);
-    if (AntColonyBpp9000T::validateChild(candidate, parentForValidation, childCount,
+    if (AntColonyBpp9000T::validateChild(candidate, parentView.treeRecord, childCount,
         gAntColony.errorThreshold()) != ValidityResult::Valid)
     {
         gAntPendingSolutions.markObsoleteGateRejected(idx);
@@ -4270,10 +4255,6 @@ static void processTick(unsigned long long processorNumber)
 #if ADDON_TX_STATUS_REQUEST
         txStatusData.tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
-        // No pre-scan and no synchronous solution processing here any more: the record hooks below
-        // append to the settlement window and the solution processors drain it off this critical
-        // path. F3's window line is where solution timing lives now.
-
         // Process all transaction of the tick
         PROFILE_NAMED_SCOPE_BEGIN("processTick(): process transactions");
         unsigned int nTickLeaderTx = 0;
@@ -5109,9 +5090,8 @@ static void beginEpoch()
 // called by tickProcessor() after system.tick has been incremented
 static void endEpoch()
 {
-    // The caller must have drained the settlement window first (drainPendingSolutions()): a solution
-    // from epoch E must settle under E's rules into E's digest before E's revenue is computed here,
-    // and there is no "settle it later".
+    // The last tick's END_TICK drained the window, or the epoch switch did, so every solution of the
+    // epoch is final before the epoch ends.
     ASSERT(gSettlementWindow.unsettledCount() == 0);
 
     logger.registerNewTx(system.tick, logger.SC_END_EPOCH_TX);
@@ -5494,9 +5474,8 @@ static bool saveAllNodeStates()
         return false;
     }
 
-    // Immediately after nodeStateBuffer, inside the same invalidateNodeStates bracket: the
-    // window file's resourceTestingDigestAtSave pairs it with this exact node state, so a window
-    // from tick Y can never load alongside a node state from tick X.
+    // Inside the same invalidateNodeStates bracket as nodeStateBuffer, so the window file pairs with
+    // exactly this node state through resourceTestingDigestAtSave.
     logToConsole(L"Saving solution settlement window");
     if (!saveSolutionSettlement(directory))
     {
@@ -5706,10 +5685,8 @@ static bool loadAllNodeStates()
         return false;
     }
 
-    // Ahead of the copies below, not after them: a failure here returns with the mining globals
-    // still holding the values beginEpoch() gave them, so the from-scratch fallback starts from a
-    // zero resourceTestingDigest. Paired against the buffered digest, the one the window was saved
-    // beside; a mismatch, missing file or malformed window refuses to start.
+    // Before the copies below, so a refusal leaves the mining globals as beginEpoch() set them (zero
+    // resourceTestingDigest) for the from-scratch fallback.
     if (!loadSolutionSettlement(directory, nodeStateBuffer.resourceTestingDigest))
     {
         logToConsole(L"Failed to load solution settlement window");
@@ -6939,10 +6916,18 @@ static void tickProcessor(void*)
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
                                 {
-                                    // The last tick's END_TICK took the same isLastTickInEpoch() branch and
-                                    // drained the window, so this returns at once. endEpoch() requires an
-                                    // empty window.
-                                    drainPendingSolutions(processorNumber);
+                                    // END_TICK of the last tick drained the window under the same predicate, so it is
+                                    // empty here. A leftover means the two disagreed: it is settled now, after the last
+                                    // vote, and reported by the main loop.
+                                    const unsigned int unsettled = gSettlementWindow.unsettledCount();
+                                    if (unsettled != 0)
+                                    {
+                                        gSolutionsSettledLateAtEpochEnd.epoch = system.epoch;
+                                        gSolutionsSettledLateAtEpochEnd.lastTick = system.tick - 1;
+                                        gSolutionsSettledLateAtEpochEnd.settledThroughTick = gSettlementWindow.settledThroughTick();
+                                        gSolutionsSettledLateAtEpochEnd.count = unsettled;
+                                        drainPendingSolutions(processorNumber);
+                                    }
 
                                     // wait until all request processors are in waiting state
                                     WAIT_WHILE(epochTransitionWaitingRequestProcessors < nRequestProcessorIDs);
@@ -7738,8 +7723,8 @@ static bool initialize()
     {
         score->initMiningData(initialRandomSeedFromPersistingState);
         loadMiningSeedFromFile = false;;
-        // Skipped entirely when a snapshot was restored - loadSolutionSettlement() already restored
-        // the window below, alongside loadAllNodeStates()'s other mining state.
+        // Skipped entirely when a snapshot was restored: loadAllNodeStates() already restored the
+        // window with the rest of the mining state.
         if (!loadAllNodeStateFromFile)
         {
             antColonyBeginEpoch();
@@ -9509,6 +9494,20 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     else
                     {
                         misalignedState = 0;
+                    }
+
+                    // output if solutions were settled late at an epoch end
+                    if (gSolutionsSettledLateAtEpochEnd.count != 0)
+                    {
+                        setText(message, L"SOLUTIONS SETTLED LATE AT EPOCH END: ");
+                        appendNumber(message, gSolutionsSettledLateAtEpochEnd.count, TRUE);
+                        appendText(message, L" pending, epoch ");
+                        appendNumber(message, gSolutionsSettledLateAtEpochEnd.epoch, FALSE);
+                        appendText(message, L", last tick ");
+                        appendNumber(message, gSolutionsSettledLateAtEpochEnd.lastTick, FALSE);
+                        appendText(message, L", settled through ");
+                        appendNumber(message, gSolutionsSettledLateAtEpochEnd.settledThroughTick, FALSE);
+                        logToConsole(message);
                     }
 
 #if PAUSE_BEFORE_CLEAR_MEMORY

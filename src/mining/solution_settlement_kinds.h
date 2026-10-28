@@ -6,25 +6,22 @@
 // Record and result layouts for both settlement kinds, and the ant parent-resolution logic.
 // Standalone carries layouts only: its score has no parent, so there is nothing to resolve.
 
-// A parent is either usable or it is not. Only the settled tree and the derived ROOT qualify, so a
-// reference into the unsettled window resolves Absent like any other reference to nothing.
+// Ready: ROOT or a settled tree solution. Absent: anything else.
 enum AntParentStatus
 {
     AntParentReady,
     AntParentAbsent
 };
 
-// Determine which kind of parent, wherever it came from: the derived ROOT or the settled tree.
+// A resolved parent.
 struct AntParentView
 {
     AntParentStatus status;
     const AntColonyBpp9000T::Ann* ann;      // nullptr for ROOT or when status != Ready
-    const AntSolutionRecord* treeRecord;    // non-null exactly when Ready and not ROOT;
-                                             // commit()'s only valid input
-    score_engine::Rating rating;            // Rating::worst() for ROOT
-    unsigned int shift;                     // == rating.shift; what makeAntReplayKey takes directly
+    const AntSolutionRecord* treeRecord;    // non-null exactly when Ready and not ROOT; what
+                                             // validateChild() and commit() take
+    unsigned int shift;                     // 0 for ROOT
     unsigned int depth;                     // 0 for ROOT
-    m256i pubkey;                           // unused for ROOT
 };
 
 // What a worker produces for an ant solution. The network is stored packed
@@ -33,7 +30,6 @@ struct AntSolutionResult
     score_engine::Rating rating;             // Rating::worst() (invalid) marks an unscorable child
     unsigned int annHash;
     AntColonyBpp9000T::PackedAnn ann;
-    unsigned int depth;
 };
 static_assert(sizeof(AntSolutionResult) <= MAX_SOLUTION_RESULT_BYTES,
     "AntSolutionResult exceeds the settlement result budget - re-derive if StoredAnn's size changes");
@@ -78,28 +74,19 @@ struct StandaloneSolutionResult
 static_assert(sizeof(StandaloneSolutionResult) <= MAX_SOLUTION_RESULT_BYTES,
     "StandaloneSolutionResult exceeds the settlement result budget");
 
-// The parents a solution recorded at tick T may name: ROOT, or a solution of tick T - W - 1 or earlier.
-// Settlement commits a solution at END_TICK of its tick + W, so while tick T is processed the tree holds
-// every solution of tick T - W - 1 and earlier that will ever commit, and none of a later tick. A parent
-// of a later tick would resolve Absent or Ready depending on when a worker reads the tree.
+// A solution recorded at tick T may name ROOT or a solution of tick T - W - 1 or earlier. Settlement runs
+// W ticks behind, so while tick T is processed the tree holds exactly those; a later parent would
+// resolve Absent or Ready depending on when a worker reads the tree.
 static bool isAntParentSettledBefore(const SolutionRef& parentRef, unsigned int tick)
 {
     return parentRef.isRoot()
         || (parentRef.tick < tick && tick - parentRef.tick > SOLUTION_SETTLEMENT_WINDOW_TICKS);
 }
 
-// Resolve a parent reference against the two places a usable parent can be:
-// - ROOT                : Ready. Virtual, so no record and no stored network.
-// - the settled tree    : Ready, carrying its record.
-// - neither             : Absent.
-//
-// A reference into the unsettled window is Absent. The window is node-local in one respect that
-// matters: whether a given slot has been scored yet depends on when this node's workers ran. Any
-// answer derived from it therefore differs between nodes, which is why no caller may build on an
-// unsettled parent and why settlement, whose answer is folded into the digest, could never have.
-//
-// When Ready and not ROOT, the network is unpacked into scratchAnn. The view borrows it, so the
-// view is valid only as long as scratchAnn is.
+// Resolve a parent reference: ROOT is Ready with no record and no network; a settled tree solution is
+// Ready with its record; anything else is Absent, including a slot still in the window - whether a slot
+// is scored yet depends on this node's workers, so an answer drawn from it would differ between nodes.
+// When Ready and not ROOT, the network is unpacked into scratchAnn, which the view borrows.
 static void resolveAntParent(AntColonyBpp9000T& colony, AntColonyBpp9000T::Ann& scratchAnn,
     const SolutionRef& parentRef, AntParentView& out)
 {
@@ -109,7 +96,6 @@ static void resolveAntParent(AntColonyBpp9000T& colony, AntColonyBpp9000T::Ann& 
     if (parentRef.isRoot())
     {
         out.status = AntParentReady;
-        out.rating = score_engine::Rating::worst();
         return;
     }
 
@@ -124,20 +110,6 @@ static void resolveAntParent(AntColonyBpp9000T& colony, AntColonyBpp9000T::Ann& 
     out.status = AntParentReady;
     out.ann = &scratchAnn;
     out.treeRecord = parentRec;
-    out.rating.error = parentRec->score;
-    out.rating.shift = parentRec->shift;
     out.shift = parentRec->shift;
     out.depth = parentRec->depth;
-    out.pubkey = parentRec->pubkey;
-}
-
-// What validateChild() reads. nullptr for ROOT, which is derived rather than stored, and for any
-// status the caller has not already handled.
-static const AntSolutionRecord* antParentRecordForValidation(const AntParentView& parent)
-{
-    if (parent.status != AntParentReady)
-    {
-        return nullptr;
-    }
-    return parent.treeRecord;
 }

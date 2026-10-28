@@ -101,10 +101,10 @@ static unsigned short ANT_SNAPSHOT_POOL_FILENAME[] = L"snapshotAntColonyPool.???
 static unsigned short ANT_COLONY_REPLAY_CACHE_FILENAME[] = L"antColonyReplayCache.???";
 static unsigned short ANT_COLONY_SOLUTIONS_EOE_FILENAME[] = L"antColonySolutions.eoe";
 static unsigned short ANT_SOL_FLAG_FILE_NAME[] = L"snapshotAntSolutionFlag";
-// Solution settlement window files. The header carries the meta; the records are written in
-// numbered chunk files (snapshotSolutionWindowRecords.EEE.CCC)
-static unsigned short SOLUTION_SETTLEMENT_HEADER_FILENAME[] = L"snapshotSolutionWindowHeader.???";
-static unsigned short SOLUTION_SETTLEMENT_RECORDS_FILENAME[] = L"snapshotSolutionWindowRecords.???";
+// Async score settlement window files. The header carries the meta; the records are written in
+// numbered chunk files (snapshotAsyncScoreRecords.EEE.CCC)
+static unsigned short SOLUTION_SETTLEMENT_HEADER_FILENAME[] = L"snapshotAsyncScoreHeader.???";
+static unsigned short SOLUTION_SETTLEMENT_RECORDS_FILENAME[] = L"snapshotAsyncScoreRecords.???";
 
 // Neuraxon (even-nonce slot) - reserved for a future algorithm, not yet implemented.
 static constexpr unsigned long long NEURAXON_NUMBER_OF_INPUT_NEURONS = 1;
@@ -156,8 +156,10 @@ static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
     "ANT_REPLAY_CACHE_SIZE must be a power of two, the slot index masks with it");
 
 // Solution settlement window: a mining solution recorded at tick T is verified off the tick path and
-// settled (digest fold, tree commit, refund, ranking) at tick T + SOLUTION_SETTLEMENT_WINDOW_TICKS in
-// (tick, txIndex) order. Consensus: every node settles the same tick at the same tick number.
+// settled (digest fold, tree commit, refund, ranking) at tick T + SOLUTION_SETTLEMENT_WINDOW_TICKS, or
+// at the epoch's last tick if that comes first, in (tick, txIndex) order. Consensus: what a tick
+// settles depends only on its tick number and voted date, so every node settles the same solutions at
+// the same tick.
 //
 // A parent is mineable only once committed, so this is also the cadence between ant generations, and
 // one anchor covers ANT_PUBLISH_WINDOW_TICKS / SOLUTION_SETTLEMENT_WINDOW_TICKS of them before a miner

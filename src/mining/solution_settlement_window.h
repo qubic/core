@@ -11,31 +11,22 @@
 #include "public_settings.h"
 
 // Deferred settlement of mining solutions.
-// Phase 1 (tick processor, tick T): append() captures a solution into a slot. Workers pull slots
-// in append order through one shared cursor and write a result. Phase 2 (tick processor, T + W):
-// settleTick(T) walks tick T's slots in ascending txIndex and calls each kind's settle hook, the
-// only place consensus state is touched. A slot still unscored at settlement is scored inline.
+// Phase 1 (tick processor): append() captures a solution into a slot. Workers take slots in append
+// order through one shared cursor and write a result. Phase 2 (tick processor): settleTick() walks a
+// tick's slots in ascending txIndex and calls each kind's settle hook, the only place consensus state
+// is touched; a slot still unscored then is scored inline.
 //
-// Storage is one append-order arena. Appends arrive in (tick, txIndex) order and settlement
-// releases in the same order, so a tick's slots are one contiguous run: _head is the oldest
-// unsettled slot, _cursor the next a worker takes, _tail the next free. _tickIndex, keyed by
-// tick & (index size - 1), maps a tick to its run: append() tests whether the tick is already
-// open, lookup() binary-searches the run, settleOneTick() walks it.
+// Storage is one append-order arena: _head is the oldest unsettled slot, _cursor the next a worker
+// takes, _tail the next free. Appends and settlement both run in (tick, txIndex) order, so a tick's
+// slots are one contiguous run, found through _tickIndex.
 //
-// Module that writes:
-//  - tick processor   append(): record fields, then the tick index entry's count last.
-//                     settleTick(): _head, the index entry's count (cleared), _settledThroughTick.
-//  - any worker       result, then scored last. Never write a record field.
-//  - any thread       lookup(), unscoredCount(): read only.
+// Writers:
+//  - tick processor   append(): record, then the tick index count last. settleTick(): _head, the
+//                     index count (cleared), _settledThroughTick.
+//  - any worker       result, then scored last. Never a record field.
 //
-// A settled slot is released, not scrubbed: lookup() stops returning it, but a pointer taken
-// earlier reads the same bytes until the physical slot is reused, which takes as many appends as
-// the arena has free slots - capacity minus whatever is still unsettled.
-//
-// The tick index is a tighter bound than the arena. The caller must call settleTick() often enough
-// that the oldest unsettled tick stays fewer than SOLUTION_SETTLEMENT_TICK_INDEX_SIZE ticks behind
-// the newest appended one; at that distance and beyond, append() silently refuses ticks that alias
-// an unsettled one.
+// A settled slot is released, not scrubbed: a pointer taken earlier reads the same bytes until an
+// append reuses it.
 
 // Kinds are the solution transaction types. Each registers two hooks; the loops here call them.
 struct SettlementSlot;
@@ -51,9 +42,9 @@ static constexpr unsigned int MAX_SOLUTION_KINDS = 4;
 static constexpr unsigned long long SOLUTION_SETTLEMENT_CAPACITY =
     (unsigned long long)(SOLUTION_SETTLEMENT_WINDOW_TICKS + 1) * NUMBER_OF_TRANSACTIONS_PER_TICK;
 
-// Per-tick index, addressed tick & (size - 1): smallest power of two holding the window plus the
-// tick being processed, which is every tick that can be unsettled at once. A tick further out
-// aliases a live entry and is refused rather than served stale.
+// Per-tick index, addressed tick & (size - 1): the smallest power of two holding the window plus the
+// tick being processed, every tick that can be unsettled at once. settleTick() must keep up with that;
+// a tick that would alias a still-unsettled one is refused by append().
 static constexpr unsigned int solutionSettlementTickIndexSize(unsigned int window)
 {
     unsigned int size = 1;
@@ -99,8 +90,6 @@ static_assert(sizeof(SettlementDigestFold) == 4 + sizeof(SettlementRecord), "Set
 
 struct SolutionSettlementWindowMeta
 {
-    unsigned int magic;
-    unsigned int version;
     unsigned int epoch;
     unsigned int settledThroughTick;
     unsigned int recordCount;
@@ -110,11 +99,8 @@ struct SolutionSettlementWindowMeta
     unsigned int recordBytes;
     unsigned int windowTicks;
     unsigned int chunkRecords;
-
-    static constexpr unsigned int MAGIC = 0x4E575353;   // "SSWN"
-    static constexpr unsigned int VERSION = 1;
 };
-static_assert(sizeof(SolutionSettlementWindowMeta) == 40, "SolutionSettlementWindowMeta unexpected padding");
+static_assert(sizeof(SolutionSettlementWindowMeta) == 32, "SolutionSettlementWindowMeta unexpected padding");
 
 struct SolutionSettlementStats
 {
@@ -162,9 +148,8 @@ public:
     bool init();
     void deinit();
 
-    // Empty the window unconditionally, mid-flight slots included. Ticks at or below
-    // settledThroughTick count as settled. Unsafe with workers running and solutions outstanding: a
-    // worker mid-score keeps writing into a slot append() has since reused. Drain first.
+    // Empty the window, mid-flight slots included; ticks <= settledThroughTick count as settled. Only
+    // safe with no worker scoring, which would keep writing into a reused slot: drain first.
     void reset(unsigned int settledThroughTick);
 
     // false: no hook, a duplicate inputType, or the registry is full.
@@ -225,7 +210,7 @@ private:
 
     const SolutionKind* findKind(unsigned short inputType) const;
     SettlementSlot& slotAt(unsigned long long logicalIdx) const;
-    SettlementSlot* drainNext(bool byWorker);
+    SettlementSlot* claimNextUnscored(bool byWorker);
     void scoreSlot(SettlementSlot& slot, unsigned long long processorNumber);
     void settleOneTick(unsigned int tick, unsigned long long processorNumber);
 
@@ -364,15 +349,14 @@ inline bool SolutionSettlementWindow::append(unsigned int tick, unsigned int txI
     }
 
     TickIndexEntry& entry = _tickIndex[tick & SOLUTION_SETTLEMENT_TICK_INDEX_MASK];
-    // The entry is still held by an unsettled tick an index length back: settlement has fallen
-    // behind by the whole index. Refusing keeps that tick's slots intact.
+    // Still held by an unsettled tick one index length back: refusing keeps that tick's slots intact.
     if (entry.count > 0 && entry.tick != tick)
     {
         _stats.refused++;
         return false;
     }
 
-    const bool continuesTick = (entry.count > 0 && entry.tick == tick);
+    const bool continuesTick = (entry.count > 0);
     // A tick's run stays ascending in txIndex: lookup() binary-searches it and settlement walks it in that order.
     if (continuesTick && txIndex <= slotAt(entry.startIdx + entry.count - 1).txIndex)
     {
@@ -380,17 +364,15 @@ inline bool SolutionSettlementWindow::append(unsigned int tick, unsigned int txI
         return false;
     }
 
-    // _head and _tail are otherwise only touched by settleOneTick() and append() itself, both
-    // called solely from the tick processor, so reading them here needs no lock: this thread is
-    // their only writer.
+    // The tick processor is the only writer of _head and _tail, so this read needs no lock.
     if (_tail - _head >= SOLUTION_SETTLEMENT_CAPACITY)
     {
         _stats.refused++;
         return false;
     }
 
-    // Fill before publishing: slotAt(_tail) is unclaimable until _tail advances, so this write has no
-    // reader, and the lock still orders it before anything that claims the slot.
+    // Filled before _tail advances, so no worker can claim the slot yet; the lock orders the write
+    // before any claim.
     SettlementSlot& slot = slotAt(_tail);
     setMem(&slot, sizeof(slot), 0);
     slot.tick = tick;
@@ -413,7 +395,7 @@ inline bool SolutionSettlementWindow::append(unsigned int tick, unsigned int txI
     return true;
 }
 
-inline SettlementSlot* SolutionSettlementWindow::drainNext(bool byWorker)
+inline SettlementSlot* SolutionSettlementWindow::claimNextUnscored(bool byWorker)
 {
     LockGuard guard(_lock);
     if (_cursor >= _tail)
@@ -447,7 +429,7 @@ inline void SolutionSettlementWindow::scoreSlot(SettlementSlot& slot, unsigned l
 
 inline bool SolutionSettlementWindow::workerStep(unsigned long long processorNumber)
 {
-    SettlementSlot* slot = drainNext(true);
+    SettlementSlot* slot = claimNextUnscored(true);
     if (slot == nullptr)
     {
         return false;
@@ -477,7 +459,6 @@ inline const SettlementSlot* SolutionSettlementWindow::lookup(unsigned int tick,
     }
     const unsigned long long startIdx = entry.startIdx;
 
-    // The run is ascending in txIndex.
     unsigned int low = 0;
     unsigned int high = count;
     while (low < high)
@@ -547,7 +528,6 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
         }
     }
 
-    // Settle all solutions in the tick
     for (unsigned long long i = first; i < end; i++)
     {
         SettlementSlot& slot = slotAt(i);
@@ -556,7 +536,6 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
 
         if (!slot.scored)
         {
-            // Not processed, finisned it
             if (i >= claimedFrom)
             {
                 scoreSlot(slot, processorNumber);
@@ -564,9 +543,8 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
             }
             else
             {
-                // A worker holds it and is at most one score away. Counted separately from
-                // scoredInline: this also stalls the tick processor for one score, but an operator
-                // reading scoredInline alone would see zero and miss it.
+                // A worker holds it and is at most one score away. Counted apart from scoredInline:
+                // it stalls the tick processor too.
                 _stats.stalledOnWorker++;
                 while (!slot.scored)
                 {
@@ -593,11 +571,12 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
 
 inline void SolutionSettlementWindow::drainAll(unsigned long long processorNumber)
 {
-    // Take slots alongside the workers rather than waiting on them: with the workers parked this is
-    // the only scorer, and with them running it is one more.
-    for (SettlementSlot* slot = drainNext(false); slot != nullptr; slot = drainNext(false))
+    // Score alongside the workers; with them parked this is the only scorer.
+    SettlementSlot* slot = claimNextUnscored(false);
+    while (slot != nullptr)
     {
         scoreSlot(*slot, processorNumber);
+        slot = claimNextUnscored(false);
     }
     while (unscoredCount() > 0)
     {
@@ -644,8 +623,6 @@ inline bool SolutionSettlementWindow::save(unsigned short epoch, CHAR16* directo
 
     SolutionSettlementWindowMeta meta;
     setMem(&meta, sizeof(meta), 0);
-    meta.magic = SolutionSettlementWindowMeta::MAGIC;
-    meta.version = SolutionSettlementWindowMeta::VERSION;
     meta.epoch = epoch;
     meta.settledThroughTick = _settledThroughTick;
     meta.recordCount = (unsigned int)recordCount;
@@ -706,11 +683,6 @@ inline bool SolutionSettlementWindow::load(unsigned short epoch, CHAR16* directo
     if (::load(SOLUTION_SETTLEMENT_HEADER_FILENAME, sizeof(meta), (unsigned char*)&meta, directory) != (long long)sizeof(meta))
     {
         logToConsole(L"[settlement] failed to load window header");
-        return false;
-    }
-    if (meta.magic != SolutionSettlementWindowMeta::MAGIC || meta.version != SolutionSettlementWindowMeta::VERSION)
-    {
-        solutionSettlementFailure(L"bad magic/version", meta.magic, meta.version);
         return false;
     }
     if (meta.epoch != epoch)
@@ -801,9 +773,7 @@ inline void SolutionSettlementWindow::appendStatusTo(CHAR16* message) const
     appendNumber(message, unsettledCount(), TRUE);
     appendText(message, L" (unscored ");
     appendNumber(message, unscoredCount(), TRUE);
-    appendText(message, L") | digest ");
-    appendNumber(message, windowDigest(), FALSE);
-    appendText(message, L" | appended ");
+    appendText(message, L") | appended ");
     appendNumber(message, _stats.appended, TRUE);
     appendText(message, L", refused ");
     appendNumber(message, _stats.refused, TRUE);

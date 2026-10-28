@@ -51,7 +51,6 @@ static void testAntScore(SettlementSlot& slot, unsigned long long)
     else
     {
         result.rating = score_engine::Rating{ record.claimedScore, 0 };
-        result.depth = 1;
     }
     copyMem(slot.result, &result, sizeof(result));
 }
@@ -165,7 +164,8 @@ TEST(TestAntParentSettledBefore, SameOrLaterTickIsNotSettled)
 // Two sources answer Ready - the derived ROOT and the settled tree. Everything else is Absent,
 // including a reference into a slot still inside the settlement window.
 
-TEST(TestResolveAntParent, RootIsReadyWithWorstRatingAndNoAnn)
+// ROOT is derived, so it has no record: validateChild() and commit() take nullptr for it.
+TEST(TestResolveAntParent, RootIsReadyWithNoRecordAndNoAnn)
 {
     GlueFixture* fx = freshFixture();
     ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
@@ -176,8 +176,8 @@ TEST(TestResolveAntParent, RootIsReadyWithWorstRatingAndNoAnn)
     EXPECT_EQ(view.status, AntParentReady);
     EXPECT_EQ(view.ann, nullptr);
     EXPECT_EQ(view.treeRecord, nullptr);
+    EXPECT_EQ(view.shift, 0u);
     EXPECT_EQ(view.depth, 0u);
-    EXPECT_FALSE(view.rating.isValid());
 }
 
 TEST(TestResolveAntParent, TreeParentResolvesFromTheRecord)
@@ -196,10 +196,9 @@ TEST(TestResolveAntParent, TreeParentResolvesFromTheRecord)
     ASSERT_NE(view.ann, nullptr);
     ASSERT_NE(view.treeRecord, nullptr);
     EXPECT_TRUE(view.treeRecord->pubkey == owner);
-    EXPECT_EQ(view.rating.error, 3800u);
+    EXPECT_EQ(view.treeRecord->score, 3800u);
     EXPECT_EQ(view.shift, 0u);
     EXPECT_EQ(view.depth, 1u);
-    EXPECT_TRUE(view.pubkey == owner);
 }
 
 // The rule that makes every node answer alike: a slot in the window is not a parent, scored or not.
@@ -235,45 +234,5 @@ TEST(TestResolveAntParent, MissingParentIsAbsent)
     resolveAntParent(fx->colony, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 }, view);
 
     EXPECT_EQ(view.status, AntParentAbsent);
-}
-
-// ---------------------------------------------------------------------------------------------
-// antParentRecordForValidation()
-
-TEST(TestAntParentRecordForValidation, UsesTheTreeRecord)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    ASSERT_NE(commitRootChild(fx->colony, makeKey(6), 3800, TEST_TICK, 0, 501), ANT_INVALID_INDEX);
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->scratchAnn, SolutionRef{ TEST_TICK, 0 }, view);
-    ASSERT_EQ(view.status, AntParentReady);
-
-    EXPECT_EQ(antParentRecordForValidation(view), view.treeRecord);
-}
-
-// ROOT is derived, so there is no record to validate against and commit() takes nullptr for it.
-TEST(TestAntParentRecordForValidation, RootHasNoRecordToValidateAgainst)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->scratchAnn, ROOT_REF, view);
-    ASSERT_EQ(view.status, AntParentReady);
-
-    EXPECT_EQ(antParentRecordForValidation(view), nullptr);
-}
-
-TEST(TestAntParentRecordForValidation, AbsentHasNoRecord)
-{
-    GlueFixture* fx = freshFixture();
-    ASSERT_NE(fx, nullptr) << "fixture init failed; needs ~8 GB";
-
-    AntParentView view;
-    resolveAntParent(fx->colony, fx->scratchAnn, SolutionRef{ TEST_TICK + 99, 7 }, view);
-    ASSERT_EQ(view.status, AntParentAbsent);
-
-    EXPECT_EQ(antParentRecordForValidation(view), nullptr);
+    EXPECT_EQ(view.treeRecord, nullptr);
 }
