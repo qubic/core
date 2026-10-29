@@ -640,6 +640,13 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
         return INVALID_AMOUNT;
     }
 
+    // An errored destination cannot run its acquisition callback. Reject before invoking it,
+    // otherwise __qpiCallSystemProc aborts the releasing contract instead of returning failure.
+    if (contractError[destinationOwnershipManagingContractIndex] != NoContractError)
+    {
+        return INVALID_AMOUNT;
+    }
+
     // currently, only contract with index that fits into 16 bits can be managing contract
     if (_currentContractIndex > 0xffffu || _currentContractIndex >= contractCount)
     {
@@ -808,4 +815,75 @@ bool QPI::QpiContextFunctionCall::isAssetIssued(const m256i& issuer, unsigned lo
 {
     bool res = ::issuanceIndex(issuer, assetName) != NO_ASSET_INDEX;
     return res;
+}
+
+void QPI::AssetOwnerIterator::begin(const QPI::id& owner, const QPI::id& issuer, QPI::uint32 cursor)
+{
+    _owner = owner;
+    _issuer = issuer;
+    _cursor = cursor;
+    _record = NO_ASSET_INDEX;
+    _done = cursor >= ASSETS_CAPACITY;
+}
+
+bool QPI::AssetOwnerIterator::next(QPI::uint32 scanBudget)
+{
+    _record = NO_ASSET_INDEX;
+    while (!_done && scanBudget && _cursor < ASSETS_CAPACITY)
+    {
+        const unsigned int index = (_owner.m256i_u32[0] + _cursor) & (ASSETS_CAPACITY - 1);
+        ++_cursor;
+        --scanBudget;
+        const auto& record = assets[index].varStruct.ownership;
+        if (record.type == EMPTY)
+        {
+            _done = true;
+            return false;
+        }
+
+        if (record.type == OWNERSHIP && record.publicKey == _owner && record.numberOfShares > 0 && record.issuanceIndex < ASSETS_CAPACITY)
+        {
+            const auto& issued = assets[record.issuanceIndex].varStruct.issuance;
+            if (issued.type == ISSUANCE && issued.publicKey == _issuer)
+            {
+                _record = index;
+                if (_cursor == ASSETS_CAPACITY)
+                {
+                    _done = true;
+                }
+                return true;
+            }
+        }
+    }
+    if (_cursor >= ASSETS_CAPACITY)
+    {
+        _done = true;
+    }
+    return false;
+}
+
+QPI::Asset QPI::AssetOwnerIterator::asset() const
+{
+    ASSERT(_record < ASSETS_CAPACITY);
+    const auto& issued = assets[assets[_record].varStruct.ownership.issuanceIndex].varStruct.issuance;
+    QPI::uint64 name = 0;
+    copyMem(&name, issued.name, sizeof(issued.name));
+    return QPI::Asset{issued.publicKey, name};
+}
+
+QPI::sint64 QPI::AssetOwnerIterator::numberOfOwnedShares() const
+{
+    ASSERT(_record < ASSETS_CAPACITY);
+    return assets[_record].varStruct.ownership.numberOfShares;
+}
+
+QPI::uint16 QPI::AssetOwnerIterator::ownershipManagingContract() const
+{
+    ASSERT(_record < ASSETS_CAPACITY);
+    return assets[_record].varStruct.ownership.managingContractIndex;
+}
+
+bool QPI::AssetOwnerIterator::isValidCursor() const
+{
+    return _cursor <= ASSETS_CAPACITY;
 }
