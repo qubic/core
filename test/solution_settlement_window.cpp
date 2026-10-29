@@ -244,6 +244,45 @@ TEST(TestSolutionSettlementWindow, SettleScoresUnscoredSlotInline)
     EXPECT_EQ(window->stats().scoredByWorker, 0u);
 }
 
+// Several slots no worker reached: settlement takes all of them through the shared cursor on the
+// settling processor, then settles them in txIndex order. The next tick's slot is left to the workers.
+TEST(TestSolutionSettlementWindow, SettleScoresTheRunBeforeSettlingIt)
+{
+    SolutionSettlementWindow* window = freshWindow();
+    ASSERT_NE(window, nullptr) << "window init failed; needs ~2 GB";
+
+    EXPECT_TRUE(put(window, TEST_TICK, 0, KIND_A));
+    EXPECT_TRUE(put(window, TEST_TICK, 2, KIND_B));
+    EXPECT_TRUE(put(window, TEST_TICK, 5, KIND_A));
+    EXPECT_TRUE(put(window, TEST_TICK + 1, 0, KIND_B));
+
+    window->settleTick(TEST_TICK, 7);
+
+    const std::vector<HookCall> calls = takeCalls();
+    ASSERT_EQ(calls.size(), 6u);
+    expectCall(calls, 0, 's', KIND_A, TEST_TICK, 0);
+    expectCall(calls, 1, 's', KIND_B, TEST_TICK, 2);
+    expectCall(calls, 2, 's', KIND_A, TEST_TICK, 5);
+    expectCall(calls, 3, 't', KIND_A, TEST_TICK, 0);
+    expectCall(calls, 4, 't', KIND_B, TEST_TICK, 2);
+    expectCall(calls, 5, 't', KIND_A, TEST_TICK, 5);
+    for (unsigned long long i = 0; i < calls.size(); i++)
+    {
+        EXPECT_EQ(calls[i].processorNumber, 7u) << "call " << i;
+    }
+    EXPECT_EQ(window->stats().scoredInline, 3u);
+    EXPECT_EQ(window->stats().stalledOnWorker, 0u);
+    EXPECT_EQ(window->stats().settled, 3u);
+
+    EXPECT_EQ(window->unscoredCount(), 1u);
+    EXPECT_TRUE(window->workerStep(1));
+    EXPECT_FALSE(window->workerStep(1));
+    std::vector<HookCall> after = takeCalls();
+    ASSERT_EQ(after.size(), 1u);
+    expectCall(after, 0, 's', KIND_B, TEST_TICK + 1, 0);
+    EXPECT_EQ(window->stats().scoredByWorker, 1u);
+}
+
 TEST(TestSolutionSettlementWindow, SettleClearsAndAdvances)
 {
     SolutionSettlementWindow* window = freshWindow();

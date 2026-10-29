@@ -208,9 +208,12 @@ private:
         unsigned long long startIdx;   // logical arena index of the run's first slot
     };
 
+    static constexpr unsigned long long NO_CLAIM_LIMIT = 0xFFFFFFFFFFFFFFFFULL;
+
     const SolutionKind* findKind(unsigned short inputType) const;
     SettlementSlot& slotAt(unsigned long long logicalIdx) const;
-    SettlementSlot* claimNextUnscored(bool byWorker);
+    // Takes the next unclaimed slot below limit and counts the claim in counter; nullptr when there is none.
+    SettlementSlot* claimNextUnscored(unsigned long long limit, unsigned long long& counter);
     void scoreSlot(SettlementSlot& slot, unsigned long long processorNumber);
     void settleOneTick(unsigned int tick, unsigned long long processorNumber);
 
@@ -395,23 +398,16 @@ inline bool SolutionSettlementWindow::append(unsigned int tick, unsigned int txI
     return true;
 }
 
-inline SettlementSlot* SolutionSettlementWindow::claimNextUnscored(bool byWorker)
+inline SettlementSlot* SolutionSettlementWindow::claimNextUnscored(unsigned long long limit, unsigned long long& counter)
 {
     LockGuard guard(_lock);
-    if (_cursor >= _tail)
+    if (_cursor >= _tail || _cursor >= limit)
     {
         return nullptr;
     }
     SettlementSlot* slot = &slotAt(_cursor);
     _cursor++;
-    if (byWorker)
-    {
-        _stats.scoredByWorker++;
-    }
-    else
-    {
-        _stats.scoredByDrain++;
-    }
+    counter++;
     return slot;
 }
 
@@ -429,7 +425,7 @@ inline void SolutionSettlementWindow::scoreSlot(SettlementSlot& slot, unsigned l
 
 inline bool SolutionSettlementWindow::workerStep(unsigned long long processorNumber)
 {
-    SettlementSlot* slot = claimNextUnscored(true);
+    SettlementSlot* slot = claimNextUnscored(NO_CLAIM_LIMIT, _stats.scoredByWorker);
     if (slot == nullptr)
     {
         return false;
@@ -516,16 +512,13 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
     const unsigned long long first = entry.startIdx;
     const unsigned long long end = first + entry.count;
 
-    // Slots no worker has taken yet are scored here. Moving the cursor past the run first means no
-    // worker can take one of them afterwards.
-    unsigned long long claimedFrom = end;
+    // Score the run's unclaimed slots alongside the workers, through the same cursor, until the
+    // cursor is past the run.
+    SettlementSlot* claimed = claimNextUnscored(end, _stats.scoredInline);
+    while (claimed != nullptr)
     {
-        LockGuard guard(_lock);
-        if (_cursor < end)
-        {
-            claimedFrom = _cursor;
-            _cursor = end;
-        }
+        scoreSlot(*claimed, processorNumber);
+        claimed = claimNextUnscored(end, _stats.scoredInline);
     }
 
     for (unsigned long long i = first; i < end; i++)
@@ -536,20 +529,11 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
 
         if (!slot.scored)
         {
-            if (i >= claimedFrom)
+            // A worker holds it and is at most one score away.
+            _stats.stalledOnWorker++;
+            while (!slot.scored)
             {
-                scoreSlot(slot, processorNumber);
-                _stats.scoredInline++;
-            }
-            else
-            {
-                // A worker holds it and is at most one score away. Counted apart from scoredInline:
-                // it stalls the tick processor too.
-                _stats.stalledOnWorker++;
-                while (!slot.scored)
-                {
-                    _mm_pause();
-                }
+                _mm_pause();
             }
         }
 
@@ -572,11 +556,11 @@ inline void SolutionSettlementWindow::settleOneTick(unsigned int tick, unsigned 
 inline void SolutionSettlementWindow::drainAll(unsigned long long processorNumber)
 {
     // Score alongside the workers; with them parked this is the only scorer.
-    SettlementSlot* slot = claimNextUnscored(false);
+    SettlementSlot* slot = claimNextUnscored(NO_CLAIM_LIMIT, _stats.scoredByDrain);
     while (slot != nullptr)
     {
         scoreSlot(*slot, processorNumber);
-        slot = claimNextUnscored(false);
+        slot = claimNextUnscored(NO_CLAIM_LIMIT, _stats.scoredByDrain);
     }
     while (unscoredCount() > 0)
     {
