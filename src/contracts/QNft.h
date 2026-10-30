@@ -233,6 +233,8 @@ struct QNFT : public ContractBase
 		Burn,
 		/** @brief Burn the entire invocation reward into the execution reserve. */
 		FundReserve,
+		/** @brief Register an existing asset identity for mintFee without issuing or moving its units. */
+		RegisterAsset,
 	};
 
 	/**
@@ -297,11 +299,11 @@ struct QNFT : public ContractBase
 		Mutable
 	};
 
-	/** @brief Token log identifiers, disjoint from command and market actions. */
+	/** @brief Token actions interpreted within the EventKind discriminator. */
 	enum class TokenEventType : uint32
 	{
 		/** @brief One ownership balance change, including issuance and burning. */
-		TransferSingle = 0x10000,
+		TransferSingle = 0,
 
 		/** @brief Current metadata URI for an item. */
 		URI
@@ -352,13 +354,22 @@ struct QNFT : public ContractBase
 		bit externalTransfersDisabled;
 	};
 
-	/**
-	 * @brief Canonical NFT metadata and fixed edition supply.
-	 * @note The asset identity is (QNFT issuer, assetName); metadata is shared by every unit of the edition.
-	 * @note Issued item IDs are never recycled.
+	/** @brief Distinguish QNFT issuance from registration of a pre-existing asset. */
+	enum class ItemOrigin : uint8
+	{
+		/** @brief Asset issued by QNFT; supply records its original edition size. */
+		NativeMint = 0,
+		/** @brief Pre-existing asset pair whose identity persists across external reissuance. */
+		RegisteredAsset,
+	};
+
+	/** @brief Permanent asset identity and shared metadata; item IDs are never recycled.
+	 * @note supply is the initial mint quantity or registration snapshot, not current live supply.
 	 */
 	struct Item
 	{
+		/** @brief Permanent native issuer; independent of the collection creator. */
+		id issuer;
 		/** @brief Immutable collection creator, including when an administrator issues this item. */
 		id creator;
 
@@ -371,16 +382,16 @@ struct QNFT : public ContractBase
 		/** @brief URI and content digest for this object. */
 		Metadata metadata;
 
-		/** @brief Original fixed edition size in native asset units. */
+		/** @brief Original minted quantity or immutable live-supply snapshot at registration. */
 		sint64 supply;
 
-		/** @brief Local burn counter; GetItem derives total burns from the ledger. */
+		/** @brief Native-mint burn counter; unavailable and zero for registered assets. */
 		sint64 burned;
 
 		/** @brief Units awaiting delivery to the recorded beneficiary. */
 		sint64 reserved;
 
-		/** @brief Packed seven-character native asset name under the QNFT issuer. */
+		/** @brief Packed canonical native asset name; identity includes issuer. */
 		uint64 assetName;
 
 		/** @brief IPO share asset under NULL_ID; zero disables sale dividends. Immutable after mint. */
@@ -403,6 +414,8 @@ struct QNFT : public ContractBase
 
 		/** @brief Nonzero once metadata changes are permanently disabled. */
 		bit frozen;
+		/** @brief Allocation source determining whether cumulative burns can be reported. */
+		ItemOrigin origin;
 	};
 
 	/**
@@ -812,6 +825,8 @@ struct QNFT : public ContractBase
 	 */
 	struct StateData
 	{
+		/** @brief Permanent asset identities, including extinct and reissued external assets. */
+		HashMap<id, uint32, QNFT_MAX_ITEMS * 2> registeredAssets;
 		/** @brief Rental collateral remains in the native owner account; these registries only lock quantities. */
 		HashMap<uint64, RentalOffer, QNFT_MAX_RENTAL_OFFERS * 2> rentalOffers;
 		/** @brief Retained rental records keyed by stable rental ID; ended liabilities remain until cleared. */
@@ -997,7 +1012,7 @@ struct QNFT : public ContractBase
 	 */
 	struct OperationResult
 	{
-		/** @brief Packed seven-character native asset name under the QNFT issuer. */
+		/** @brief Packed canonical native asset name; identity includes issuer. */
 		uint64 assetName;
 
 		/** @brief Number of native asset units requested or returned. */
@@ -1347,8 +1362,8 @@ struct QNFT : public ContractBase
 	 */
 	struct GetConfig_output
 	{
-		/** @brief Common native asset issuer identity. */
-		id issuer;
+		/** @brief Issuer used for new QNFT native mints. */
+		id mintIssuer;
 
 		/** @brief Persistent state size in bytes. */
 		uint64 stateBytes;
@@ -1601,10 +1616,11 @@ struct QNFT : public ContractBase
 	 */
 	struct MarketEvent
 	{
-		// The core logger requires the contract index and 32-bit event type first.
-
 		/** @brief Required first log field identifying QNFT. */
 		uint32 contractIndex;
+
+		/** @brief Payload discriminator at byte offset four; action values are local to this kind. */
+		EventKind kind;
 
 		/** @brief Shop action recorded by this event. */
 		MarketAction type;
@@ -1640,9 +1656,11 @@ struct QNFT : public ContractBase
 	/** @brief ERC-1155-style ownership movement in the native Qubic log format. */
 	struct TransferSingleEvent
 	{
-		// The logger requires this contract/type prefix before the address fields.
 		/** @brief Contract emitting this log. */
 		uint32 contractIndex;
+
+		/** @brief Payload discriminator at byte offset four; action values are local to this kind. */
+		EventKind kind;
 
 		/** @brief TransferSingle discriminator. */
 		TokenEventType type;
@@ -1671,6 +1689,9 @@ struct QNFT : public ContractBase
 	{
 		/** @brief Contract emitting this log. */
 		uint32 contractIndex;
+
+		/** @brief Payload discriminator at byte offset four; action values are local to this kind. */
+		EventKind kind;
 
 		/** @brief URI discriminator. */
 		TokenEventType type;
@@ -1713,6 +1734,8 @@ struct QNFT : public ContractBase
 	/** @brief Event data emitted only after a successful ledger movement. */
 	struct TransferAsset_locals
 	{
+		/** @brief Native identity used for the current ledger operation. */
+		Asset asset;
 		/** @brief Owner/type pair used to check rental reservations before moving native units. */
 		TransferableBalance_input rentalBalanceInput;
 		/** @brief Effective reservations and available holdings returned by the balance helper. */
@@ -1735,10 +1758,11 @@ struct QNFT : public ContractBase
 	 */
 	struct Event
 	{
-		// The core logger requires the contract index and 32-bit event type first.
-
 		/** @brief Required first log field identifying QNFT. */
 		uint32 contractIndex;
+
+		/** @brief Payload discriminator at byte offset four; action values are local to this kind. */
+		EventKind kind;
 
 		/** @brief NFT operation recorded by this event. */
 		Operation type;
@@ -1909,6 +1933,10 @@ struct QNFT : public ContractBase
 	 */
 	struct Lookup_locals
 	{
+		/** @brief Zero-padded issuer/name pair hashed for the permanent asset index. */
+		Asset key;
+		/** @brief K12 digest of the canonical full asset identity. */
+		id digest;
 		/** @brief Digit-encoding scratch reused to construct or verify the canonical native asset name. */
 		AssetNameScratch nameScratch;
 
@@ -2082,18 +2110,18 @@ struct QNFT : public ContractBase
 	/** @brief Listing persistence returns no additional result. */
 	using CommitListingFill_output = NoData;
 
-	/** @brief Complete item snapshot after successful core issuance and capacity validation. */
-	using CommitIssuedItem_input = Item;
+	/** @brief Validated item snapshot ready for permanent registry allocation. */
+	using CommitItem_input = Item;
 
 	/** @brief Identity assigned to the newly registered item. */
-	struct CommitIssuedItem_output
+	struct CommitItem_output
 	{
 		/** @brief Newly allocated registry index. */
 		uint32 itemId;
 	};
 
 	/** @brief Collection counters updated together with the new registry entry. */
-	struct CommitIssuedItem_locals
+	struct CommitItem_locals
 	{
 		/** @brief Latest destination collection record. */
 		Collection collection;
@@ -2204,7 +2232,7 @@ struct QNFT : public ContractBase
 		TransferAsset_output transferResult;
 
 		/** @brief Registry identity returned after committing the issued item. */
-		CommitIssuedItem_output committedItem;
+		CommitItem_output committedItem;
 
 		/** @brief Current URI to announce after committing metadata. */
 		EmitUri_input uriEvent;
@@ -2247,6 +2275,101 @@ struct QNFT : public ContractBase
 
 		/** @brief Operation result and settlement details. */
 		ExecuteMint_output operationOutput;
+	};
+
+	/** @brief Register a whole existing asset type without transferring or issuing units. */
+	struct RegisterAsset_input
+	{
+		/** @brief Existing nonzero-issuer asset with zero decimals and positive live supply; caller must be its issuer. */
+		Asset asset;
+		/** @brief Shop royalty recipient; NULL_ID disables the effective royalty. */
+		id royaltyReceiver;
+		/** @brief Shared URI and nonzero content hash for all existing and future units of this identity. */
+		Metadata metadata;
+		/** @brief IPO share name under NULL_ID; zero disables sale dividends together with dividendBps. */
+		uint64 dividendAssetName;
+		/** @brief Existing Open collection managed by the calling issuer as creator or administrator. */
+		uint32 collectionId;
+		/** @brief Shop royalty rate in basis points, from zero to QNFT_BPS_DENOMINATOR. */
+		uint16 royaltyBps;
+		/** @brief Immutable IPO-holder share of gross shop sales in basis points; subject to combined payout limits. */
+		uint16 dividendBps;
+		/** @brief Initial metadata mutability; Immutable freezes metadata at registration. */
+		Policy policy;
+	};
+
+	using RegisterAsset_output = OperationResult;
+	using ValidateRegisterAsset_input = RegisterAsset_input;
+
+	/** @brief Validated item snapshot and permanent index key; usable only when code is Ok. */
+	struct ValidateRegisterAsset_output
+	{
+		/** @brief Prepared registry item; supply is the live quantity at registration, with no units reserved for delivery. */
+		Item item;
+		/** @brief K12 digest of the canonical full asset identity. */
+		id digest;
+		/** @brief Operation status; other result fields are meaningful only on Ok. */
+		Code code;
+	};
+
+	/** @brief Read-only registration checks before any registry allocation or fee retention. */
+	struct ValidateRegisterAsset_locals
+	{
+		/** @brief Only royalty and dividend fields are populated for the shared payout validator; mint validation is not invoked. */
+		Mint_input terms;
+		/** @brief Reusable URI-validation scratch for canonical termination and printable bytes. */
+		MetadataValidationScratch metadataScratch;
+		/** @brief Collection snapshot used to check authority and item quota or persist the issuedItems increment. */
+		Collection collection;
+		/** @brief Zero-padded issuer/name pair hashed for the permanent asset index. */
+		Asset key;
+		/** @brief Read-only iterator positioned at the exact native issuance before reading decimal precision. */
+		AssetIssuanceIterator issuance;
+		/** @brief Exact issuer/name filter; wildcard matching is disabled. */
+		AssetIssuanceSelect selection;
+		/** @brief Full asset identity checked against native mints and registered types. */
+		Lookup_input lookup;
+		/** @brief Lookup result; itemId is usable only when valid is true. */
+		Lookup_output found;
+		/** @brief Item ID occupying the digest slot; any occupied slot prevents registration, including hash collisions. */
+		uint32 existing;
+		/** @brief Shared sale-allocation validation result; failure prevents registration. */
+		Code dividendCode;
+	};
+
+	using ExecuteRegisterAsset_input = RegisterAsset_input;
+	using ExecuteRegisterAsset_output = ExecuteMint_output;
+
+	/** @brief Validated registration and publication buffers; native ownership is never modified. */
+	struct ExecuteRegisterAsset_locals
+	{
+		/** @brief Read-only preflight result carrying the item snapshot, index digest and status. */
+		ValidateRegisterAsset_output validated;
+		/** @brief Metadata announcement emitted only after the permanent registry entry is committed. */
+		EmitUri_input uriEvent;
+		/** @brief Empty acknowledgement from URI event publication. */
+		EmitUri_output uriResult;
+		/** @brief Permanent item identity returned by the shared registry commit. */
+		CommitItem_output committedItem;
+	};
+
+	using RegisterAsset_locals = Mint_locals;
+	using GetItemByAsset_input = Lookup_input;
+
+	/** @brief Permanent registry lookup result, independent of current live supply. */
+	struct GetItemByAsset_output
+	{
+		/** @brief Operation status; other result fields are meaningful only on Ok. */
+		Code code;
+		/** @brief Permanent item identifier, meaningful only when code is Ok; zero is a valid ID. */
+		uint32 itemId;
+	};
+
+	/** @brief Internal lookup result used to form the public asset-identity response. */
+	struct GetItemByAsset_locals
+	{
+		/** @brief Lookup result; itemId is usable only when valid is true. */
+		Lookup_output found;
 	};
 
 	/** @brief Use the dedicated public arguments for Transfer. */
@@ -2811,6 +2934,9 @@ struct QNFT : public ContractBase
 	{
 		/** @brief QNFT contract index used to identify this native log record. */
 		uint32 contractIndex;
+
+		/** @brief Payload discriminator at byte offset four; action values are local to this kind. */
+		EventKind kind;
 		/** @brief Market event discriminator; SaleDividend identifies the immutable sale allocation. */
 		MarketAction type;
 		/** @brief Monotonic shop listing identifier tying the event to a completed purchase. */
@@ -3222,6 +3348,9 @@ struct QNFT : public ContractBase
 		/** @brief Required first field identifying QNFT. */
 		uint32 contractIndex;
 
+		/** @brief Payload discriminator at byte offset four; action values are local to this kind. */
+		EventKind kind;
+
 		/** @brief Proposal, vote or application action. */
 		GovernanceAction action;
 
@@ -3582,11 +3711,9 @@ struct QNFT : public ContractBase
 		FinishCommand_output finishOutput;
 	};
 
-	/** @brief Native protocol version and capability limits; does not advertise Ethereum ABI compatibility. */
+	/** @brief Native protocol version and encoding limits; does not advertise Ethereum ABI compatibility. */
 	struct GetProtocolInfo_output
 	{
-		/** @brief Bit mask of native integration features; unknown bits must be ignored. */
-		uint64 capabilities;
 		/** @brief Largest allocatable token ID; does not imply that this ID has been issued. */
 		uint64 maxTokenId;
 		/** @brief Protocol generation identifying incompatible native interfaces. */
@@ -3778,6 +3905,8 @@ struct QNFT : public ContractBase
 	/** @brief Live-supply validation and effective royalty rate for a read-only quote. */
 	struct RoyaltyInfo_locals
 	{
+		/** @brief Item snapshot used to validate and quote its payout terms. */
+		Item item;
 		/** @brief Global live-supply response used to reject unknown or fully burned types. */
 		TotalSupply_output supply;
 		/** @brief Token-type ID whose live supply is checked before quoting royalties. */
@@ -3789,6 +3918,8 @@ struct QNFT : public ContractBase
 	/** @brief Live-supply validation for the shareholder allocation quote. */
 	struct DividendInfo_locals
 	{
+		/** @brief Item snapshot used to validate and quote its payout terms. */
+		Item item;
 		/** @brief Live global supply result used to reject unknown or fully burned token types. */
 		TotalSupply_output supply;
 		/** @brief Item identifier passed to the live ledger supply query. */
@@ -3943,6 +4074,8 @@ struct QNFT : public ContractBase
 	/** @brief Cumulative duplicate-ID quantities and rental reservations for batch preflight. */
 	struct ValidateBatchBalance_locals
 	{
+		/** @brief Registry snapshot used for validation or committed after the corresponding native operation. */
+		Item item;
 		/** @brief Effective reservations and available holdings returned by the balance helper. */
 		RentalBalance_output rentalBalance;
 		/** @brief Owner/type pair used to check rental reservations before moving native units. */
@@ -4295,6 +4428,8 @@ struct QNFT : public ContractBase
 	/** @brief Lender/type traversal used to subtract effective reservations from local holdings. */
 	struct TransferableBalance_locals
 	{
+		/** @brief Native identity used for the current ledger operation. */
+		Asset asset;
 		/** @brief Zero-initialized owner/type key material used consistently for rental indexes. */
 		RentalBalance_input keyInput;
 		/** @brief K12 digest of participant identity and token type for reservation/index lookup. */
@@ -4314,6 +4449,8 @@ struct QNFT : public ContractBase
 	/** @brief Owner/type and renter/type traversal for effective holdings and usage quantities. */
 	struct RentalBalance_locals
 	{
+		/** @brief Native identity used for the current ledger operation. */
+		Asset asset;
 		/** @brief Zero-initialized owner/type key material used consistently for rental indexes. */
 		RentalBalance_input keyInput;
 		/** @brief K12 digest of participant identity and token type for reservation/index lookup. */
@@ -4976,6 +5113,17 @@ struct QNFT : public ContractBase
 	};
 
 protected:
+	/** @brief Extract native identity without copying metadata or payout configuration. */
+	static Asset GetItemAsset(const Item& item)
+	{
+		return Asset{.issuer = item.issuer, .assetName = item.assetName};
+	}
+
+	/** @brief Match the full ledger identity and issuance origin of an allocated item. */
+	static bool MatchesItemAsset(const Item& item, const Asset& asset, ItemOrigin origin)
+	{
+		return item.issuer == asset.issuer && item.assetName == asset.assetName && item.origin == origin;
+	}
 
 	/**
 	 * @brief Validate printable, nonempty, zero-padded metadata URIs.
@@ -5004,6 +5152,12 @@ protected:
 		}
 
 		return locals.terminated;
+	}
+
+	/** @brief Shared metadata and policy checks for newly allocated registry items. */
+	static bool CheckItemMetadata(const Metadata& metadata, Policy policy, uint16 royaltyBps, MetadataValidationScratch& scratch)
+	{
+		return metadata.contentHash != NULL_ID && policy <= Policy::Mutable && royaltyBps <= QNFT_BPS_DENOMINATOR && CheckMetadata(metadata, scratch);
 	}
 
 	/**
@@ -5097,7 +5251,6 @@ protected:
 	}
 
 public:
-
 	/**
 	 * @brief Validate one governed variable without permitting access to the developer's share.
 	 */
@@ -5126,7 +5279,6 @@ public:
 	}
 
 protected:
-
 	/** @brief Bound the full gross-price deductions before accepting a listing or purchase. */
 	static bool validSaleRates(const Item& item, uint32 shopFeeBps)
 	{
@@ -5153,7 +5305,6 @@ protected:
 	}
 
 public:
-
 	/** @brief Reject invalid dates and the entire 2022-04-13 bootstrap day; does not prove clock synchronization. */
 	static bool IsTimeValid(const DateAndTime& time)
 	{
@@ -5192,7 +5343,6 @@ public:
 	}
 
 protected:
-
 	/** @brief Expose Unix microseconds so consumers can interpret expiry without DateAndTime internals. */
 	static void DescribeRental(const Rental& input, RentalView& output)
 	{
@@ -5246,7 +5396,8 @@ protected:
 			return;
 		}
 
-		if (qpi.numberOfPossessedShares(state.get().items.get(locals.itemId).assetName, SELF, input.owner, input.owner, SELF_INDEX, SELF_INDEX) <
+		locals.item = state.get().items.get(locals.itemId);
+		if (qpi.numberOfPossessedShares(locals.item.assetName, locals.item.issuer, input.owner, input.owner, SELF_INDEX, SELF_INDEX) <
 		    locals.cumulative)
 		{
 			output = Code::InsufficientBalance;
@@ -5291,7 +5442,7 @@ protected:
 			return;
 		}
 
-		locals.balance = qpi.numberOfPossessedShares(locals.item.assetName, SELF, input.owner, input.owner, SELF_INDEX, SELF_INDEX);
+		locals.balance = qpi.numberOfPossessedShares(locals.item.assetName, locals.item.issuer, input.owner, input.owner, SELF_INDEX, SELF_INDEX);
 		if (locals.balance < input.quantity)
 		{
 			output.code = Code::InsufficientBalance;
@@ -5509,6 +5660,114 @@ protected:
 		output.code = Code::Ok;
 	}
 
+	/** @brief Validate registration without modifying the registry or the native ledger. */
+	PRIVATE_FUNCTION_WITH_LOCALS(ValidateRegisterAsset)
+	{
+		if (input.asset.issuer == NULL_ID)
+		{
+			output.code = Code::InvalidInput;
+			return;
+		}
+
+		if (!CheckItemMetadata(input.metadata, input.policy, input.royaltyBps, locals.metadataScratch))
+		{
+			output.code = Code::InvalidInput;
+			return;
+		}
+
+		if (input.collectionId >= state.get().collectionCount)
+		{
+			output.code = Code::NotFound;
+			return;
+		}
+
+		locals.collection = state.get().collections.get(input.collectionId);
+		if (qpi.invocator() != input.asset.issuer || !IsCollectionManager(locals.collection, qpi.invocator()))
+		{
+			output.code = Code::Unauthorized;
+			return;
+		}
+
+		if (state.get().mintingStatus.get(input.collectionId) != MintingStatus::Open)
+		{
+			output.code = Code::Conflict;
+			return;
+		}
+
+		locals.key.issuer = input.asset.issuer;
+		locals.key.assetName = input.asset.assetName;
+		output.digest = qpi.K12(locals.key);
+		locals.lookup.asset = locals.key;
+		CALL(Lookup, locals.lookup, locals.found);
+		if (locals.found.valid || state.get().registeredAssets.get(output.digest, locals.existing))
+		{
+			output.code = Code::Conflict;
+			return;
+		}
+
+		locals.selection = AssetIssuanceSelect::byIssuer(input.asset.issuer);
+		locals.selection.assetName = input.asset.assetName;
+		locals.selection.anyName = false;
+		locals.issuance.begin(locals.selection);
+		if (locals.issuance.reachedEnd())
+		{
+			output.code = Code::NotFound;
+			return;
+		}
+
+		if (locals.issuance.numberOfDecimalPlaces() != 0)
+		{
+			output.code = Code::InvalidInput;
+			return;
+		}
+
+		output.item.supply = qpi.numberOfShares(input.asset);
+		if (output.item.supply <= 0)
+		{
+			output.code = Code::InvalidInput;
+			return;
+		}
+
+		locals.terms.royaltyReceiver = input.royaltyReceiver;
+		locals.terms.royaltyBps = input.royaltyBps;
+		locals.terms.dividendAssetName = input.dividendAssetName;
+		locals.terms.dividendBps = input.dividendBps;
+		CALL(CheckSaleDividend, locals.terms, locals.dividendCode);
+		if (locals.dividendCode != Code::Ok)
+		{
+			output.code = locals.dividendCode;
+			return;
+		}
+
+		if (state.get().itemCount >= QNFT_MAX_ITEMS || remainingCollectionItems(locals.collection) == 0 ||
+		    state.get().registeredAssets.population() >= state.get().registeredAssets.capacity())
+		{
+			output.code = Code::Capacity;
+			return;
+		}
+
+		if (qpi.invocationReward() < state.get().mintFee)
+		{
+			output.code = Code::InsufficientFee;
+			return;
+		}
+
+		output.item.issuer = input.asset.issuer;
+		output.item.assetName = input.asset.assetName;
+		output.item.creator = locals.collection.creator;
+		output.item.collectionId = input.collectionId;
+		output.item.metadata = input.metadata;
+		output.item.metadataVersion = 1;
+		output.item.policy = input.policy;
+		output.item.frozen = input.policy == Policy::Immutable;
+		output.item.royaltyReceiver = input.royaltyReceiver;
+		output.item.royaltyBps = input.royaltyBps;
+		output.item.dividendAssetName = input.dividendAssetName;
+		output.item.dividendBps = input.dividendBps;
+		output.item.origin = ItemOrigin::RegisteredAsset;
+		output.code = Code::Ok;
+	}
+
 	PRIVATE_FUNCTION_WITH_LOCALS(ValidateMint)
 	{
 		CALL(CheckSaleDividend, input, locals.dividendCode);
@@ -5532,25 +5791,7 @@ protected:
 			return;
 		}
 
-		if (input.metadata.contentHash == NULL_ID)
-		{
-			output.result.code = Code::InvalidInput;
-			return;
-		}
-
-		if (input.policy > Policy::Mutable)
-		{
-			output.result.code = Code::InvalidInput;
-			return;
-		}
-
-		if (input.royaltyBps > QNFT_BPS_DENOMINATOR)
-		{
-			output.result.code = Code::InvalidInput;
-			return;
-		}
-
-		if (!CheckMetadata(input.metadata, locals.metadataScratch))
+		if (!CheckItemMetadata(input.metadata, input.policy, input.royaltyBps, locals.metadataScratch))
 		{
 			output.result.code = Code::InvalidInput;
 			return;
@@ -5613,7 +5854,18 @@ protected:
 	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(Lookup)
 	{
-		// Reject a different issuer even when its asset name matches a registered NFT.
+		locals.key.issuer = input.asset.issuer;
+		locals.key.assetName = input.asset.assetName;
+		locals.digest = qpi.K12(locals.key);
+		if (state.get().registeredAssets.get(locals.digest, output.itemId))
+		{
+			output.valid = output.itemId < state.get().itemCount &&
+			               MatchesItemAsset(state.get().items.get(output.itemId), input.asset, ItemOrigin::RegisteredAsset);
+			return;
+		}
+
+		output.itemId = 0;
+		// Native names are meaningful only under this contract's issuer.
 		if (input.asset.issuer != SELF)
 		{
 			return;
@@ -5652,7 +5904,8 @@ protected:
 
 		// A well-formed name must also refer to an allocated item with exactly this stored asset name.
 		// The caller may use itemId only when valid is true; ownership and balances are checked separately.
-		output.valid = output.itemId < state.get().itemCount && state.get().items.get(output.itemId).assetName == input.asset.assetName;
+		output.valid = output.itemId < state.get().itemCount &&
+		               MatchesItemAsset(state.get().items.get(output.itemId), input.asset, ItemOrigin::NativeMint);
 	}
 
 	/** @brief Return editable metadata state only to the collection creator or current administrator. */
@@ -5908,8 +6161,9 @@ protected:
 		locals.keyInput = input;
 		locals.key = qpi.K12(locals.keyInput);
 		state.get().offeredRentalQuantities.get(locals.key, locals.offeredQuantity);
+		locals.asset = GetItemAsset(state.get().items.get(input.itemId));
 		output.availableQuantity =
-		    qpi.numberOfPossessedShares(state.get().items.get(input.itemId).assetName, SELF, input.owner, input.owner, SELF_INDEX, SELF_INDEX) -
+		    qpi.numberOfPossessedShares(locals.asset.assetName, locals.asset.issuer, input.owner, input.owner, SELF_INDEX, SELF_INDEX) -
 		    locals.offeredQuantity;
 
 		locals.now = qpi.now();
@@ -5957,8 +6211,9 @@ protected:
 		locals.keyInput.itemId = input.itemId;
 		locals.key = qpi.K12(locals.keyInput);
 		state.get().offeredRentalQuantities.get(locals.key, output.offeredQuantity);
+		locals.asset = GetItemAsset(state.get().items.get(input.itemId));
 		output.managedQuantity =
-		    qpi.numberOfPossessedShares(state.get().items.get(input.itemId).assetName, SELF, input.owner, input.owner, SELF_INDEX, SELF_INDEX);
+		    qpi.numberOfPossessedShares(locals.asset.assetName, locals.asset.issuer, input.owner, input.owner, SELF_INDEX, SELF_INDEX);
 
 		locals.index = state.get().lentRentals.headIndex(locals.key);
 		while (locals.index != NULL_INDEX)
@@ -6042,7 +6297,7 @@ protected:
 			return;
 		}
 
-		locals.asset = Asset{.issuer = SELF, .assetName = state.get().items.get(input.itemId).assetName};
+		locals.asset = GetItemAsset(state.get().items.get(input.itemId));
 		output.balance = qpi.numberOfShares(locals.asset, AssetOwnershipSelect::byOwner(input.owner), AssetPossessionSelect::any());
 	}
 
@@ -6083,7 +6338,7 @@ protected:
 			return;
 		}
 
-		locals.asset = Asset{.issuer = SELF, .assetName = state.get().items.get(input.itemId).assetName};
+		locals.asset = GetItemAsset(state.get().items.get(input.itemId));
 		output.supply = qpi.numberOfShares(locals.asset);
 	}
 
@@ -6120,14 +6375,15 @@ protected:
 			return;
 		}
 
-		locals.rate = effectiveRoyaltyBps(state.get().items.get(input.itemId));
+		locals.item = state.get().items.get(input.itemId);
+		locals.rate = effectiveRoyaltyBps(locals.item);
 		if (locals.rate > QNFT_BPS_DENOMINATOR)
 		{
 			output.code = Code::Conflict;
 			return;
 		}
 
-		output.receiver = state.get().items.get(input.itemId).royaltyReceiver;
+		output.receiver = locals.item.royaltyReceiver;
 		output.royaltyAmount = calculateFeeShare(input.salePrice, locals.rate);
 		output.code = Code::Ok;
 	}
@@ -6154,25 +6410,24 @@ protected:
 			return;
 		}
 
-		if (state.get().items.get(input.itemId).dividendBps > QNFT_BPS_DENOMINATOR ||
-		    (state.get().items.get(input.itemId).dividendBps == 0) != (state.get().items.get(input.itemId).dividendAssetName == 0))
+		locals.item = state.get().items.get(input.itemId);
+		if (locals.item.dividendBps > QNFT_BPS_DENOMINATOR ||
+		    (locals.item.dividendBps == 0) != (locals.item.dividendAssetName == 0))
 		{
 			output.code = Code::Conflict;
 			return;
 		}
 
-		output.dividendAssetName = state.get().items.get(input.itemId).dividendAssetName;
-		output.dividendBps = state.get().items.get(input.itemId).dividendBps;
+		output.dividendAssetName = locals.item.dividendAssetName;
+		output.dividendBps = locals.item.dividendBps;
 		output.amountPerShare = QPI::div(calculateFeeShare(input.salePrice, output.dividendBps), static_cast<sint64>(NUMBER_OF_COMPUTORS));
 		output.shareholderAmount = smul(output.amountPerShare, static_cast<sint64>(NUMBER_OF_COMPUTORS));
 		output.code = Code::Ok;
 	}
 
-	/** @brief Describe the native protocol; capability bits never claim Ethereum ABI or receiver hooks. */
+	/** @brief Describe the native protocol version and encoding limits. */
 	PUBLIC_FUNCTION(GetProtocolInfo)
 	{
-		// Native features include rentals (2048) and mutable collection transfer policy (4096).
-		output.capabilities = 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | 512 | 1024 | 2048 | 4096;
 		output.maxTokenId = QNFT_MAX_ITEMS - 1;
 		output.majorVersion = 1;
 		output.minorVersion = 0;
@@ -6190,7 +6445,7 @@ protected:
 			return;
 		}
 
-		locals.asset = Asset{.issuer = SELF, .assetName = state.get().items.get(input.itemId).assetName};
+		locals.asset = GetItemAsset(state.get().items.get(input.itemId));
 		output.supply = qpi.numberOfShares(locals.asset);
 		output.managedSupply = qpi.numberOfShares(locals.asset, AssetOwnershipSelect::byManagingContract(SELF_INDEX));
 		output.code = Code::Ok;
@@ -6222,7 +6477,7 @@ protected:
 			return;
 		}
 
-		locals.asset = Asset{.issuer = SELF, .assetName = state.get().items.get(input.itemId).assetName};
+		locals.asset = GetItemAsset(state.get().items.get(input.itemId));
 		locals.iterator.begin(locals.asset);
 		while (!locals.iterator.reachedEnd() && locals.skipped < input.cursor)
 		{
@@ -6397,6 +6652,17 @@ protected:
 		}
 	}
 
+	/** @brief Resolve a permanent registry identity, including zero-supply assets. */
+	PUBLIC_FUNCTION_WITH_LOCALS(GetItemByAsset)
+	{
+		CALL(Lookup, input, locals.found);
+		output.code = locals.found.valid ? Code::Ok : Code::NotFound;
+		if (locals.found.valid)
+		{
+			output.itemId = locals.found.itemId;
+		}
+	}
+
 	/**
 	 * @brief Read issuance and metadata; derive network-wide burns from the current ledger.
 	 */
@@ -6410,9 +6676,9 @@ protected:
 		}
 
 		output.item = state.get().items.get(input.itemId);
-		if (output.item.supply > 0)
+		if (output.item.origin == ItemOrigin::NativeMint && output.item.supply > 0)
 		{
-			locals.asset = Asset{.issuer = SELF, .assetName = output.item.assetName};
+			locals.asset = Asset{.issuer = output.item.issuer, .assetName = output.item.assetName};
 			output.item.burned = output.item.supply - qpi.numberOfShares(locals.asset);
 		}
 
@@ -6453,7 +6719,7 @@ protected:
 			return;
 		}
 
-		locals.asset = Asset{.issuer = SELF, .assetName = state.get().items.get(input.itemId).assetName};
+		locals.asset = GetItemAsset(state.get().items.get(input.itemId));
 		locals.ownership = AssetOwnershipSelect::byOwner(input.owner);
 		locals.possession = AssetPossessionSelect::byPossessor(input.owner);
 		if (input.managingContract)
@@ -6533,7 +6799,7 @@ protected:
 	PUBLIC_FUNCTION(GetConfig)
 	{
 		// Expose allocated counts separately from capacity limits.
-		output.issuer = SELF;
+		output.mintIssuer = SELF;
 		output.stateBytes = sizeof(StateData);
 		output.collectionFee = state.get().collectionFee;
 		output.mintFee = state.get().mintFee;
@@ -6867,7 +7133,7 @@ protected:
 			return;
 		}
 
-		locals.asset = Asset{.issuer = SELF, .assetName = state.get().items.get(input.itemId).assetName};
+		locals.asset = GetItemAsset(state.get().items.get(input.itemId));
 		output.ownedQuantity = qpi.numberOfShares(locals.asset, AssetOwnershipSelect::byOwner(input.owner));
 		output.managedQuantity = locals.balance.managedQuantity;
 		output.offeredQuantity = locals.balance.offeredQuantity;
@@ -6897,7 +7163,7 @@ protected:
 
 		if (input.phase == UserNftPhase::Ownership)
 		{
-			locals.iterator.begin(input.user, SELF, input.cursor);
+			locals.iterator.beginAnyIssuer(input.user, input.cursor);
 			if (!locals.iterator.isValidCursor())
 			{
 				output.code = Code::InvalidInput;
@@ -7361,6 +7627,7 @@ protected:
 	/** @brief Publish immutable sale allocation terms and the amount owed at this purchase. */
 	PRIVATE_PROCEDURE_WITH_LOCALS(EmitSaleDividend)
 	{
+		input.kind = EventKind::Market;
 		locals.journalInput.kind = EventKind::Market;
 		locals.journalInput.action = static_cast<uint32>(MarketAction::SaleDividend);
 		locals.journalInput.reference = input.listingId;
@@ -7403,7 +7670,11 @@ protected:
 	PRIVATE_PROCEDURE(CommitBurn)
 	{
 		// The caller has already completed the native burn; failures never reach this persistence step.
-		input.item.burned += input.quantity;
+		if (input.item.origin == ItemOrigin::NativeMint)
+		{
+			input.item.burned += input.quantity;
+		}
+
 		state.mut().items.set(input.itemId, input.item);
 	}
 
@@ -7451,6 +7722,7 @@ protected:
 	/** @brief Write a Event payload using the QNFT information-log prefix. */
 	PRIVATE_PROCEDURE_WITH_LOCALS(EmitCommand)
 	{
+		input.kind = EventKind::Command;
 		// Copy command fields into the public journal before emitting the optional node log.
 		input.contractIndex = SELF_INDEX;
 		locals.journalInput.kind = EventKind::Command;
@@ -7467,6 +7739,7 @@ protected:
 	/** @brief Write a MarketEvent payload using the QNFT information-log prefix. */
 	PRIVATE_PROCEDURE_WITH_LOCALS(EmitMarket)
 	{
+		input.kind = EventKind::Market;
 		// Keep the listing reference and QU amount together so a sale can be reconstructed from the journal.
 		input.contractIndex = SELF_INDEX;
 		locals.journalInput.kind = EventKind::Market;
@@ -7484,6 +7757,7 @@ protected:
 	/** @brief Write a GovernanceEvent payload using the QNFT information-log prefix. */
 	PRIVATE_PROCEDURE_WITH_LOCALS(EmitGovernance)
 	{
+		input.kind = EventKind::Governance;
 		// Use the reference field for the fee variable and version for the native proposal slot.
 		input.contractIndex = SELF_INDEX;
 		locals.journalInput.kind = EventKind::Governance;
@@ -7500,6 +7774,7 @@ protected:
 	/** @brief Emit a committed movement before any later external call or refund. */
 	PRIVATE_PROCEDURE_WITH_LOCALS(EmitTransfer)
 	{
+		input.kind = EventKind::TransferSingle;
 		// Record the actual invocator as operator, including transfers performed under an approval.
 		input.contractIndex = SELF_INDEX;
 		input.type = TokenEventType::TransferSingle;
@@ -7541,8 +7816,9 @@ protected:
 		// Resolve the asset from the same item ID that will be recorded in the event.
 		if (input.quantity > 0)
 		{
-			output = qpi.transferShareOwnershipAndPossession(state.get().items.get(input.itemId).assetName, SELF, input.from, input.from,
-			                                                 input.quantity, input.to);
+			locals.asset = GetItemAsset(state.get().items.get(input.itemId));
+			output = qpi.transferShareOwnershipAndPossession(locals.asset.assetName, locals.asset.issuer, input.from, input.from, input.quantity,
+			                                                input.to);
 		}
 
 		if (output < 0)
@@ -7560,6 +7836,7 @@ protected:
 	/** @brief Announce the stored URI without interpreting its off-chain document. */
 	PRIVATE_PROCEDURE_WITH_LOCALS(EmitUri)
 	{
+		input.kind = EventKind::URI;
 		// Store the exact URI in the journal so readers do not depend on optional node logs.
 		input.contractIndex = SELF_INDEX;
 		input.type = TokenEventType::URI;
@@ -7789,21 +8066,53 @@ protected:
 	}
 
 	/**
-	 * @brief Append an issued item and advance global and collection issuance counters together.
-	 * @note Call once after successful core issuance, with capacity and collection validity already checked.
+	 * @brief Append an item and advance global and collection counters together.
+	 * @note Call once after validation and any required core issuance or external-asset index insertion.
 	 */
-	PRIVATE_PROCEDURE_WITH_LOCALS(CommitIssuedItem)
+	PRIVATE_PROCEDURE_WITH_LOCALS(CommitItem)
 	{
-		// The caller has completed all fallible validation; committing an issued asset must not be skipped.
+		// The caller has completed all fallible work; registry allocation must not be skipped.
 		output.itemId = state.get().itemCount;
 		state.mut().items.set(output.itemId, input);
 		++state.mut().itemCount;
 
-		// Count distinct assets and their original edition sizes, including units awaiting delivery.
+		// Every origin consumes an item slot; only native mints consume the lifetime unit quota.
 		locals.collection = state.get().collections.get(input.collectionId);
 		++locals.collection.issuedItems;
-		locals.collection.issuedUnits += input.supply;
+		if (input.origin == ItemOrigin::NativeMint)
+		{
+			locals.collection.issuedUnits += input.supply;
+		}
+
 		state.mut().collections.set(input.collectionId, locals.collection);
+	}
+
+	/** @brief Persist one permanent identity; no issuance or ownership mutation occurs. */
+	PRIVATE_PROCEDURE_WITH_LOCALS(ExecuteRegisterAsset)
+	{
+		CALL(ValidateRegisterAsset, input, locals.validated);
+		output.result.code = locals.validated.code;
+		if (output.result.code != Code::Ok)
+		{
+			return;
+		}
+
+		output.result.itemId = state.get().itemCount;
+		if (state.mut().registeredAssets.set(locals.validated.digest, output.result.itemId) == NULL_INDEX)
+		{
+			output.result.code = Code::Capacity;
+			return;
+		}
+
+		// Commit both identities without callbacks; registered units do not consume mint-unit quota.
+		CALL(CommitItem, locals.validated.item, locals.committedItem);
+		output.result.itemId = locals.committedItem.itemId;
+		output.result.quantity = locals.validated.item.supply;
+		output.result.assetName = input.asset.assetName;
+		output.fee = state.get().mintFee;
+		locals.uriEvent.itemId = output.result.itemId;
+		locals.uriEvent.uri = input.metadata.uri;
+		CALL(EmitUri, locals.uriEvent, locals.uriResult);
 	}
 
 	/**
@@ -7834,6 +8143,8 @@ protected:
 
 		// Persist issuance before attempting delivery: core does not roll back prior calls.
 		locals.item.assetName = locals.assetName;
+		locals.item.issuer = SELF;
+		locals.item.origin = ItemOrigin::NativeMint;
 		locals.item.creator = locals.collection.creator;
 		locals.item.royaltyReceiver = input.royaltyReceiver;
 		locals.item.royaltyBps = input.royaltyBps;
@@ -7847,7 +8158,7 @@ protected:
 		locals.item.collectionId = input.collectionId;
 		locals.item.reservedRecipient = input.receiver;
 		locals.item.reserved = input.quantity;
-		CALL(CommitIssuedItem, locals.item, locals.committedItem);
+		CALL(CommitItem, locals.item, locals.committedItem);
 
 		output.result.itemId = locals.committedItem.itemId;
 		locals.transferEvent.from = NULL_ID;
@@ -8064,7 +8375,7 @@ protected:
 			return;
 		}
 
-		if (qpi.numberOfPossessedShares(locals.item.assetName, SELF, input.owner, input.owner, SELF_INDEX, SELF_INDEX) < input.quantity)
+		if (qpi.numberOfPossessedShares(locals.item.assetName, locals.item.issuer, input.owner, input.owner, SELF_INDEX, SELF_INDEX) < input.quantity)
 		{
 			output.result.code = Code::InsufficientBalance;
 			return;
@@ -8079,7 +8390,7 @@ protected:
 			return;
 		}
 
-		locals.asset = Asset{.issuer = SELF, .assetName = locals.item.assetName};
+		locals.asset = Asset{.issuer = locals.item.issuer, .assetName = locals.item.assetName};
 
 		state.mut().exporting.set(input.itemId, true);
 		qpi.getEntity(SELF, locals.beforeExport);
@@ -8255,7 +8566,8 @@ protected:
 			return;
 		}
 
-		if (qpi.numberOfPossessedShares(locals.item.assetName, SELF, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.quantity)
+		if (qpi.numberOfPossessedShares(locals.item.assetName, locals.item.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) <
+		    input.quantity)
 		{
 			output.result.code = Code::InsufficientBalance;
 			return;
@@ -9677,6 +9989,19 @@ protected:
 		CALL(FinishCommand, locals.finishInput, output);
 	}
 
+	/** @brief Register an issuer-owned identity, charging mintFee and refunding excess QU. */
+	PUBLIC_PROCEDURE_WITH_LOCALS(RegisterAsset)
+	{
+		CALL(ExecuteRegisterAsset, input, locals.operationOutput);
+		locals.finishInput.operation = Operation::RegisterAsset;
+		locals.finishInput.domain = FailureDomain::Command;
+		locals.finishInput.collectionId = input.collectionId;
+		locals.finishInput.result = locals.operationOutput.result;
+		locals.finishInput.fee = locals.operationOutput.fee;
+		locals.finishInput.retainedAmount = locals.operationOutput.fee;
+		CALL(FinishCommand, locals.finishInput, output);
+	}
+
 	/**
 	 * @brief Issue a fixed edition and deliver it, preserving recoverable delivery failures.
 	 * @note Charges once per issued asset, not per unit; failed delivery is retried automatically on ticks.
@@ -9968,7 +10293,7 @@ protected:
 	 */
 	PRE_ACQUIRE_SHARES_WITH_LOCALS()
 	{
-		// Accept management only for positive quantities whose issuer and encoded name resolve to a registered item.
+		// Accept management only for positive quantities whose full issuer and name pair resolves to a registered item.
 		if (input.numberOfShares > 0)
 		{
 			locals.lookupInput.asset = input.asset;
@@ -10063,9 +10388,7 @@ protected:
 		state.mut().burnFeeBPS = QNFT_BURN_FEE_BPS;
 	}
 
-	/**
-	 * @brief Register procedures and read-only functions in separate, purpose-ordered groups.
-	 */
+	/** @brief Register public procedures and read-only functions without renumbering existing entries. */
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		// Procedures: collections and administration.
@@ -10079,6 +10402,7 @@ protected:
 		REGISTER_USER_PROCEDURE(Mint, 6);
 		REGISTER_USER_PROCEDURE(MintBatch, 7);
 		REGISTER_USER_PROCEDURE(MultiMint, 8);
+		REGISTER_USER_PROCEDURE(RegisterAsset, 29);
 
 		// Procedures: metadata.
 		REGISTER_USER_PROCEDURE(UpdateMetadata, 9);
@@ -10119,6 +10443,7 @@ protected:
 
 		// Functions: items and supply.
 		REGISTER_USER_FUNCTION(GetItem, 4);
+		REGISTER_USER_FUNCTION(GetItemByAsset, 36);
 		REGISTER_USER_FUNCTION(ListItems, 5);
 		REGISTER_USER_FUNCTION(Exists, 6);
 		REGISTER_USER_FUNCTION(TotalSupply, 7);

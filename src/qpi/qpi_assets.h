@@ -100,6 +100,11 @@ namespace QPI
 		// Asset name of current record
 		inline uint64 assetName() const;
 
+		/// Returns the decimal precision of the current issuance without changing the ledger.
+		/// @return Native signed decimal precision.
+		/// @pre reachedEnd() is false.
+		inline sint8 numberOfDecimalPlaces() const;
+
 		// Return asset (pair of issuer and asset name)
 		inline Asset asset() const
 		{
@@ -214,7 +219,7 @@ namespace QPI
 		inline uint16 possessionManagingContract() const;
 	};
 
-	// Iterator for positive ownership records of one owner and issuer, with bounded scanning.
+	// Iterator for positive ownership records of one owner, with optional issuer filtering and bounded scanning.
 	// CAUTION CORE DEVS: DOES NOT TAKE CARE OF LOCKING! (not relevant for contract devs)
 	class AssetOwnerIterator
 	{
@@ -223,11 +228,18 @@ namespace QPI
 		id _issuer;
 		uint32 _cursor;
 		uint32 _record;
+		bool _anyIssuer;
 		bool _done;
 
 	public:
 		// Initialize without scanning; cursor zero starts at the owner's hash bucket.
 		inline void begin(const id& owner, const id& issuer, uint32 cursor = 0);
+
+		/// Starts a bounded ownership scan across all issuers without reading or changing records.
+		/// @param owner Account whose positive ownership records are selected.
+		/// @param cursor Resume offset bound to the caller's snapshot tick.
+		/// @note Exact-issuer begin() still treats NULL_ID as an actual issuer.
+		inline void beginAnyIssuer(const id& owner, uint32 cursor = 0);
 
 		// Examine at most scanBudget slots; false may mean budget exhaustion rather than end.
 		inline bool next(uint32 scanBudget);

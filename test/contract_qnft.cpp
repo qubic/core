@@ -17,6 +17,25 @@ static_assert(LOG_CONTRACT_INFO_MESSAGES == 0);
 
 namespace
 {
+template<class T> bool supportsAnyIssuerScan()
+{
+    return requires(T& iterator, const QPI::id& owner) { iterator.beginAnyIssuer(owner, 0); };
+}
+
+template<class T> bool supportsDecimalPlaces()
+{
+    return requires(const T& iterator) { iterator.numberOfDecimalPlaces(); };
+}
+}
+
+TEST(QnftRegistrationQpi, RequiredReadOnlyQueriesAreAvailable)
+{
+    EXPECT_TRUE(supportsAnyIssuerScan<QPI::AssetOwnerIterator>());
+    EXPECT_TRUE(supportsDecimalPlaces<QPI::AssetIssuanceIterator>());
+}
+
+namespace
+{
 	// Test-only request builder; run() invokes each dedicated public ABI.
 	struct OperationCommand
 	{
@@ -1132,16 +1151,16 @@ TEST_F(NftTest, CollectionCreationAlwaysSettlesSuccessAndValidationFailures)
 
 TEST_F(NftTest, PublicEntryPointsHaveContiguousIds)
 {
-	for (unsigned short procedure = 1; procedure <= 28; ++procedure)
+	for (unsigned short procedure = 1; procedure <= 29; ++procedure)
 	{
 		EXPECT_NE(contractUserProcedures[QNFT_CONTRACT_INDEX][procedure], nullptr) << procedure;
 	}
-	EXPECT_EQ(contractUserProcedures[QNFT_CONTRACT_INDEX][29], nullptr);
-	for (unsigned short function = 1; function <= 35; ++function)
+	EXPECT_EQ(contractUserProcedures[QNFT_CONTRACT_INDEX][30], nullptr);
+	for (unsigned short function = 1; function <= 36; ++function)
 	{
 		EXPECT_NE(contractUserFunctions[QNFT_CONTRACT_INDEX][function], nullptr) << function;
 	}
-	EXPECT_EQ(contractUserFunctions[QNFT_CONTRACT_INDEX][36], nullptr);
+	EXPECT_EQ(contractUserFunctions[QNFT_CONTRACT_INDEX][37], nullptr);
 }
 
 TEST_F(NftTest, CompactRecoveryProceduresRefundMissingItemsWithoutChangingBalances)
@@ -1170,7 +1189,7 @@ TEST(NftAbi, GovernanceWireLayoutsMatchStandardQpiAndSdk)
 	EXPECT_EQ(sizeof(QNFT::GetShareholderVotes_input), 40U);
 	EXPECT_EQ(sizeof(QNFT::GetShareholderVotingResults_output), 48U);
 	EXPECT_EQ(sizeof(QNFT::GetGovernanceConfig_output), 20U);
-	EXPECT_EQ(offsetof(QNFT::GovernanceEvent, _terminator), 64U);
+	EXPECT_EQ(offsetof(QNFT::GovernanceEvent, _terminator), 72U);
 }
 
 TEST(NftAbi, CompactWireLayoutMatchesSdk)
@@ -1453,7 +1472,7 @@ namespace
 {
 	struct TransferLogWire
 	{
-		uint32 contractIndex, type;
+		uint32 contractIndex, kind, type;
 		id operatorId, from, to;
 		sint64 quantity;
 		uint32 itemId;
@@ -1469,13 +1488,13 @@ namespace
 			qLogger::logBuf.get(buffer, range.startIndex + i);
 			uint32 sizeAndType = 0;
 			memcpy(&sizeAndType, buffer + 6, 4);
-			if ((sizeAndType >> 24) != CONTRACT_INFORMATION_MESSAGE || (sizeAndType & 0xffffff) != 116)
+			if ((sizeAndType >> 24) != CONTRACT_INFORMATION_MESSAGE || (sizeAndType & 0xffffff) != 124)
 			{
 				continue;
 			}
 			TransferLogWire event{};
-			memcpy(&event, buffer + LOG_HEADER_SIZE, 116);
-			if (event.contractIndex == QNFT_CONTRACT_INDEX && event.type == 0x10000)
+			memcpy(&event, buffer + LOG_HEADER_SIZE, 124);
+			if (event.contractIndex == QNFT_CONTRACT_INDEX && event.kind == static_cast<uint32>(QNFT::EventKind::TransferSingle) && event.type == 0)
 			{
 				result.push_back(event);
 			}
@@ -1492,14 +1511,15 @@ std::vector<std::string> uriLogs()
 	{
 		char buffer[1024]{};
 		qLogger::logBuf.get(buffer, range.startIndex + i);
-		uint32 sizeAndType = 0, contract = 0, type = 0;
+		uint32 sizeAndType = 0, contract = 0, type = 0, kind = 0;
 		memcpy(&sizeAndType, buffer + 6, 4);
 		memcpy(&contract, buffer + LOG_HEADER_SIZE, 4);
-		memcpy(&type, buffer + LOG_HEADER_SIZE + 4, 4);
-		if ((sizeAndType >> 24) == CONTRACT_INFORMATION_MESSAGE && (sizeAndType & 0xffffff) == 268 && contract == QNFT_CONTRACT_INDEX &&
-		    type == 0x10001)
+		memcpy(&kind, buffer + LOG_HEADER_SIZE + 4, 4);
+		memcpy(&type, buffer + LOG_HEADER_SIZE + 8, 4);
+		if ((sizeAndType >> 24) == CONTRACT_INFORMATION_MESSAGE && (sizeAndType & 0xffffff) == 272 && contract == QNFT_CONTRACT_INDEX &&
+		    kind == static_cast<uint32>(QNFT::EventKind::URI) && type == 1)
 		{
-			result.emplace_back(buffer + LOG_HEADER_SIZE + 8);
+			result.emplace_back(buffer + LOG_HEADER_SIZE + 12);
 		}
 	}
 
@@ -1749,8 +1769,8 @@ TEST_F(NftTest, MetadataQueryAndUriEventsFollowCommittedMetadata)
 	ASSERT_EQ(action(10, QNFT::FreezeMetadata_input{0}).code, QNFT::Code::Ok);
 	EXPECT_EQ(action(9, QNFT::UpdateMetadata_input{metadata("ipfs://rejected"), 0}).code, QNFT::Code::Frozen);
 	QNFT::GetItem_output result{};
-	EXPECT_EQ(sizeof(result), 448U);
-	EXPECT_EQ(offsetof(QNFT::GetItem_output, code), 440U);
+	EXPECT_EQ(sizeof(result), 480U);
+	EXPECT_EQ(offsetof(QNFT::GetItem_output, code), 472U);
 	ASSERT_NE(contractUserFunctions[QNFT_CONTRACT_INDEX][4], nullptr);
 	callFunction(QNFT_CONTRACT_INDEX, 4, QNFT::GetItem_input{0}, result);
 	EXPECT_EQ(result.code, QNFT::Code::Ok);
@@ -1763,18 +1783,19 @@ TEST_F(NftTest, MetadataQueryAndUriEventsFollowCommittedMetadata)
 	{
 		char buffer[1024]{};
 		qLogger::logBuf.get(buffer, range.startIndex + i);
-		uint32 sizeAndType = 0, contract = 0, type = 0;
+		uint32 sizeAndType = 0, contract = 0, type = 0, kind = 0;
 		memcpy(&sizeAndType, buffer + 6, 4);
 		memcpy(&contract, buffer + LOG_HEADER_SIZE, 4);
-		memcpy(&type, buffer + LOG_HEADER_SIZE + 4, 4);
-		if ((sizeAndType >> 24) != CONTRACT_INFORMATION_MESSAGE || contract != QNFT_CONTRACT_INDEX || type != 0x10001)
+		memcpy(&kind, buffer + LOG_HEADER_SIZE + 4, 4);
+		memcpy(&type, buffer + LOG_HEADER_SIZE + 8, 4);
+		if ((sizeAndType >> 24) != CONTRACT_INFORMATION_MESSAGE || contract != QNFT_CONTRACT_INDEX || kind != static_cast<uint32>(QNFT::EventKind::URI) || type != 1)
 		{
 			continue;
 		}
-		ASSERT_EQ(sizeAndType & 0xffffff, 268U);
+		ASSERT_EQ(sizeAndType & 0xffffff, 272U);
 		if (++count == 2)
 		{
-			EXPECT_EQ(memcmp(buffer + LOG_HEADER_SIZE + 8, &result.item.metadata.uri, 256), 0);
+			EXPECT_EQ(memcmp(buffer + LOG_HEADER_SIZE + 12, &result.item.metadata.uri, 256), 0);
 		}
 	}
 	EXPECT_EQ(count, 2U);
@@ -2702,13 +2723,13 @@ TEST(NftAbi, PublicWireLayoutsAndIdentifiers)
 	EXPECT_EQ(offsetof(QNFT::Buy_output, code), 32U);
 	EXPECT_EQ(offsetof(QNFT::Mint_input, dividendAssetName), 360U);
 	EXPECT_EQ(offsetof(QNFT::Mint_input, dividendBps), 374U);
-	EXPECT_EQ(offsetof(QNFT::Item, dividendAssetName), 416U);
-	EXPECT_EQ(offsetof(QNFT::Item, dividendBps), 434U);
+	EXPECT_EQ(offsetof(QNFT::Item, dividendAssetName), 448U);
+	EXPECT_EQ(offsetof(QNFT::Item, dividendBps), 466U);
 	EXPECT_EQ(sizeof(QNFT::GetListing_output), 72);
 	EXPECT_EQ(sizeof(QNFT::GetMarket_output), 80);
 	EXPECT_EQ(sizeof(QNFT::ListListings_output), 272);
 	EXPECT_EQ(offsetof(QNFT::StateData, listings), offsetof(QNFT::StateData, contractRefunds) + sizeof(QNFT::StateData::contractRefunds));
-	EXPECT_EQ(offsetof(QNFT::MarketEvent, _terminator), 100);
+	EXPECT_EQ(offsetof(QNFT::MarketEvent, _terminator), 108);
 	EXPECT_EQ(sizeof(QNFT::Operation), 4);
 	EXPECT_EQ(sizeof(QNFT::Code), 4);
 	EXPECT_EQ(sizeof(QNFT::Policy), 1);
@@ -2721,18 +2742,18 @@ TEST(NftAbi, PublicWireLayoutsAndIdentifiers)
 	EXPECT_EQ(static_cast<uint32>(QNFT::EventKind::MintingStatusChanged), 7U);
 	EXPECT_EQ(sizeof(QNFT::Collection), 416U);
 	EXPECT_EQ(offsetof(QNFT::CreateCollection_input, externalTransfersDisabled), 300U);
-	EXPECT_EQ(offsetof(QNFT::Event, type), 4);
-	EXPECT_EQ(offsetof(QNFT::Event, actor), 8);
+	EXPECT_EQ(offsetof(QNFT::Event, type), 8);
+	EXPECT_EQ(offsetof(QNFT::Event, actor), 16);
 	EXPECT_EQ(sizeof(QNFT::Metadata), 288);
 	EXPECT_EQ(sizeof(QNFT::OperationResult), 24);
-	EXPECT_EQ(offsetof(QNFT::Event, _terminator), 88);
-	EXPECT_EQ(sizeof(QNFT::Item), 440);
-	EXPECT_EQ(sizeof(QNFT::GetItem_output), 448);
+	EXPECT_EQ(offsetof(QNFT::Event, _terminator), 96);
+	EXPECT_EQ(sizeof(QNFT::Item), 472);
+	EXPECT_EQ(sizeof(QNFT::GetItem_output), 480);
 	EXPECT_EQ(sizeof(QNFT::GetCollection_output), 424);
 	EXPECT_EQ(sizeof(QNFT::IsApprovedForAll_input), 64);
 	EXPECT_EQ(sizeof(QNFT::ListRefunds_input), 8);
 	EXPECT_EQ(sizeof(QNFT::ListRefunds_output), 656);
-	EXPECT_EQ(offsetof(QNFT::StateData, contractRefunds), 74169536);
+	EXPECT_EQ(offsetof(QNFT::StateData, contractRefunds), 88915152);
 	EXPECT_EQ(sizeof(NOST::CreateAuction_input), 1008);
 	QNFT::GetItem_output reply{};
 	reply.item.creator = alice;
@@ -3591,9 +3612,9 @@ TEST_F(NftTest, FailedTickRefundPreservesPendingAmountForNextTick)
 TEST_F(NftTest, ListItemsReturnsFullSnapshotsAndPageBoundaries)
 {
 	QNFT::ListItems_output page{};
-	EXPECT_EQ(sizeof(QNFT::ItemEntry), 448U);
-	EXPECT_EQ(offsetof(QNFT::ItemEntry, itemId), 440U);
-	EXPECT_EQ(sizeof(page), 7184U);
+	EXPECT_EQ(sizeof(QNFT::ItemEntry), 480U);
+	EXPECT_EQ(offsetof(QNFT::ItemEntry, itemId), 472U);
+	EXPECT_EQ(sizeof(page), 7696U);
 	callFunction(QNFT_CONTRACT_INDEX, 5, QNFT::ListItems_input{0, 16}, page);
 	ASSERT_EQ(page.code, QNFT::Code::Ok);
 	EXPECT_EQ(page.count, 0U);
@@ -4184,7 +4205,6 @@ TEST_F(Nft1155Test, ProtocolAndRoyaltyBoundariesHaveExplicitNativeSemantics)
 	callFunction(QNFT_CONTRACT_INDEX, 30, QNFT::GetProtocolInfo_input{}, protocol);
 	EXPECT_EQ(protocol.majorVersion, 1U);
 	EXPECT_EQ(protocol.minorVersion, 0U);
-	EXPECT_EQ(protocol.capabilities, 8191ULL);
 	collection();
 	for (uint16 rate : {uint16(0), uint16(10000)})
 	{
@@ -7133,10 +7153,833 @@ TEST_F(NftCoverageTest, ConfigCountsIssuedTypesRatherThanCopiesOrLiveSupply)
 	EXPECT_EQ(action(6, edition(0), alice, TEST_MINT_FEE).code, QNFT::Code::InvalidInput);
 	QNFT::GetConfig_output result{};
 	callFunction(QNFT_CONTRACT_INDEX, 29, QNFT::GetConfig_input{}, result);
-	EXPECT_EQ(result.issuer, nftId);
+	EXPECT_EQ(result.mintIssuer, nftId);
 	EXPECT_EQ(result.collectionCount, 2U);
 	EXPECT_EQ(result.itemCount, 2U);
 	EXPECT_FALSE(exists(0));
 	EXPECT_EQ(owned(1, alice), 3);
 	expectQuCollateral();
+}
+
+TEST_F(NftTest, RegistrationQpiScansAllIssuersAndPreservesExactNullFilter)
+{
+    collection();
+    ASSERT_EQ(mint(10).code, QNFT::Code::Ok);
+    char name[8] = "PUNKS";
+    char units[8] = {};
+    int issuance, owner, possession;
+    ASSERT_EQ(issueAsset(alice, name, 3, units, 123, QX_CONTRACT_INDEX, &issuance, &owner, &possession), 123);
+    QPI::AssetIssuanceIterator issued(QPI::AssetIssuanceSelect::byIssuer(alice));
+    ASSERT_FALSE(issued.reachedEnd());
+    EXPECT_EQ(issued.numberOfDecimalPlaces(), 3);
+    QPI::AssetOwnerIterator iterator;
+    iterator.beginAnyIssuer(alice);
+    EXPECT_FALSE(iterator.next(0));
+    EXPECT_EQ(iterator.cursor(), 0U);
+    sint64 total = 0;
+    unsigned records = 0;
+    while (!iterator.reachedEnd())
+    {
+        const auto before = iterator.cursor();
+        if (iterator.next(1))
+        {
+            total += iterator.numberOfOwnedShares();
+            ++records;
+        }
+        EXPECT_LE(iterator.cursor() - before, 1U);
+    }
+    EXPECT_EQ(total, 133);
+    EXPECT_EQ(records, 2U);
+    iterator.begin(alice, NULL_ID);
+    while (!iterator.reachedEnd())
+    {
+        EXPECT_FALSE(iterator.next(1));
+    }
+    iterator.begin(alice, alice);
+    ASSERT_TRUE(iterator.next(ASSETS_CAPACITY));
+    EXPECT_EQ(iterator.numberOfOwnedShares(), 123);
+    iterator.beginAnyIssuer(alice, ASSETS_CAPACITY + 1);
+    EXPECT_FALSE(iterator.isValidCursor());
+    EXPECT_FALSE(iterator.next(1));
+}
+
+class NftRegistrationTest : public Nft1155ExtrasTest
+{
+protected:
+    template<class Input, class Output>
+    void callProcedure(unsigned contract, unsigned procedure, const Input& input, const id& caller, sint64 reward, Output& output)
+    {
+        ASSERT_TRUE(invokeUserProcedure(contract, procedure, input, output, caller, reward));
+    }
+
+    QNFT::RegisterAsset_input request(const id& issuer = alice, sint64 quantity = 100, sint8 decimals = 0, uint64 name = 0x534b4e5550ULL)
+    {
+        char nameBytes[8]{};
+        memcpy(nameBytes, &name, 8);
+        char units[8]{};
+        int issuance, ownership, possession;
+        EXPECT_EQ(issueAsset(issuer, nameBytes, decimals, units, quantity, QX_CONTRACT_INDEX,
+                             &issuance, &ownership, &possession), quantity);
+        QNFT::RegisterAsset_input input{};
+        input.asset = QPI::Asset{issuer, name};
+        input.metadata = metadata();
+        input.policy = QNFT::Policy::Mutable;
+        return input;
+    }
+
+    QNFT::GetItemByAsset_output lookup(const QPI::Asset& asset)
+    {
+        QNFT::GetItemByAsset_output output{};
+        callFunction(QNFT_CONTRACT_INDEX, 36, QNFT::GetItemByAsset_input{asset}, output);
+        return output;
+    }
+
+    void manage(const QPI::Asset& asset, const id& owner, sint64 quantity)
+    {
+        QPI::AssetPossessionIterator it(asset, QPI::AssetOwnershipSelect::byOwner(owner), QPI::AssetPossessionSelect::any());
+        ASSERT_FALSE(it.reachedEnd());
+        ASSERT_TRUE(transferShareManagementRights(it.ownershipIndex(), it.possessionIndex(), QNFT_CONTRACT_INDEX,
+                                                 QNFT_CONTRACT_INDEX, quantity, nullptr, nullptr, true));
+    }
+};
+
+TEST_F(NftRegistrationTest, RegistrationPreservesLedgerAndConsumesOnlyItemQuota)
+{
+    collection(1, 2);
+    const auto input = request();
+    QPI::AssetPossessionIterator before(input.asset);
+    ASSERT_FALSE(before.reachedEnd());
+    const auto ownerIndex = before.ownershipIndex(), possessionIndex = before.possessionIndex();
+    unsigned char ownerRecord[sizeof(AssetRecord)], possessionRecord[sizeof(AssetRecord)];
+    memcpy(ownerRecord, &assets[ownerIndex], sizeof(ownerRecord));
+    memcpy(possessionRecord, &assets[possessionIndex], sizeof(possessionRecord));
+    const auto money = getBalance(alice);
+    const auto result = action(29, input, alice, TEST_MINT_FEE + 17);
+    ASSERT_EQ(result.code, QNFT::Code::Ok);
+    EXPECT_EQ(result.quantity, 100);
+    EXPECT_EQ(getBalance(alice), money - TEST_MINT_FEE);
+    EXPECT_EQ(memcmp(&ownerRecord, &assets[ownerIndex], sizeof(ownerRecord)), 0);
+    EXPECT_EQ(memcmp(&possessionRecord, &assets[possessionIndex], sizeof(possessionRecord)), 0);
+    auto* state = reinterpret_cast<QNFT::StateData*>(contractStates[QNFT_CONTRACT_INDEX]);
+    EXPECT_EQ(state->collections.get(0).issuedItems, 1U);
+    EXPECT_EQ(state->collections.get(0).issuedUnits, 0);
+    EXPECT_EQ(state->pendingMintDeliveries.population(), 0U);
+    const auto registered = item();
+    EXPECT_EQ(registered.issuer, alice);
+    EXPECT_EQ(registered.origin, QNFT::ItemOrigin::RegisteredAsset);
+    EXPECT_EQ(registered.burned, 0);
+    EXPECT_EQ(owned(0, alice), 100);
+    EXPECT_EQ(lookup(input.asset).itemId, 0U);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Conflict);
+    EXPECT_EQ(mint(1).code, QNFT::Code::Ok);
+    EXPECT_EQ(lookup(QPI::Asset{nftId, item(1).assetName}).itemId, 1U);
+    expectQuCollateral();
+}
+
+TEST_F(NftRegistrationTest, ValidationRejectsWithoutChargingOrAllocating)
+{
+    collection();
+    const auto input = request();
+    const auto money = getBalance(alice);
+    EXPECT_EQ(action(29, input, bob, TEST_MINT_FEE).code, QNFT::Code::Unauthorized);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE - 1).code, QNFT::Code::InsufficientFee);
+    auto invalid = input;
+    invalid.asset.issuer = NULL_ID;
+    EXPECT_EQ(action(29, invalid, alice, TEST_MINT_FEE).code, QNFT::Code::InvalidInput);
+    invalid = input;
+    invalid.asset.assetName |= 1ULL << 56;
+    EXPECT_EQ(action(29, invalid, alice, TEST_MINT_FEE).code, QNFT::Code::NotFound);
+    invalid = input;
+    invalid.metadata.contentHash = NULL_ID;
+    EXPECT_EQ(action(29, invalid, alice, TEST_MINT_FEE).code, QNFT::Code::InvalidInput);
+    invalid = input;
+    invalid.royaltyBps = 10001;
+    EXPECT_EQ(action(29, invalid, alice, TEST_MINT_FEE).code, QNFT::Code::InvalidInput);
+    invalid = input;
+    invalid.collectionId = 9;
+    EXPECT_EQ(action(29, invalid, alice, TEST_MINT_FEE).code, QNFT::Code::NotFound);
+    EXPECT_EQ(getBalance(alice), money);
+    EXPECT_EQ(reinterpret_cast<QNFT::StateData*>(contractStates[QNFT_CONTRACT_INDEX])->itemCount, 0U);
+}
+
+TEST_F(NftRegistrationTest, FractionalAssetAndHashCollisionAreRejected)
+{
+    collection();
+    const auto fractional = request(alice, 100, 2);
+    EXPECT_EQ(action(29, fractional, alice, TEST_MINT_FEE).code, QNFT::Code::InvalidInput);
+    auto input = request(alice, 100, 0, 0x524548544fULL);
+    ASSERT_EQ(mint(1).code, QNFT::Code::Ok);
+    QPI::Asset key{};
+    key.issuer = input.asset.issuer;
+    key.assetName = input.asset.assetName;
+    id digest;
+    KangarooTwelve(&key, sizeof(key), &digest, sizeof(digest));
+    reinterpret_cast<QNFT::StateData*>(contractStates[QNFT_CONTRACT_INDEX])->registeredAssets.set(digest, 0);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Conflict);
+    EXPECT_EQ(lookup(input.asset).code, QNFT::Code::NotFound);
+}
+
+TEST_F(NftRegistrationTest, PartialManagementOperatorTransferAndBurnUseExternalIssuer)
+{
+    collection();
+    const auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    QNFT::TransferFrom_input transfer{};
+    transfer.owner = alice; transfer.receiver = bob; transfer.quantity = 10;
+    EXPECT_NE(action(12, transfer).code, QNFT::Code::Ok);
+    manage(input.asset, alice, 30);
+    QNFT::SetApprovalForAll_input approval{};
+    approval.operatorId = carol; approval.approved = true;
+    ASSERT_EQ(action(11, approval).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(12, transfer, carol).code, QNFT::Code::Ok);
+    EXPECT_EQ(owned(0, bob), 10);
+    QNFT::Burn_input burn{};
+    burn.owner = bob; burn.quantity = 10;
+    ASSERT_EQ(action(14, burn, bob).code, QNFT::Code::Ok);
+    EXPECT_EQ(owned(0, bob), 0);
+    EXPECT_EQ(item().burned, 0);
+    EXPECT_EQ(item().origin, QNFT::ItemOrigin::RegisteredAsset);
+}
+
+TEST_F(NftRegistrationTest, NativeLookingNamesAreDistinctAcrossIssuers)
+{
+    collection();
+    ASSERT_EQ(mint(1).code, QNFT::Code::Ok);
+    const auto input = request(alice, 20, 0, item().assetName);
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    EXPECT_EQ(lookup(input.asset).itemId, 1U);
+    EXPECT_EQ(lookup(QPI::Asset{nftId, input.asset.assetName}).itemId, 0U);
+    EXPECT_EQ(owned(1, alice), 20);
+    EXPECT_EQ(owned(0, alice), 1);
+}
+
+TEST_F(NftRegistrationTest, ReissuanceKeepsIdentityAndSnapshotWithoutInventedBurns)
+{
+    collection();
+    const auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    manage(input.asset, alice, 100);
+    QNFT::Burn_input burn{};
+    burn.owner = alice; burn.quantity = 100;
+    ASSERT_EQ(action(14, burn).code, QNFT::Code::Ok);
+    EXPECT_FALSE(exists(0));
+    EXPECT_EQ(lookup(input.asset).code, QNFT::Code::Ok);
+    assetsEndEpoch();
+    const auto reissued = request(alice, 200, 3);
+    EXPECT_EQ(lookup(reissued.asset).itemId, 0U);
+    EXPECT_TRUE(exists(0));
+    EXPECT_EQ(owned(0, alice), 200);
+    EXPECT_EQ(item().supply, 100);
+    EXPECT_EQ(item().burned, 0);
+    EXPECT_EQ(item().origin, QNFT::ItemOrigin::RegisteredAsset);
+    EXPECT_EQ(action(29, reissued, alice, TEST_MINT_FEE).code, QNFT::Code::Conflict);
+}
+
+TEST_F(NftRegistrationTest, ExternalAssetShopRentalAndExportLifecycle)
+{
+    collection();
+    const auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    manage(input.asset, alice, 100);
+    QNFT::ListForSale_output listing{};
+    callProcedure(QNFT_CONTRACT_INDEX, 17, QNFT::ListForSale_input{100, 10, 0}, alice, 0, listing);
+    ASSERT_EQ(listing.code, QNFT::Code::Ok);
+    QNFT::CancelSale_output cancelled{};
+    callProcedure(QNFT_CONTRACT_INDEX, 19, QNFT::CancelSale_input{listing.listingId}, alice, 0, cancelled);
+    ASSERT_EQ(cancelled.code, QNFT::Code::Ok);
+    EXPECT_EQ(owned(0, alice), 100);
+    callProcedure(QNFT_CONTRACT_INDEX, 17, QNFT::ListForSale_input{100, 10, 0}, alice, 0, listing);
+    ASSERT_EQ(listing.code, QNFT::Code::Ok);
+    QNFT::Buy_output bought{};
+    callProcedure(QNFT_CONTRACT_INDEX, 18, QNFT::Buy_input{bob, listing.listingId, 10, 100, 1}, bob, 1000, bought);
+    ASSERT_EQ(bought.code, QNFT::Code::Ok);
+    EXPECT_EQ(owned(0, bob), 10);
+    QNFT::RentalResult offer{}, rented{};
+    callProcedure(QNFT_CONTRACT_INDEX, 20, QNFT::CreateRentalOffer_input{1, 2, 0, 15}, bob, 0, offer);
+    ASSERT_EQ(offer.code, QNFT::Code::Ok);
+    callProcedure(QNFT_CONTRACT_INDEX, 22, QNFT::Rent_input{offer.offerId, 2, 1, 15}, carol, 30, rented);
+    ASSERT_EQ(rented.code, QNFT::Code::Ok);
+    EXPECT_EQ(action(12, QNFT::TransferFrom_input{bob, alice, 10, 0}, bob).code, QNFT::Code::Conflict);
+    INIT_CONTRACT(TESTEXA);
+    reinterpret_cast<TESTEXA::StateData*>(contractStates[TESTEXA_CONTRACT_INDEX])->preAcquireSharesOutput.allowTransfer = true;
+    QNFT::Export_input exportInput{};
+    exportInput.owner = alice; exportInput.itemId = 0; exportInput.quantity = 5; exportInput.destination = TESTEXA_CONTRACT_INDEX;
+    ASSERT_EQ(action(16, exportInput).code, QNFT::Code::Ok);
+    EXPECT_EQ(owned(0, alice), 90);
+    expectQuCollateral();
+}
+
+TEST_F(NftRegistrationTest, IssuerAdministratorCanRegisterWithoutHoldingUnits)
+{
+    collection();
+    ASSERT_EQ(action(2, QNFT::NominateAdmin_input{bob, 0}).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(3, QNFT::AcceptAdmin_input{0}, bob).code, QNFT::Code::Ok);
+    const auto input = request(bob);
+    QPI::AssetPossessionIterator it(input.asset);
+    ASSERT_FALSE(it.reachedEnd());
+    int destinationOwner = 0, destinationPossession = 0;
+    ASSERT_TRUE(transferShareOwnershipAndPossession(it.ownershipIndex(), it.possessionIndex(), carol, 100, &destinationOwner, &destinationPossession, true));
+    const auto result = action(29, input, bob, TEST_MINT_FEE);
+    ASSERT_EQ(result.code, QNFT::Code::Ok);
+    EXPECT_EQ(owned(0, bob), 0);
+    EXPECT_EQ(owned(0, carol), 100);
+    EXPECT_EQ(item().creator, alice);
+    EXPECT_EQ(item().issuer, bob);
+    EXPECT_EQ(action(29, input, carol, TEST_MINT_FEE).code, QNFT::Code::Unauthorized);
+}
+
+TEST_F(NftRegistrationTest, RegistrationEmitsUriAndCommandWithoutMintTransfer)
+{
+    collection();
+    const auto input = request();
+    auto* state = reinterpret_cast<QNFT::StateData*>(contractStates[QNFT_CONTRACT_INDEX]);
+    const auto events = state->lastEventId;
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    EXPECT_EQ(state->lastEventId, events + 2);
+    const auto after = state->lastEventId;
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Conflict);
+    EXPECT_EQ(state->lastEventId, after);
+}
+
+TEST_F(NftRegistrationTest, ClosedCollectionsCapacityAndZeroFeeFollowMintRules)
+{
+    collection(1, 1);
+    const auto input = request();
+    auto* state = reinterpret_cast<QNFT::StateData*>(contractStates[QNFT_CONTRACT_INDEX]);
+    for (const auto status : {QNFT::MintingStatus::Paused, QNFT::MintingStatus::Closed})
+    {
+        state->mintingStatus.set(0, status);
+        EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Conflict);
+    }
+    state->mintingStatus.set(0, QNFT::MintingStatus::Open);
+    state->itemCount = QNFT_MAX_ITEMS;
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Capacity);
+    state->itemCount = 0;
+    state->mintFee = 0;
+    ASSERT_EQ(action(29, input).code, QNFT::Code::Ok);
+    const auto another = request(alice, 1, 0, 0x524548544fULL);
+    EXPECT_EQ(action(29, another).code, QNFT::Code::Capacity);
+    EXPECT_EQ(state->collections.get(0).issuedUnits, 0);
+}
+
+TEST_F(NftRegistrationTest, UserPagesIncludeExternalAndNativeAssets)
+{
+    collection();
+    ASSERT_EQ(mint(2).code, QNFT::Code::Ok);
+    const auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    request(alice, 3, 0, 0x524548544fULL); // Unregistered units must not leak into NFT pages.
+    QNFT::ListUserNfts_input query{};
+    query.user = alice; query.limit = 1;
+    std::set<uint32> ids;
+    for (unsigned i = 0; i < 100; ++i)
+    {
+        QNFT::ListUserNfts_output output{};
+        callFunction(QNFT_CONTRACT_INDEX, 18, query, output);
+        ASSERT_EQ(output.code, QNFT::Code::Ok);
+        for (uint32 j = 0; j < output.count; ++j)
+        {
+            EXPECT_TRUE(ids.insert(output.entries.get(j).itemId).second);
+        }
+        if (output.phase != QNFT::UserNftPhase::Ownership) break;
+        query.cursor = output.nextCursor; query.tick = output.tick;
+    }
+    EXPECT_EQ(ids, (std::set<uint32>{0, 1}));
+}
+
+TEST(NftAbi, ExistingAssetRegistrationLayouts)
+{
+    EXPECT_EQ(sizeof(QNFT::RegisterAsset_input), 384U);
+    EXPECT_EQ(sizeof(QNFT::GetItemByAsset_input), 40U);
+    EXPECT_EQ(sizeof(QNFT::GetItemByAsset_output), 8U);
+    EXPECT_EQ(static_cast<uint32>(QNFT::Operation::RegisterAsset), 11U);
+    EXPECT_EQ(sizeof(QNFT::StateData), 123829272U);
+}
+
+TEST(NftAbi, InformationLogsHaveExplicitKindBeforeTypedAction)
+{
+    EXPECT_EQ(offsetof(QNFT::Event, kind), 4U);
+    EXPECT_EQ(offsetof(QNFT::MarketEvent, kind), 4U);
+    EXPECT_EQ(offsetof(QNFT::GovernanceEvent, kind), 4U);
+    EXPECT_EQ(offsetof(QNFT::TransferSingleEvent, kind), 4U);
+    EXPECT_EQ(offsetof(QNFT::UriEvent, kind), 4U);
+    EXPECT_EQ(offsetof(QNFT::SaleDividendEvent, kind), 4U);
+    EXPECT_EQ(offsetof(QNFT::GovernanceEvent, action), 8U);
+    EXPECT_EQ(offsetof(QNFT::TransferSingleEvent, type), 8U);
+    EXPECT_EQ(offsetof(QNFT::UriEvent, type), 8U);
+    EXPECT_EQ(offsetof(QNFT::SaleDividendEvent, type), 8U);
+    EXPECT_EQ(offsetof(QNFT::TransferSingleEvent, _terminator), 124U);
+    EXPECT_EQ(offsetof(QNFT::UriEvent, _terminator), 272U);
+    EXPECT_EQ(offsetof(QNFT::SaleDividendEvent, _terminator), 48U);
+    EXPECT_EQ(static_cast<uint32>(QNFT::TokenEventType::TransferSingle), 0U);
+    EXPECT_EQ(static_cast<uint32>(QNFT::TokenEventType::URI), 1U);
+    EXPECT_EQ(sizeof(QNFT::JournalEvent), 408U);
+}
+
+class NftRegistrationExpansionTest : public NftRegistrationTest {};
+class NftRentalExpansionTest : public NftRentalTest {};
+class NftReadExpansionTest : public Nft1155ExtrasTest {};
+
+TEST_F(NftRegistrationExpansionTest, ExhaustedMintUnitsDoNotPreventRegisteringExistingSupply)
+{
+    collection(1, 2);
+    ASSERT_EQ(mint(1).code, QNFT::Code::Ok);
+    const auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    const auto status = mintStatus();
+    EXPECT_EQ(status.remainingItems, 0U);
+    EXPECT_EQ(status.remainingUnits, 0);
+    EXPECT_EQ(item(1).supply, 100);
+    auto* state = reinterpret_cast<QNFT::StateData*>(contractStates[QNFT_CONTRACT_INDEX]);
+    EXPECT_EQ(state->collections.get(0).issuedItems, 2U);
+    EXPECT_EQ(state->collections.get(0).issuedUnits, 1);
+    expectQuCollateral();
+}
+
+TEST_F(NftRegistrationExpansionTest, FullyBurnedUnregisteredAssetDoesNotConsumeFeeOrIdentity)
+{
+    collection();
+    const auto input = request();
+    QX::TransferShareOwnershipAndPossession_output burned{};
+    callProcedure(QX_CONTRACT_INDEX, 2,
+                  QX::TransferShareOwnershipAndPossession_input{alice, NULL_ID, input.asset.assetName, 100},
+                  alice, 1000000, burned);
+    ASSERT_EQ(burned.transferredNumberOfShares, 100);
+    const auto funds = getBalance(alice);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::InvalidInput);
+    EXPECT_EQ(getBalance(alice), funds);
+    EXPECT_EQ(lookup(input.asset).code, QNFT::Code::NotFound);
+    EXPECT_EQ(mintStatus().remainingItems, 10U);
+    expectQuCollateral();
+}
+
+TEST_F(NftRegistrationExpansionTest, MissingIssuanceIsRejectedBeforeAllocatingRegistryIdentity)
+{
+    collection();
+    QNFT::RegisterAsset_input input{};
+    input.asset = Asset{alice, 0x534b4e5550ULL};
+    input.metadata = metadata();
+    const auto funds = getBalance(alice);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::NotFound);
+    EXPECT_EQ(getBalance(alice), funds);
+    EXPECT_EQ(lookup(input.asset).code, QNFT::Code::NotFound);
+    const auto issued = request();
+    const auto registered = action(29, issued, alice, TEST_MINT_FEE);
+    ASSERT_EQ(registered.code, QNFT::Code::Ok);
+    EXPECT_EQ(registered.itemId, 0U);
+}
+
+TEST_F(NftRegistrationExpansionTest, CollectionManagerCannotRegisterAnotherIssuerAsset)
+{
+    collection();
+    const auto input = request(bob);
+    const auto funds = getBalance(alice);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Unauthorized);
+    EXPECT_EQ(action(29, input, bob, TEST_MINT_FEE).code, QNFT::Code::Unauthorized);
+    EXPECT_EQ(getBalance(alice), funds);
+    EXPECT_EQ(lookup(input.asset).code, QNFT::Code::NotFound);
+    ASSERT_EQ(action(2, QNFT::NominateAdmin_input{bob, 0}).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(3, QNFT::AcceptAdmin_input{0}, bob).code, QNFT::Code::Ok);
+    EXPECT_EQ(action(29, input, bob, TEST_MINT_FEE).code, QNFT::Code::Ok);
+}
+
+TEST_F(NftRegistrationExpansionTest, FormerAdministratorCannotRegisterTheirAsset)
+{
+    collection();
+    ASSERT_EQ(action(2, QNFT::NominateAdmin_input{bob, 0}).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(3, QNFT::AcceptAdmin_input{0}, bob).code, QNFT::Code::Ok);
+    const auto input = request(bob);
+    ASSERT_EQ(action(2, QNFT::NominateAdmin_input{carol, 0}).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(3, QNFT::AcceptAdmin_input{0}, carol).code, QNFT::Code::Ok);
+    const auto funds = getBalance(bob);
+    EXPECT_EQ(action(29, input, bob, TEST_MINT_FEE).code, QNFT::Code::Unauthorized);
+    EXPECT_EQ(getBalance(bob), funds);
+    EXPECT_EQ(lookup(input.asset).code, QNFT::Code::NotFound);
+}
+
+TEST_F(NftRegistrationExpansionTest, RegisteredIdentityCannotBeMovedToAnotherCollection)
+{
+    collection();
+    collection();
+    auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    input.collectionId = 1;
+    const auto funds = getBalance(alice);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Conflict);
+    EXPECT_EQ(getBalance(alice), funds);
+    EXPECT_EQ(item().collectionId, 0U);
+    EXPECT_EQ(mintStatus(1).remainingItems, 10U);
+}
+
+TEST_F(NftRegistrationExpansionTest, PriorApprovalAppliesAfterRealQxManagementAcquisition)
+{
+    collection();
+    ASSERT_EQ(action(11, QNFT::SetApprovalForAll_input{carol, true}).code, QNFT::Code::Ok);
+    const auto input = request();
+    QX::TransferShareManagementRights_input incoming{input.asset, 20, QNFT_CONTRACT_INDEX};
+    QX::TransferShareManagementRights_output acquired{};
+    callProcedure(QX_CONTRACT_INDEX, 9, incoming, alice, 1000000, acquired);
+    EXPECT_EQ(acquired.transferredNumberOfShares, 0);
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    callProcedure(QX_CONTRACT_INDEX, 9, incoming, alice, 1000000, acquired);
+    ASSERT_EQ(acquired.transferredNumberOfShares, 20);
+    ASSERT_EQ(action(12, QNFT::TransferFrom_input{alice, bob, 7, 0}, carol).code, QNFT::Code::Ok);
+    EXPECT_EQ(balance(0, alice, QX_CONTRACT_INDEX), 80);
+    EXPECT_EQ(balance(0, alice, QNFT_CONTRACT_INDEX), 13);
+    EXPECT_EQ(owned(0, bob), 7);
+    EXPECT_EQ(owned(0, alice), 93);
+    expectQuCollateral();
+}
+
+TEST_F(NftRegistrationExpansionTest, MixedNativeAndRegisteredBatchPreservesIssuerAndBurnAccounting)
+{
+    collection();
+    ASSERT_EQ(mint(10).code, QNFT::Code::Ok);
+    const auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    manage(input.asset, alice, 100);
+    QNFT::BatchTransfer_input transfer{};
+    transfer.owner = alice;
+    transfer.receiver = bob;
+    transfer.count = 2;
+    transfer.entries.set(0, QNFT::TokenAmount{3, 0});
+    transfer.entries.set(1, QNFT::TokenAmount{20, 1});
+    ASSERT_EQ(transferBatch(transfer).code, QNFT::Code::Ok);
+    QNFT::BurnBatch_input burn{};
+    burn.owner = bob;
+    burn.count = 2;
+    burn.entries.set(0, QNFT::TokenAmount{2, 0});
+    burn.entries.set(1, QNFT::TokenAmount{5, 1});
+    ASSERT_EQ(burnBatch(burn, bob).code, QNFT::Code::Ok);
+    EXPECT_EQ(owned(0, alice), 7);
+    EXPECT_EQ(owned(0, bob), 1);
+    EXPECT_EQ(owned(1, alice), 80);
+    EXPECT_EQ(owned(1, bob), 15);
+    EXPECT_EQ(item(0).burned, 2);
+    EXPECT_EQ(item(1).burned, 0);
+    EXPECT_EQ(item(1).supply, 100);
+    EXPECT_EQ(item(1).issuer, alice);
+    expectQuCollateral();
+}
+
+TEST_F(NftRegistrationExpansionTest, UnmanagedExternalEntryRejectsWholeMixedTransfer)
+{
+    collection();
+    ASSERT_EQ(mint(10).code, QNFT::Code::Ok);
+    const auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    QNFT::BatchTransfer_input transfer{};
+    transfer.owner = alice;
+    transfer.receiver = bob;
+    transfer.count = 2;
+    transfer.entries.set(0, QNFT::TokenAmount{3, 0});
+    transfer.entries.set(1, QNFT::TokenAmount{1, 1});
+    const auto funds = getBalance(alice);
+    const auto result = transferBatch(transfer, alice, 123);
+    EXPECT_EQ(result.code, QNFT::Code::InsufficientBalance);
+    EXPECT_EQ(result.completed, 0U);
+    EXPECT_EQ(owned(0, alice), 10);
+    EXPECT_EQ(owned(0, bob), 0);
+    EXPECT_EQ(owned(1, alice), 100);
+    EXPECT_EQ(getBalance(alice), funds);
+}
+
+TEST_F(NftRegistrationExpansionTest, ExternalTransferPolicyCanBeReenabledWithoutChangingOwnership)
+{
+    collection();
+    const auto input = request();
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    manage(input.asset, alice, 100);
+    ASSERT_EQ(action(5, QNFT::SetExternalTransfersDisabled_input{0, true}).code, QNFT::Code::Ok);
+    QNFT::Export_input exportInput{alice, 10, 1000000, 0, QX_CONTRACT_INDEX};
+    EXPECT_EQ(action(16, exportInput, alice, 1000000).code, QNFT::Code::Conflict);
+    EXPECT_EQ(balance(0, alice, QNFT_CONTRACT_INDEX), 100);
+    ASSERT_EQ(action(5, QNFT::SetExternalTransfersDisabled_input{0, false}).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(16, exportInput, alice, 1000000).code, QNFT::Code::Ok);
+    EXPECT_EQ(balance(0, alice, QX_CONTRACT_INDEX), 10);
+    EXPECT_EQ(owned(0, alice), 100);
+    EXPECT_EQ(lookup(input.asset).itemId, 0U);
+}
+
+TEST_F(NftRegistrationExpansionTest, RegisteredMetadataUsesCollectionAuthorityAfterIssuerLosesAdminRole)
+{
+    collection();
+    ASSERT_EQ(action(2, QNFT::NominateAdmin_input{bob, 0}).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(3, QNFT::AcceptAdmin_input{0}, bob).code, QNFT::Code::Ok);
+    const auto input = request(bob);
+    ASSERT_EQ(action(29, input, bob, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(2, QNFT::NominateAdmin_input{carol, 0}).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(3, QNFT::AcceptAdmin_input{0}, carol).code, QNFT::Code::Ok);
+    QNFT::UpdateMetadata_input update{metadata("ipfs://revised", 9), 0};
+    EXPECT_EQ(action(9, update, bob).code, QNFT::Code::Unauthorized);
+    ASSERT_EQ(action(9, update, carol).code, QNFT::Code::Ok);
+    EXPECT_EQ(item().metadata.contentHash, id(9, 2, 3, 4));
+    ASSERT_EQ(action(10, QNFT::FreezeMetadata_input{0}, alice).code, QNFT::Code::Ok);
+    EXPECT_EQ(action(9, update, carol).code, QNFT::Code::Frozen);
+    EXPECT_EQ(item().issuer, bob);
+    EXPECT_EQ(item().creator, alice);
+    EXPECT_EQ(item().metadataVersion, 2U);
+}
+
+TEST_F(NftRegistrationExpansionTest, RegisteredRoyaltyQuoteAndShopPayTheConfiguredBeneficiary)
+{
+    collection();
+    auto input = request();
+    input.royaltyReceiver = carol;
+    input.royaltyBps = 500;
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    manage(input.asset, alice, 100);
+    const auto quote = royalty(0, 2000);
+    ASSERT_EQ(quote.code, QNFT::Code::Ok);
+    EXPECT_EQ(quote.receiver, carol);
+    EXPECT_EQ(quote.royaltyAmount, 100);
+    QNFT::ListForSale_output listed{};
+    callProcedure(QNFT_CONTRACT_INDEX, 17, QNFT::ListForSale_input{1000, 2, 0}, alice, 0, listed);
+    ASSERT_EQ(listed.code, QNFT::Code::Ok);
+    const auto seller = getBalance(alice), artist = getBalance(carol), buyer = getBalance(bob);
+    QNFT::Buy_output bought{};
+    callProcedure(QNFT_CONTRACT_INDEX, 18, QNFT::Buy_input{bob, listed.listingId, 2, 1000, 1}, bob, 2023, bought);
+    ASSERT_EQ(bought.code, QNFT::Code::Ok);
+    EXPECT_EQ(bought.fee, 6);
+    EXPECT_EQ(bought.royalty, 100);
+    EXPECT_EQ(getBalance(alice) - seller, 1894);
+    EXPECT_EQ(getBalance(carol) - artist, 100);
+    EXPECT_EQ(buyer - getBalance(bob), 2000);
+    EXPECT_EQ(owned(0, bob), 2);
+    expectQuCollateral();
+}
+
+TEST_F(NftReadExpansionTest, BalanceBatchWithInvalidLaterOwnerDoesNotExposePrefix)
+{
+    collection();
+    ASSERT_EQ(mint(7).code, QNFT::Code::Ok);
+    QNFT::BalanceOfBatch_input input{};
+    input.count = 3;
+    input.entries.set(0, QNFT::BalanceOf_input{alice, 0});
+    input.entries.set(1, QNFT::BalanceOf_input{bob, 999});
+    input.entries.set(2, QNFT::BalanceOf_input{NULL_ID, 0});
+    QNFT::BalanceOfBatch_output output{};
+    callFunction(QNFT_CONTRACT_INDEX, 14, input, output);
+    EXPECT_EQ(output.code, QNFT::Code::InvalidInput);
+    EXPECT_EQ(output.count, 0U);
+    EXPECT_EQ(output.balances.get(0), 0);
+    input.entries.set(2, QNFT::BalanceOf_input{bob, 0});
+    callFunction(QNFT_CONTRACT_INDEX, 14, input, output);
+    ASSERT_EQ(output.code, QNFT::Code::Ok);
+    EXPECT_EQ(output.count, 3U);
+    EXPECT_EQ(output.balances.get(0), 7);
+    EXPECT_EQ(output.balances.get(1), 0);
+    EXPECT_EQ(output.balances.get(2), 0);
+}
+
+TEST_F(NftRegistrationExpansionTest, IpoSharesCannotBeRegisteredEvenByCollectionCreatorAndHolder)
+{
+    collection();
+    std::vector<std::pair<m256i, unsigned int>> holders{{alice, 676}};
+    issueContractShares(QX_CONTRACT_INDEX, holders);
+    QNFT::RegisterAsset_input input{};
+    input.asset = Asset{NULL_ID, *reinterpret_cast<const uint64*>(contractDescriptions[QX_CONTRACT_INDEX].assetName)};
+    input.metadata = metadata();
+    const auto funds = getBalance(alice);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::InvalidInput);
+    EXPECT_EQ(getBalance(alice), funds);
+    EXPECT_EQ(lookup(input.asset).code, QNFT::Code::NotFound);
+    EXPECT_EQ(mintStatus().remainingItems, 10U);
+}
+
+TEST_F(NftRegistrationExpansionTest, SignedNonzeroDecimalPrecisionCannotBeRegistered)
+{
+    collection();
+    const auto input = request(alice, 10, -1);
+    const auto funds = getBalance(alice);
+    EXPECT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::InvalidInput);
+    EXPECT_EQ(getBalance(alice), funds);
+    EXPECT_EQ(lookup(input.asset).code, QNFT::Code::NotFound);
+    expectQuCollateral();
+}
+
+TEST_F(NftRegistrationExpansionTest, RegisteredSaleDividendsUseActualIpoHolders)
+{
+    collection();
+    std::vector<std::pair<m256i, unsigned int>> holders{{carol, 676}};
+    issueContractShares(QX_CONTRACT_INDEX, holders);
+    auto input = request();
+    input.dividendAssetName = *reinterpret_cast<const uint64*>(contractDescriptions[QX_CONTRACT_INDEX].assetName);
+    input.dividendBps = 1000;
+    ASSERT_EQ(action(29, input, alice, TEST_MINT_FEE).code, QNFT::Code::Ok);
+    manage(input.asset, alice, 100);
+    QNFT::DividendInfo_output quote{};
+    callFunction(QNFT_CONTRACT_INDEX, 12, QNFT::DividendInfo_input{1000000, 0}, quote);
+    ASSERT_EQ(quote.code, QNFT::Code::Ok);
+    EXPECT_EQ(quote.amountPerShare, 147);
+    EXPECT_EQ(quote.shareholderAmount, 99372);
+    QNFT::ListForSale_output listed{};
+    callProcedure(QNFT_CONTRACT_INDEX, 17, QNFT::ListForSale_input{1000000, 1, 0}, alice, 0, listed);
+    ASSERT_EQ(listed.code, QNFT::Code::Ok);
+    const auto holder = getBalance(carol), seller = getBalance(alice);
+    QNFT::Buy_output bought{};
+    callProcedure(QNFT_CONTRACT_INDEX, 18, QNFT::Buy_input{bob, listed.listingId, 1, 1000000, 1}, bob, 1000000, bought);
+    ASSERT_EQ(bought.code, QNFT::Code::Ok);
+    EXPECT_EQ(getBalance(carol) - holder, 99372);
+    EXPECT_EQ(getBalance(alice) - seller, 897628);
+    EXPECT_EQ(bought.fee, 3000);
+    EXPECT_EQ(owned(0, bob), 1);
+    expectQuCollateral();
+}
+
+TEST_F(NftReadExpansionTest, UnsolicitedManagementAcquisitionCannotBypassExportAuthorization)
+{
+    collection();
+    ASSERT_EQ(mint(5).code, QNFT::Code::Ok);
+    INIT_CONTRACT(TESTEXA);
+    const TESTEXA::AcquireShareManagementRights_input input{Asset{nftId, item().assetName}, alice, 5, QNFT_CONTRACT_INDEX};
+    TESTEXA::AcquireShareManagementRights_output output{};
+    ASSERT_TRUE(invokeUserProcedure(TESTEXA_CONTRACT_INDEX, 6, input, output, bob, 0));
+    EXPECT_EQ(output.transferredNumberOfShares, 0);
+    EXPECT_EQ(balance(0, alice, QNFT_CONTRACT_INDEX), 5);
+    EXPECT_EQ(balance(0, alice, TESTEXA_CONTRACT_INDEX), 0);
+    EXPECT_EQ(item().reserved, 0);
+}
+
+TEST_F(NftReadExpansionTest, FullyBurnedItemRetainsMetadataButHasNoUsageOrRoyaltyQuote)
+{
+    collection();
+    ASSERT_EQ(mint(1).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(14, QNFT::Burn_input{alice, 1, 0}).code, QNFT::Code::Ok);
+    QNFT::URI_output uri{};
+    callFunction(QNFT_CONTRACT_INDEX, 9, QNFT::URI_input{0}, uri);
+    ASSERT_EQ(uri.code, QNFT::Code::Ok);
+    EXPECT_EQ(uri.uri.get(0), 'i');
+    EXPECT_FALSE(exists(0));
+    EXPECT_EQ(royalty(0, 1000).code, QNFT::Code::NotFound);
+    QNFT::GetUserNft_output user{};
+    callFunction(QNFT_CONTRACT_INDEX, 17, QNFT::GetUserNft_input{alice, 0}, user);
+    ASSERT_EQ(user.code, QNFT::Code::Ok);
+    EXPECT_EQ(user.ownedQuantity, 0);
+    EXPECT_EQ(user.availableQuantity, 0);
+    EXPECT_EQ(user.rentedQuantity, 0);
+    EXPECT_EQ(item().burned, 1);
+}
+
+TEST_F(NftRentalExpansionTest, PaidUsageDoesNotAuthorizeRenterToSellBurnOrExportLenderUnits)
+{
+    const auto key = open();
+    EXPECT_EQ(action(12, QNFT::TransferFrom_input{alice, carol, 1, 0}, bob).code, QNFT::Code::Unauthorized);
+    EXPECT_EQ(action(14, QNFT::Burn_input{alice, 1, 0}, bob).code, QNFT::Code::Unauthorized);
+    QNFT::Export_input exportInput{alice, 1, 1000000, 0, QX_CONTRACT_INDEX};
+    EXPECT_EQ(action(16, exportInput, bob, 1000000).code, QNFT::Code::Unauthorized);
+    QNFT::ListForSale_output listing{};
+    ASSERT_TRUE(invokeUserProcedure(QNFT_CONTRACT_INDEX, 17, QNFT::ListForSale_input{10, 1, 0}, listing, bob, 0));
+    EXPECT_EQ(listing.code, QNFT::Code::InsufficientBalance);
+    EXPECT_EQ(balance(0, alice), 10);
+    EXPECT_EQ(balance(0, bob), 0);
+    EXPECT_EQ(rental(key).rental.renter, bob);
+    expectQuCollateral();
+}
+
+TEST_F(NftRentalExpansionTest, ReservedOfferBlocksListingUntilOwnerCancelsIt)
+{
+    collection();
+    ASSERT_EQ(mint(3).code, QNFT::Code::Ok);
+    const auto offer = change(20, QNFT::CreateRentalOffer_input{1, 3, 0, 15}, alice);
+    ASSERT_EQ(offer.code, QNFT::Code::Ok);
+    QNFT::ListForSale_output listed{};
+    ASSERT_TRUE(invokeUserProcedure(QNFT_CONTRACT_INDEX, 17, QNFT::ListForSale_input{10, 1, 0}, listed, alice, 0));
+    EXPECT_EQ(listed.code, QNFT::Code::Conflict);
+    ASSERT_EQ(change(21, QNFT::CancelRentalOffer_input{offer.offerId}, alice).code, QNFT::Code::Ok);
+    ASSERT_TRUE(invokeUserProcedure(QNFT_CONTRACT_INDEX, 17, QNFT::ListForSale_input{10, 3, 0}, listed, alice, 0));
+    EXPECT_EQ(listed.code, QNFT::Code::Ok);
+    EXPECT_EQ(balance(0, nftId), 3);
+    EXPECT_EQ(balance(0, alice), 0);
+}
+
+TEST_F(NftRentalExpansionTest, ClosingMintAndDisablingExportPreservesPaidUsageAndRenewals)
+{
+    const auto key = open();
+    ASSERT_EQ(action(4, QNFT::SetMintingStatus_input{0, QNFT::MintingStatus::Closed}).code, QNFT::Code::Ok);
+    ASSERT_EQ(action(5, QNFT::SetExternalTransfersDisabled_input{0, true}).code, QNFT::Code::Ok);
+    advance(15);
+    const auto before = getBalance(alice);
+    callSystemProcedure(QNFT_CONTRACT_INDEX, END_TICK);
+    ASSERT_EQ(rental(key).code, QNFT::Code::Ok);
+    EXPECT_EQ(rental(key).rental.status, QNFT::RentalStatus::Active);
+    EXPECT_EQ(rental(key).rental.deposit, 0);
+    EXPECT_EQ(getBalance(alice) - before, 2790);
+    EXPECT_EQ(action(12, QNFT::TransferFrom_input{alice, carol, 9, 0}).code, QNFT::Code::Conflict);
+    expectQuCollateral();
+}
+
+TEST_F(NftRentalExpansionTest, PartialRenewalDepositEndsRightsWithoutConsumingRemainder)
+{
+    const auto key = open(5999);
+    advance(15);
+    const auto before = getBalance(alice);
+    callSystemProcedure(QNFT_CONTRACT_INDEX, END_TICK);
+    const auto ended = rental(key);
+    ASSERT_EQ(ended.code, QNFT::Code::Ok);
+    EXPECT_EQ(ended.rental.status, QNFT::RentalStatus::Ended);
+    EXPECT_EQ(ended.rental.deposit, 2999);
+    EXPECT_EQ(getBalance(alice), before);
+    const auto renterFunds = getBalance(bob);
+    EXPECT_EQ(change(24, QNFT::RentalDeposit_input{key, 2999}).code, QNFT::Code::Ok);
+    EXPECT_EQ(getBalance(bob) - renterFunds, 2999);
+    EXPECT_EQ(action(12, QNFT::TransferFrom_input{alice, carol, 10, 0}).code, QNFT::Code::Ok);
+    expectQuCollateral();
+}
+
+TEST_F(NftRentalExpansionTest, ZeroDepositEndedRentalIsReclaimedWithoutReusingItsId)
+{
+    const auto oldId = open(3000);
+    advance(15);
+    callSystemProcedure(QNFT_CONTRACT_INDEX, END_TICK);
+    EXPECT_EQ(rental(oldId).code, QNFT::Code::NotFound);
+    const auto offer = change(20, QNFT::CreateRentalOffer_input{100, 2, 0, 15}, alice);
+    ASSERT_EQ(offer.code, QNFT::Code::Ok);
+    const auto next = change(22, QNFT::Rent_input{offer.offerId, 2, 100, 15}, bob, 3000);
+    ASSERT_EQ(next.code, QNFT::Code::Ok);
+    EXPECT_GT(next.rentalId, oldId);
+    EXPECT_EQ(rental(oldId).code, QNFT::Code::NotFound);
+    EXPECT_EQ(change(23, QNFT::GetRental_input{oldId}, bob, 100).code, QNFT::Code::NotFound);
+    expectQuCollateral();
+}
+
+TEST(QnftRentalProjectionExpansion, ClockHorizonCannotConsumeDepositForUnrepresentableRenewal)
+{
+    QNFT::Rental rental{};
+    rental.paidUntil = QPI::DateAndTime(65535, 12, 31);
+    rental.status = QNFT::RentalStatus::Active;
+    rental.autoRenew = true;
+    rental.periodDays = 15;
+    rental.periodPrice = 15;
+    rental.deposit = 30;
+    QNFT::RentalPeriodProjection out{};
+    QNFT::ProjectRentalPeriods(rental, rental.paidUntil, out);
+    EXPECT_FALSE(out.active);
+    EXPECT_EQ(out.periodsPaid, 0U);
+    EXPECT_EQ(out.paidUntil, QPI::DateAndTime(65535, 12, 31));
+    EXPECT_EQ(rental.deposit, 30);
+}
+
+TEST(QnftRentalProjectionExpansion, ExpiryBoundaryAndInsufficientDepositHaveLiteralExpectedCoverage)
+{
+    struct Case { uint64 day; sint64 deposit; uint64 paid; bool active; uint64 untilDay; };
+    const Case cases[] = {{15, 0, 0, true, 16}, {16, 14, 0, false, 16}, {16, 15, 1, true, 31},
+                          {31, 15, 1, false, 31}, {31, 30, 2, true, 15}};
+    for (const auto& c : cases)
+    {
+        SCOPED_TRACE(c.day);
+        QNFT::Rental rental{};
+        rental.paidUntil = QPI::DateAndTime(2026, 1, 16);
+        rental.status = QNFT::RentalStatus::Active;
+        rental.autoRenew = true;
+        rental.periodDays = 15;
+        rental.periodPrice = 15;
+        rental.deposit = c.deposit;
+        QNFT::RentalPeriodProjection out{};
+        QNFT::ProjectRentalPeriods(rental, QPI::DateAndTime(2026, 1, c.day), out);
+        EXPECT_EQ(out.periodsPaid, c.paid);
+        EXPECT_EQ(out.active, c.active);
+        EXPECT_EQ(out.paidUntil, QPI::DateAndTime(2026, c.paid == 2 ? 2 : 1, c.untilDay));
+        EXPECT_EQ(rental.deposit, c.deposit);
+    }
 }

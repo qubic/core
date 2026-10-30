@@ -93,6 +93,12 @@ bool QPI::AssetIssuanceIterator::next()
     }
 }
 
+QPI::sint8 QPI::AssetIssuanceIterator::numberOfDecimalPlaces() const
+{
+    ASSERT(_issuanceIdx < ASSETS_CAPACITY && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE);
+    return assets[_issuanceIdx].varStruct.issuance.numberOfDecimalPlaces;
+}
+
 id QPI::AssetIssuanceIterator::issuer() const
 {
     ASSERT(_issuanceIdx == NO_ASSET_INDEX || (_issuanceIdx < ASSETS_CAPACITY && assets[_issuanceIdx].varStruct.issuance.type == ISSUANCE));
@@ -821,9 +827,16 @@ void QPI::AssetOwnerIterator::begin(const QPI::id& owner, const QPI::id& issuer,
 {
     _owner = owner;
     _issuer = issuer;
+    _anyIssuer = false;
     _cursor = cursor;
     _record = NO_ASSET_INDEX;
     _done = cursor >= ASSETS_CAPACITY;
+}
+
+void QPI::AssetOwnerIterator::beginAnyIssuer(const QPI::id& owner, QPI::uint32 cursor)
+{
+    begin(owner, NULL_ID, cursor);
+    _anyIssuer = true;
 }
 
 bool QPI::AssetOwnerIterator::next(QPI::uint32 scanBudget)
@@ -844,7 +857,7 @@ bool QPI::AssetOwnerIterator::next(QPI::uint32 scanBudget)
         if (record.type == OWNERSHIP && record.publicKey == _owner && record.numberOfShares > 0 && record.issuanceIndex < ASSETS_CAPACITY)
         {
             const auto& issued = assets[record.issuanceIndex].varStruct.issuance;
-            if (issued.type == ISSUANCE && issued.publicKey == _issuer)
+            if (issued.type == ISSUANCE && (_anyIssuer || issued.publicKey == _issuer))
             {
                 _record = index;
                 if (_cursor == ASSETS_CAPACITY)
