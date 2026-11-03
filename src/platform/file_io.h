@@ -245,6 +245,7 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
     if (fread(buffer, 1, totalSize, file) != totalSize)
     {
         wprintf(L"Error reading %llu bytes from %s!\n", totalSize, fileName);
+        fclose(file);
         return -1;
     }
     fclose(file);
@@ -329,6 +330,7 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
     if (fwrite(buffer, 1, totalSize, file) != totalSize)
     {
         wprintf(L"Error writting %llu bytes from %s!\n", totalSize, fileName);
+        fclose(file);
         return -1;
     }
     fclose(file);
