@@ -141,7 +141,7 @@ public:
 
     bool loadState(const CHAR16* filename)
     {
-        return load(filename, sizeof(QX), contractStates[QX_CONTRACT_INDEX]) == sizeof(QX);
+        return loadContractState(QX_CONTRACT_INDEX, filename);
     }
 
     // TODO: add other functions
