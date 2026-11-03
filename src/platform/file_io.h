@@ -81,6 +81,7 @@ static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
     unsigned long long bufferSize = 1024;
     unsigned char buffer[1024];
     status = file->GetInfo(file, &fileSystemInfoId, &bufferSize, buffer);
+    file->Close(file);
     unsigned long long fileSize = 0;
     copyMem(&fileSize, buffer + 8, 8);
     return fileSize;
