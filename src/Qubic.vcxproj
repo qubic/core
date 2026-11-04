@@ -76,6 +76,8 @@
     <ClInclude Include="mining\score_bpp9000.h" />
     <ClInclude Include="mining\score_common.h" />
     <ClInclude Include="mining\score_engine.h" />
+    <ClInclude Include="mining\solution_settlement_kinds.h" />
+    <ClInclude Include="mining\solution_settlement_window.h" />
     <ClInclude Include="mining\task_file.h" />
     <ClInclude Include="mining\trit_pack.h" />
     <ClInclude Include="network_core\peers.h" />

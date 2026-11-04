@@ -12,9 +12,6 @@
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 12
-// Maximum number of NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS can be used for pre-process the mining solution.
-// Must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS. Set 0 to disable.
-#define NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS 4
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -104,6 +101,10 @@ static unsigned short ANT_SNAPSHOT_POOL_FILENAME[] = L"snapshotAntColonyPool.???
 static unsigned short ANT_COLONY_REPLAY_CACHE_FILENAME[] = L"antColonyReplayCache.???";
 static unsigned short ANT_COLONY_SOLUTIONS_EOE_FILENAME[] = L"antColonySolutions.eoe";
 static unsigned short ANT_SOL_FLAG_FILE_NAME[] = L"snapshotAntSolutionFlag";
+// Async score settlement window files. The header carries the meta; the records are written in
+// numbered chunk files (snapshotAsyncScoreRecords.EEE.CCC)
+static unsigned short SOLUTION_SETTLEMENT_HEADER_FILENAME[] = L"snapshotAsyncScoreHeader.???";
+static unsigned short SOLUTION_SETTLEMENT_RECORDS_FILENAME[] = L"snapshotAsyncScoreRecords.???";
 
 // Neuraxon (even-nonce slot) - reserved for a future algorithm, not yet implemented.
 static constexpr unsigned long long NEURAXON_NUMBER_OF_INPUT_NEURONS = 1;
@@ -153,6 +154,20 @@ static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
 static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 20;
 static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
     "ANT_REPLAY_CACHE_SIZE must be a power of two, the slot index masks with it");
+
+// Solution settlement window: a mining solution recorded at tick T is verified off the tick path and
+// settled (digest fold, tree commit, refund, ranking) at tick T + SOLUTION_SETTLEMENT_WINDOW_TICKS, or
+// at the epoch's last tick if that comes first, in (tick, txIndex) order. Consensus: what a tick
+// settles depends only on its tick number and voted date, so every node settles the same solutions at
+// the same tick.
+//
+// A parent is mineable only once committed, so this is also the cadence between ant generations, and
+// one anchor covers ANT_PUBLISH_WINDOW_TICKS / SOLUTION_SETTLEMENT_WINDOW_TICKS of them before a miner
+// must re-anchor. The width therefore trades settlement slack against that depth.
+static constexpr unsigned int SOLUTION_SETTLEMENT_WINDOW_TICKS = 64;
+// Bytes a kind may capture from its transaction at record time, and bytes a worker may produce.
+static constexpr unsigned int MAX_SOLUTION_RECORD_BYTES = 128;
+static constexpr unsigned int MAX_SOLUTION_RESULT_BYTES = 576;
 
 // Multipler of score
 static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;

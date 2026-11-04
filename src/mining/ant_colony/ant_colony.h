@@ -122,7 +122,7 @@ struct AntExportSlotT
 
 // slotOf(tick) -> the run of records committed in that tick, so findIndexBySolutionRef() resolves a
 // SolutionRef without scanning the store. The run is unbroken because the store is append-only and
-// a tick's solutions all commit while that tick is processed
+// a tick's solutions all commit together, one tick at a time in ascending order
 struct AntTickSlot
 {
     unsigned int startIdx;   // this tick's first record
