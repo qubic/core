@@ -1787,7 +1787,8 @@ protected:
 		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.get().swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
 		if (locals.swapFee == uint128_t(0))
 		{
-			locals.swapFee = QSWAP_FEE_BASE_100;
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
 		}
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.get().shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.get().qxFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -1934,7 +1935,8 @@ protected:
 		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.get().swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
 		if (locals.swapFee == uint128_t(0))
 		{
-			locals.swapFee = QSWAP_FEE_BASE_100;
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
 		}
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.get().shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.get().qxFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -2123,7 +2125,8 @@ protected:
 		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.get().swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
 		if (locals.swapFee == uint128_t(0))
 		{
-			locals.swapFee = QSWAP_FEE_BASE_100;
+			qpi.transfer(qpi.invocator(), QSWAP_ADDITIONAL_FEE);
+			return;
 		}
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.get().shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.get().qxFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -2337,7 +2340,8 @@ protected:
 		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.get().swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.get().swapFeeRate));
 		if (locals.swapFee == uint128_t(0))
 		{
-			locals.swapFee = QSWAP_FEE_BASE_100;
+			qpi.transfer(qpi.invocator(), QSWAP_ADDITIONAL_FEE);
+			return;
 		}
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.get().shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.get().qxFeeRate), uint128(QSWAP_FEE_BASE_100));

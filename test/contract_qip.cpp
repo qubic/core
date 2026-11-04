@@ -250,6 +250,69 @@ TEST(ContractQIP, createICO_Success)
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, QIP_CONTRACT_ID, QIP_CONTRACT_ID, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), totalShares);
 }
 
+TEST(ContractQIP, createICO_RejectsPercentSumThatOverflows32Bit)
+{
+    ContractTestingQIP QIP;
+
+    id issuer = QIP_testIssuer;
+    uint64 assetName = assetNameFromString("ICOASST");
+    sint64 totalShares = 1000000;
+
+    increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
+
+    id creator = QIP_testIssuer;
+    increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
+    increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
+    EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
+
+    Asset asset;
+    asset.assetName = assetName;
+    asset.issuer = issuer;
+    increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
+    EXPECT_EQ(QIP.transferShareManagementRightsQX(creator, asset, totalShares, QIP_CONTRACT_INDEX, QIP_TRANSFER_ASSET_FEE), totalShares);
+
+    QIP::createICO_input input;
+    input.issuer = issuer;
+    input.address1 = QIP_testAddress1;
+    input.address2 = QIP_testAddress2;
+    input.address3 = QIP_testAddress3;
+    input.address4 = QIP_testAddress1;
+    input.address5 = QIP_testAddress2;
+    input.address6 = QIP_testAddress3;
+    input.address7 = QIP_testAddress1;
+    input.address8 = QIP_testAddress2;
+    input.address9 = QIP_testAddress3;
+    input.address10 = QIP_testAddress1;
+    input.assetName = assetName;
+    input.price1 = 1000;
+    input.price2 = 2000;
+    input.price3 = 3000;
+    input.saleAmountForPhase1 = 300000;
+    input.saleAmountForPhase2 = 300000;
+    input.saleAmountForPhase3 = 400000;
+    // The true sum of the ten percentages is 2^32 + 97, which a 32-bit
+    // addition wraps to exactly QIP_INVESTORS_DISTRIBUTION_PERCENT (97). The
+    // validation must evaluate the sum in 64-bit and reject this input.
+    input.percent1 = 0;
+    input.percent2 = 4294967295u; // 2^32 - 1
+    input.percent3 = 98;
+    input.percent4 = 0;
+    input.percent5 = 0;
+    input.percent6 = 0;
+    input.percent7 = 0;
+    input.percent8 = 0;
+    input.percent9 = 0;
+    input.percent10 = 0;
+    input.startEpoch = system.epoch + 2;
+    input.isVested = false;
+
+    increaseEnergy(creator, QIP_ICO_SETUP_FEE);
+    QIP::createICO_output output = QIP.createICO(creator, input);
+    EXPECT_EQ(output.returnCode, QIPLogInfo::QIP_invalidPercent);
+    EXPECT_EQ(QIP.getState()->getNumberOfICO(), 0u);
+}
+
 TEST(ContractQIP, createICO_InvalidStartEpoch)
 {
     ContractTestingQIP QIP;

@@ -826,6 +826,15 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 450, 120, 400), QVAULT_SUCCESS);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 7);
 
+    // Allocation percentages whose true sum is 2^32 + 970 must be rejected as
+    // QVAULT_NOT_FAIR: reinvested = 2^32-1, burn = 0, distribute = 971 wraps to
+    // exactly QVAULT_SUM_OF_ALLOCATION_PERCENTAGES (970) under 32-bit addition,
+    // so the sum must be evaluated in 64-bit. The rejected call refunds the
+    // proposal fee, so the contract balance stays unchanged.
+    increaseEnergy(stakers[0], 10000000);
+    EXPECT_EQ(QvaultV2.submitAlloP(stakers[0], 4294967295u, 0, 971), QVAULT_NOT_FAIR);
+    EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 7);
+
     setMemory(utcTime, 0);
     utcTime.Year = 2029;
     utcTime.Month = 1;

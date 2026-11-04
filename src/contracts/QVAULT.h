@@ -1640,7 +1640,7 @@ public:
             return ;
         }
 
-        if (input.burn + input.distribute + input.reinvested != QVAULT_SUM_OF_ALLOCATION_PERCENTAGES)
+        if ((uint64)input.burn + input.distribute + input.reinvested != QVAULT_SUM_OF_ALLOCATION_PERCENTAGES)
         {
             output.returnCode = QVAULT_NOT_FAIR;
             if (qpi.invocationReward() > 0)
