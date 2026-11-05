@@ -2312,7 +2312,7 @@ static void processRequestAntParentAnn(unsigned long long processorNumber, Peer*
         enqueueResponse(peer, sizeof(response.header), RespondAntParentAnnHeader::type(), header->dejavu(), &response);
         return;
     }
-    response.ann = *parentView.ann;
+    copyMem(&response.ann, parentView.ann, sizeof(response.ann));
 
     response.header.status = ANT_PARENT_ANN_STATUS_OK;
     response.header.annSizeBytes = (unsigned int)sizeof(response.ann);
