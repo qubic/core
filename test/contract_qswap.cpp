@@ -65,7 +65,7 @@ public:
 
 	bool loadState(const CHAR16* filename)
 	{
-		return load(filename, sizeof(QSWAP), contractStates[QSWAP_CONTRACT_INDEX]) == sizeof(QSWAP);
+		return loadContractState(QSWAP_CONTRACT_INDEX, filename);
 	}
 
 	QSWAP::InvestRewardsInfo_output investRewardsInfo()
@@ -809,5 +809,188 @@ TEST(ContractSwap, LiqTest2)
         EXPECT_EQ(output.userIncreaseLiquidity, 0);
         EXPECT_EQ(output.quAmount, 0);
         EXPECT_EQ(output.assetAmount, 0);
+    }
+}
+
+/*
+swaps whose swap fee rounds to 0 are rejected and refunded, in all four swap procedures
+pool: 1000000 QU / 10000 shares
+*/
+TEST(ContractSwap, SwapZeroFeeRejected)
+{
+    ContractTestingQswap qswap;
+
+    id issuer(1, 2, 3, 4);
+    uint64 assetName = assetNameFromString("QSWAP0");
+    sint64 numberOfShares = 1000 * 1000;
+
+    {
+        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
+        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
+        EXPECT_EQ(qswap.issueAsset(issuer, input), numberOfShares);
+
+        increaseEnergy(issuer, QSWAP_CREATE_POOL_FEE);
+        EXPECT_TRUE(qswap.createPool(issuer, assetName));
+
+        sint64 inputValue = 1000 * 1000 + QSWAP_ADDITIONAL_FEE;
+        increaseEnergy(issuer, inputValue);
+        QSWAP::AddLiquidity_input alInput = { issuer, assetName, 10 * 1000, 0, 0 };
+        QSWAP::AddLiquidity_output alOutput = qswap.addLiquidity(issuer, alInput, inputValue);
+        EXPECT_EQ(alOutput.quAmount, 1000 * 1000);
+        EXPECT_EQ(alOutput.assetAmount, 10 * 1000);
+    }
+
+    const sint64 sharesBefore = numberOfPossessedShares(assetName, issuer, issuer, issuer, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX);
+    auto expectPoolUnchanged = [&]()
+    {
+        QSWAP::GetPoolBasicState_output ps = qswap.getPoolBasicState(issuer, assetName);
+        EXPECT_EQ(ps.reservedQuAmount, 1000 * 1000);
+        EXPECT_EQ(ps.reservedAssetAmount, 10 * 1000);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), sharesBefore);
+    };
+
+    // sell 1 share: the pool would pay 99 QU, swap fee 0
+    {
+        increaseEnergy(issuer, QSWAP_ADDITIONAL_FEE);
+        const sint64 balanceBefore = getBalance(issuer);
+        QSWAP::SwapExactAssetForQu_input input = { issuer, assetName, 1, 0 };
+        QSWAP::SwapExactAssetForQu_output output = qswap.swapExactAssetForQu(issuer, input, QSWAP_ADDITIONAL_FEE);
+        EXPECT_EQ(output.quAmountOut, 0);
+        EXPECT_EQ(getBalance(issuer), balanceBefore);
+        expectPoolUnchanged();
+    }
+
+    // get exactly 100 QU: swap fee 100 * 30 / 9970 = 0
+    {
+        increaseEnergy(issuer, QSWAP_ADDITIONAL_FEE);
+        const sint64 balanceBefore = getBalance(issuer);
+        QSWAP::SwapAssetForExactQu_input input = { issuer, assetName, 1000, 100 };
+        QSWAP::SwapAssetForExactQu_output output = qswap.swapAssetForExactQu(issuer, input, QSWAP_ADDITIONAL_FEE);
+        EXPECT_EQ(output.assetAmountIn, 0);
+        EXPECT_EQ(getBalance(issuer), balanceBefore);
+        expectPoolUnchanged();
+    }
+
+    // pay 333 QU: swap fee 333 * 30 / 10000 = 0
+    {
+        sint64 inputValue = 333 + QSWAP_ADDITIONAL_FEE;
+        increaseEnergy(issuer, inputValue);
+        const sint64 balanceBefore = getBalance(issuer);
+        QSWAP::SwapExactQuForAsset_input input = { issuer, assetName, 0 };
+        QSWAP::SwapExactQuForAsset_output output = qswap.swapExactQuForAsset(issuer, input, inputValue);
+        EXPECT_EQ(output.assetAmountOut, 0);
+        EXPECT_EQ(getBalance(issuer), balanceBefore);
+        expectPoolUnchanged();
+    }
+
+    // get exactly 1 share for 101 QU: swap fee 0
+    {
+        sint64 inputValue = 1000 + QSWAP_ADDITIONAL_FEE;
+        increaseEnergy(issuer, inputValue);
+        const sint64 balanceBefore = getBalance(issuer);
+        QSWAP::SwapQuForExactAsset_input input = { issuer, assetName, 1 };
+        QSWAP::SwapQuForExactAsset_output output = qswap.swapQuForExactAsset(issuer, input, inputValue);
+        EXPECT_EQ(output.quAmountIn, 0);
+        EXPECT_EQ(getBalance(issuer), balanceBefore);
+        expectPoolUnchanged();
+    }
+
+    // pay 334 QU: swap fee 1, the swap is executed
+    {
+        sint64 inputValue = 334 + QSWAP_ADDITIONAL_FEE;
+        increaseEnergy(issuer, inputValue);
+        QSWAP::SwapExactQuForAsset_input input = { issuer, assetName, 0 };
+        QSWAP::SwapExactQuForAsset_output output = qswap.swapExactQuForAsset(issuer, input, inputValue);
+        EXPECT_EQ(output.assetAmountOut, 3);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), sharesBefore + 3);
+
+        QSWAP::GetPoolBasicState_output ps = qswap.getPoolBasicState(issuer, assetName);
+        EXPECT_EQ(ps.reservedQuAmount, 1000 * 1000 + 334);
+        EXPECT_EQ(ps.reservedAssetAmount, 10 * 1000 - 3);
+    }
+}
+
+/*
+selling a huge amount of shares into a small pool cannot bring its QU reserve to 0
+pool: 1000000 QU / 10000 shares from the LP, the seller holds 115499999990000 shares
+*/
+TEST(ContractSwap, SwapCannotEmptyQuReserve)
+{
+    ContractTestingQswap qswap;
+
+    id issuer(1, 2, 3, 4);
+    id lp(2, 3, 4, 5);
+    uint64 assetName = assetNameFromString("QSWAP0");
+    sint64 numberOfShares = 115500000000000;
+    sint64 lpShares = 10000;
+
+    {
+        increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
+        QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
+        EXPECT_EQ(qswap.issueAsset(issuer, input), numberOfShares);
+
+        increaseEnergy(issuer, QSWAP_TRANSFER_ASSET_FEE);
+        QSWAP::TransferShareOwnershipAndPossession_input tsInput = { issuer, assetName, lp, lpShares };
+        EXPECT_EQ(qswap.transferAsset(issuer, tsInput), lpShares);
+
+        increaseEnergy(issuer, QSWAP_CREATE_POOL_FEE);
+        EXPECT_TRUE(qswap.createPool(issuer, assetName));
+
+        sint64 inputValue = 1000 * 1000 + QSWAP_ADDITIONAL_FEE;
+        increaseEnergy(lp, inputValue);
+        QSWAP::AddLiquidity_input alInput = { issuer, assetName, lpShares, 0, 0 };
+        QSWAP::AddLiquidity_output alOutput = qswap.addLiquidity(lp, alInput, inputValue);
+        EXPECT_EQ(alOutput.userIncreaseLiquidity, 99000);
+    }
+
+    // two sells bring the QU reserve from 1000000 down to 330
+    {
+        increaseEnergy(issuer, QSWAP_ADDITIONAL_FEE);
+        QSWAP::SwapExactAssetForQu_input input = { issuer, assetName, 50000, 0 };
+        EXPECT_EQ(qswap.swapExactAssetForQu(issuer, input, QSWAP_ADDITIONAL_FEE).quAmountOut, 830833);
+
+        increaseEnergy(issuer, QSWAP_ADDITIONAL_FEE);
+        input.assetAmountIn = 2000000000;
+        EXPECT_EQ(qswap.swapExactAssetForQu(issuer, input, QSWAP_ADDITIONAL_FEE).quAmountOut, 167760);
+
+        QSWAP::GetPoolBasicState_output ps = qswap.getPoolBasicState(issuer, assetName);
+        EXPECT_EQ(ps.reservedQuAmount, 330);
+        EXPECT_EQ(ps.reservedAssetAmount, 2000060000);
+    }
+
+    // selling all remaining shares: the pool would pay 328 QU plus 36 QU of fees from 330 QU, swap fee 0
+    {
+        const sint64 sharesBefore = numberOfPossessedShares(assetName, issuer, issuer, issuer, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX);
+        EXPECT_EQ(sharesBefore, 115497999940000);
+
+        increaseEnergy(issuer, QSWAP_ADDITIONAL_FEE);
+        const sint64 balanceBefore = getBalance(issuer);
+        QSWAP::SwapExactAssetForQu_input input = { issuer, assetName, sharesBefore, 0 };
+        EXPECT_EQ(qswap.swapExactAssetForQu(issuer, input, QSWAP_ADDITIONAL_FEE).quAmountOut, 0);
+        EXPECT_EQ(getBalance(issuer), balanceBefore);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), sharesBefore);
+
+        QSWAP::GetPoolBasicState_output ps = qswap.getPoolBasicState(issuer, assetName);
+        EXPECT_EQ(ps.reservedQuAmount, 330);
+        EXPECT_EQ(ps.reservedAssetAmount, 2000060000);
+    }
+
+    // buying with 36 QU: swap fee 0
+    {
+        sint64 inputValue = 36 + QSWAP_ADDITIONAL_FEE;
+        increaseEnergy(issuer, inputValue);
+        const sint64 balanceBefore = getBalance(issuer);
+        QSWAP::SwapExactQuForAsset_input input = { issuer, assetName, 0 };
+        EXPECT_EQ(qswap.swapExactQuForAsset(issuer, input, inputValue).assetAmountOut, 0);
+        EXPECT_EQ(getBalance(issuer), balanceBefore);
+    }
+
+    // the LP withdraws its share of both reserves
+    {
+        increaseEnergy(lp, QSWAP_ADDITIONAL_FEE);
+        QSWAP::RemoveLiquidity_input rmInput = { issuer, assetName, 99000, 0, 0 };
+        QSWAP::RemoveLiquidity_output rmOutput = qswap.removeLiquidity(lp, rmInput, QSWAP_ADDITIONAL_FEE);
+        EXPECT_EQ(rmOutput.quAmount, 326);
+        EXPECT_EQ(rmOutput.assetAmount, 1980059400);
     }
 }

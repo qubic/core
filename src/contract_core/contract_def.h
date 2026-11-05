@@ -321,7 +321,17 @@
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QNFT_CONTRACT_INDEX 31
+#define QPUMP_CONTRACT_INDEX 31
+#define CONTRACT_INDEX QPUMP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QPUMP
+#define CONTRACT_STATE2_TYPE QPUMP2
+#include "contracts/Qpump.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QNFT_CONTRACT_INDEX 32
 #define CONTRACT_INDEX QNFT_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QNFT
 #define CONTRACT_STATE2_TYPE QNFT2
@@ -434,16 +444,17 @@ constexpr struct ContractDescription
     {"QIP", 189, 10000, sizeof(QIP::StateData)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
     {"QRAFFLE", 192, 10000, sizeof(QRAFFLE::StateData)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
     {"QRWA", 197, 10000, sizeof(QRWA::StateData)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
-	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
-	{"QTF", 199, 10000, sizeof(QTF::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+    {"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+    {"QTF", 199, 10000, sizeof(QTF::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     {"QDUEL", 199, 10000, sizeof(QDUEL::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
-	{"PULSE", 204, 10000, sizeof(PULSE::StateData)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
+    {"PULSE", 204, 10000, sizeof(PULSE::StateData)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
     {"VOTTUN", 206, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 204, IPO in 205, construction and first use in 206
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
     {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
+    {"QPUMP", 238, 10000, sizeof(QPUMP::StateData)}, // proposal in epoch 236, IPO in 237, construction and first use in 238
     {"QNFT", 9999, 10000, sizeof(QNFT::StateData)}, // TODO: Set the approved construction epoch before deployment.
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -504,7 +515,7 @@ enum OtherEntryPointIDs
     USER_FUNCTION_CALL = contractSystemProcedureCount + 2,
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3,
     USER_PROCEDURE_NOTIFICATION_CALL = contractSystemProcedureCount + 4,
-	MIGRATE_PROCEDURE_CALL = contractSystemProcedureCount + 5,
+    MIGRATE_PROCEDURE_CALL = contractSystemProcedureCount + 5,
 };
 
 GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
@@ -572,13 +583,14 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
-	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPAYHUB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTREAT);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPUMP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QNFT);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -599,7 +611,7 @@ enum ContractStateChangeType
     // Discards the saved state entirely, zeros the whole buffer
     RESET,
     // Migrate data from an old to a new state struct
-	MIGRATE,
+    MIGRATE,
 };
 struct ContractStateChangeInfo
 {

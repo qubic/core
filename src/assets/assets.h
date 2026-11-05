@@ -273,7 +273,10 @@ iteration:
     {
         if (assets[*issuanceIndex].varStruct.issuance.type == ISSUANCE
             && ((*((unsigned long long*)assets[*issuanceIndex].varStruct.issuance.name)) & 0xFFFFFFFFFFFFFF) == ((*((unsigned long long*)name)) & 0xFFFFFFFFFFFFFF)
-            && assets[*issuanceIndex].varStruct.issuance.publicKey == issuerPublicKey)
+            // QX and QSWAP key assets by issuer with u64[3] replaced by the name, so issuers equal in the low 192 bits must not share a name
+            && assets[*issuanceIndex].varStruct.issuance.publicKey.m256i_u64[0] == issuerPublicKey.m256i_u64[0]
+            && assets[*issuanceIndex].varStruct.issuance.publicKey.m256i_u64[1] == issuerPublicKey.m256i_u64[1]
+            && assets[*issuanceIndex].varStruct.issuance.publicKey.m256i_u64[2] == issuerPublicKey.m256i_u64[2])
         {
             RELEASE(universeLock);
             return 0;

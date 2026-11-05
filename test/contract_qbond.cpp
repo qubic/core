@@ -63,7 +63,7 @@ public:
         invokeUserProcedure(QBOND_CONTRACT_INDEX, 1, input, output, staker, quAmount);
     }
 
-    QBOND::TransferMBondOwnershipAndPossession_output transfer(const id& from, const id& to, const uint16_t& epoch, const int64_t& mbondsAmount, const int64_t& quAmount)
+    QBOND::TransferMBondOwnershipAndPossession_output transfer(const id& from, const id& to, const int64_t& epoch, const int64_t& mbondsAmount, const int64_t& quAmount)
     {
         QBOND::TransferMBondOwnershipAndPossession_input input{ to, epoch, mbondsAmount };
         QBOND::TransferMBondOwnershipAndPossession_output output;
@@ -71,7 +71,7 @@ public:
         return output;
     }
 
-    QBOND::AddAskOrder_output addAskOrder(const id& asker, const uint16_t& epoch, const int64_t& price, const int64_t& mbondsAmount, const int64_t& quAmount)
+    QBOND::AddAskOrder_output addAskOrder(const id& asker, const int64_t& epoch, const int64_t& price, const int64_t& mbondsAmount, const int64_t& quAmount)
     {
         QBOND::AddAskOrder_input input{ epoch, price, mbondsAmount };
         QBOND::AddAskOrder_output output;
@@ -348,6 +348,40 @@ TEST(ContractQBond, AddRemoveBidOrder)
     EXPECT_EQ(userOrders.bidOrders.get(0).price, 0);
 }
 
+TEST(ContractQBond, TestFees)
+{
+    ContractTestingQBond qbond;
+    qbond.beginEpoch();
+    increaseEnergy(testAddress1, 6000000000);
+    increaseEnergy(testAddress2, 6000000000);
+    qbond.stake(testAddress1, 5000, 5025000000);
+
+    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1000000, 1399, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 1399);
+    EXPECT_EQ(qbond.addBidOrder(testAddress2, system.epoch, 1000000, 1400, 1400674800).addedMBondsAmount, 1400);
+
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 3601);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 1399);
+
+    auto fees = qbond.getEarnedFees();
+    EXPECT_EQ(fees.stakeFees, 20000000);
+    EXPECT_EQ(fees.tradeFees, 419700);
+
+    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 900000, 1401, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 1401);
+
+    fees = qbond.getEarnedFees();
+    EXPECT_EQ(fees.stakeFees, 20000000);
+    EXPECT_EQ(fees.tradeFees, 519700);
+
+    QBOND::MBondInfo info;
+    qbond.getState()->_epochMbondInfoMap.get(system.epoch, info);
+    id mbondId = id(QBOND_CONTRACT_INDEX, 0, 0, 0);
+    mbondId.u64._3 = info.name;
+    mbondId.u16._3 = system.epoch;
+    auto index = qbond.getState()->_askOrders.headIndex(mbondId, 0);
+    auto order = qbond.getState()->_askOrders.element(index);
+    EXPECT_EQ(order.feeDebt, 278300);   // (1400 * 900000 * 0.03% + 1 * 1000000 * 0.03%) - QBOND_ASK_ORDER_FEE
+}
+
 TEST(ContractQBond, BurnQu)
 {
     ContractTestingQBond qbond;
@@ -364,6 +398,54 @@ TEST(ContractQBond, BurnQu)
     int64_t prevBalance = getBalance(testAddress1);
     EXPECT_EQ(qbond.burnQU(testAddress1, 5000000, 10000000).amount, 5000000);
     EXPECT_EQ(prevBalance - getBalance(testAddress1), 5000000);
+
+    // scenario 4: negative amount must not pay out the contract's balance (escrow, stakes, fees)
+    increaseEnergy(testAddress2, 1000000000);
+    qbond.stake(testAddress1, 50, 50250000);
+    EXPECT_EQ(qbond.addBidOrder(testAddress2, system.epoch, 1500000, 10, 15000000).addedMBondsAmount, 10);
+    const id contract(QBOND_CONTRACT_INDEX, 0, 0, 0);
+    const int64_t contractBalance = getBalance(contract);
+    EXPECT_GT(contractBalance, 0);
+    prevBalance = getBalance(testAddress2);
+    EXPECT_EQ(qbond.burnQU(testAddress2, -contractBalance, 0).amount, 0);
+    EXPECT_EQ(getBalance(contract), contractBalance);
+    EXPECT_EQ(getBalance(testAddress2), prevBalance);
+}
+
+TEST(ContractQBond, EpochAliasPhantomAsk)
+{
+    // MBond lookups use (uint16)epoch, but _NumberOfReservedMBonds compares the full sint64 epoch,
+    // so epoch + 65536 sees MBonds locked in an ask order as unreserved.
+    system.epoch = QBOND_CYCLIC_START_EPOCH;
+    ContractTestingQBond qbond;
+    qbond.beginEpoch();
+    const id seller = testAddress1;
+    const id buyer = testAddress2;
+    const id accomplice = ID(_A, _C, _C, _O, _M, _P, _L, _I, _C, _E, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A, _A);
+    increaseEnergy(seller, 1000000000);
+    increaseEnergy(buyer, 1000000000);
+    const uint64 mbondName = assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str());
+    auto mbonds = [&](const id& owner) { return numberOfPossessedShares(mbondName, id(QBOND_CONTRACT_INDEX, 0, 0, 0), owner, owner, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX); };
+
+    qbond.stake(seller, 50, 50250000);
+    EXPECT_EQ(mbonds(seller), 50);
+
+    // seller lists all 50 MBonds, which reserves them: a normal transfer is rejected
+    EXPECT_EQ(qbond.addAskOrder(seller, system.epoch, 1500000, 50, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 50);
+    EXPECT_EQ(qbond.transfer(seller, accomplice, system.epoch, 50, QBOND_MBOND_TRANSFER_FEE).transferredMBonds, 0);
+
+    // same MBond epoch aliased by +-65536 must be rejected as well
+    EXPECT_EQ(qbond.transfer(seller, accomplice, system.epoch + 65536, 50, QBOND_MBOND_TRANSFER_FEE).transferredMBonds, 0);
+    EXPECT_EQ(qbond.transfer(seller, accomplice, (int64_t)system.epoch - 65536, 50, QBOND_MBOND_TRANSFER_FEE).transferredMBonds, 0);
+    EXPECT_EQ(qbond.addAskOrder(seller, system.epoch + 65536, 1500000, 50, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 0);
+    EXPECT_EQ(mbonds(seller), 50);
+    EXPECT_EQ(mbonds(accomplice), 0);
+
+    // buyer fills the ask: must receive the MBonds it pays for
+    const int64_t buyerBalance = getBalance(buyer);
+    qbond.addBidOrder(buyer, system.epoch, 1500000, 50, 75000000);
+    EXPECT_EQ(mbonds(buyer), 50);
+    EXPECT_EQ(buyerBalance - getBalance(buyer), mbonds(buyer) * 1500000);
 }
 
 TEST(ContractQBond, UpdateCFA)

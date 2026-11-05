@@ -81,6 +81,7 @@ static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
     unsigned long long bufferSize = 1024;
     unsigned char buffer[1024];
     status = file->GetInfo(file, &fileSystemInfoId, &bufferSize, buffer);
+    file->Close(file);
     unsigned long long fileSize = 0;
     copyMem(&fileSize, buffer + 8, 8);
     return fileSize;
@@ -245,6 +246,7 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
     if (fread(buffer, 1, totalSize, file) != totalSize)
     {
         wprintf(L"Error reading %llu bytes from %s!\n", totalSize, fileName);
+        fclose(file);
         return -1;
     }
     fclose(file);
@@ -329,6 +331,7 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
     if (fwrite(buffer, 1, totalSize, file) != totalSize)
     {
         wprintf(L"Error writting %llu bytes from %s!\n", totalSize, fileName);
+        fclose(file);
         return -1;
     }
     fclose(file);

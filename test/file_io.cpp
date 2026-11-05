@@ -682,3 +682,14 @@ TEST(TestAsyncFileIO, FindKLargestKDuplicated)
     }
 }
 
+
+// A failed load() must release the file, or the next save() to it fails on Windows.
+TEST(TestFileIO, ShortReadLoadThenSave)
+{
+    const CHAR16* fileName = L"fileIoShortRead.tmp";
+    unsigned char data[64] = { 1 };
+    ASSERT_EQ(save(fileName, 16, data), 16);
+    EXPECT_EQ(load(fileName, sizeof(data), data), -1);
+    EXPECT_EQ(save(fileName, sizeof(data), data), (long long)sizeof(data));
+    _wremove(fileName);
+}

@@ -1,8 +1,7 @@
 using namespace QPI;
 
 constexpr uint64 QBOND_MAX_EPOCH_COUNT = 1024ULL;
-constexpr uint64 QBOND_MBOND_PRICE = 1000000ULL;
-constexpr uint64 QBOND_MAX_QUEUE_SIZE = 10ULL;
+constexpr sint64 QBOND_MBOND_PRICE = 1000000LL;
 constexpr uint64 QBOND_MIN_MBONDS_TO_STAKE = 10ULL;
 constexpr sint64 QBOND_MBONDS_EMISSION = 1000000000LL;
 constexpr uint64 QBOND_STAKE_LIMIT_PER_EPOCH = 1000000ULL;
@@ -11,14 +10,14 @@ constexpr uint16 QBOND_START_EPOCH = 182;
 constexpr uint16 QBOND_CYCLIC_START_EPOCH = 192;
 constexpr uint16 QBOND_FULL_CYCLE_EPOCHS_AMOUNT = 53;
 
-constexpr uint64 QBOND_STAKE_FEE_PERCENT = 40; // 0.4%
+constexpr sint64 QBOND_STAKE_FEE_PERCENT = 40; // 0.4%
 constexpr uint64 QBOND_TRADE_FEE_PERCENT = 3; // 0.03%
 constexpr uint64 QBOND_MBOND_TRANSFER_FEE = 100;
 
-constexpr uint64 QBOND_ASK_ORDER_FEE = 100000ULL;
+constexpr sint64 QBOND_ASK_ORDER_FEE = 100000LL;
 constexpr uint64 QBOND_MIN_BID_AMOUNT = 1000000ULL;
 constexpr uint64 QBOND_PROCEDURE_FEE = 100000ULL;
-constexpr uint64 QBOND_MIN_BURN_AMOUNT = 5000000ULL;
+constexpr sint64 QBOND_MIN_BURN_AMOUNT = 5000000LL;
 
 constexpr uint64 QBOND_QVAULT_DISTRIBUTION_PERCENT = 9900; // 99%
 
@@ -320,10 +319,10 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Stake)
     {
-        locals.amountAndFee = sadd(smul((uint64) input.quMillions, QBOND_MBOND_PRICE), div(smul(smul((uint64) input.quMillions, QBOND_MBOND_PRICE), QBOND_STAKE_FEE_PERCENT), 10000ULL));
+        locals.amountAndFee = sadd(smul(input.quMillions, QBOND_MBOND_PRICE), QPI::div(smul(smul(input.quMillions, QBOND_MBOND_PRICE), QBOND_STAKE_FEE_PERCENT), 10000LL));
 
         if (input.quMillions < QBOND_MIN_MBONDS_TO_STAKE
-                || input.quMillions >= MAX_AMOUNT
+                || smul(input.quMillions, QBOND_MBOND_PRICE) > MAX_SUPPLY
                 || !state.get()._epochMbondInfoMap.get(qpi.epoch(), locals.tempMbondInfo)
                 || qpi.invocationReward() < 0
                 || (uint64) qpi.invocationReward() < locals.amountAndFee
@@ -340,11 +339,11 @@ protected:
 
         if (state.get()._commissionFreeAddresses.getElementIndex(qpi.invocator()) != NULL_INDEX)
         {
-            qpi.transfer(qpi.invocator(), div(smul((uint64) input.quMillions, QBOND_MBOND_PRICE) * QBOND_STAKE_FEE_PERCENT, 10000ULL));
+            qpi.transfer(qpi.invocator(), QPI::div(smul(input.quMillions, QBOND_MBOND_PRICE) * QBOND_STAKE_FEE_PERCENT, 10000LL));
         }
         else
         {
-            state.mut()._totalEarnedAmount += div(smul((uint64) input.quMillions, QBOND_MBOND_PRICE) * QBOND_STAKE_FEE_PERCENT, 10000ULL);
+            state.mut()._totalEarnedAmount += QPI::div(smul(input.quMillions, QBOND_MBOND_PRICE) * QBOND_STAKE_FEE_PERCENT, 10000LL);
         }
 
         if (state.get()._userTotalStakedMap.get(qpi.invocator(), locals.userMBondsAmount))
@@ -377,7 +376,7 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferMBondOwnershipAndPossession)
     {
-        if (input.numberOfMBonds >= MAX_AMOUNT || input.numberOfMBonds <= 0 || qpi.invocationReward() < QBOND_MBOND_TRANSFER_FEE)
+        if (input.numberOfMBonds > QBOND_MBONDS_EMISSION || input.numberOfMBonds <= 0 || input.epoch != (uint16)input.epoch || qpi.invocationReward() < QBOND_MBOND_TRANSFER_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -427,7 +426,7 @@ protected:
         id mbondIdentity;
         sint64 elementIndex;
         sint64 nextElementIndex;
-        sint64 fee, fullFee;
+        sint64 fee, remainingFee, soldAmount, tempFeeDebt;
         _Order tempAskOrder;
         _Order tempBidOrder;
         _NumberOfReservedMBonds_input numberOfReservedMBonds_input;
@@ -445,7 +444,13 @@ protected:
             return;
         }
 
-        if (input.price <= 0 || input.price >= MAX_AMOUNT || input.numberOfMBonds <= 0 || input.numberOfMBonds >= MAX_AMOUNT || !state.get()._epochMbondInfoMap.get((uint16)input.epoch, locals.tempMbondInfo))
+        if (input.price <= 0
+            || input.price >= MAX_SUPPLY
+            || input.numberOfMBonds <= 0
+            || input.numberOfMBonds > QBOND_MBONDS_EMISSION
+            || smul(input.price, input.numberOfMBonds) > MAX_SUPPLY
+            || input.epoch != (uint16)input.epoch
+            || !state.get()._epochMbondInfoMap.get((uint16)input.epoch, locals.tempMbondInfo))
         {
             output.addedMBondsAmount = 0;
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -500,22 +505,8 @@ protected:
                     input.numberOfMBonds,
                     locals.tempBidOrder.owner);
 
-                locals.fee = div(input.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex) * QBOND_TRADE_FEE_PERCENT, 10000ULL);
-                if (locals.fee < QBOND_ASK_ORDER_FEE)
-                {
-                    locals.fee = QBOND_ASK_ORDER_FEE;
-                }
-
-                if (state.get()._commissionFreeAddresses.contains(qpi.invocator()))
-                {
-                    qpi.transfer(qpi.invocator(), input.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex));
-                }
-                else
-                {
-                    qpi.transfer(qpi.invocator(), input.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex) - (locals.fee - QBOND_ASK_ORDER_FEE));
-                    state.mut()._totalEarnedAmount += locals.fee;
-                    state.mut()._earnedAmountFromTrade += locals.fee;
-                }
+                locals.fee += div(input.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex) * QBOND_TRADE_FEE_PERCENT, 10000ULL);
+                locals.soldAmount += input.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex);
 
                 if (input.numberOfMBonds < locals.tempBidOrder.numberOfMBonds)
                 {
@@ -526,7 +517,8 @@ protected:
                 {
                     state.mut()._bidOrders.remove(locals.elementIndex);
                 }
-                return;
+                input.numberOfMBonds = 0;
+                break;
             }
             else if (input.numberOfMBonds > locals.tempBidOrder.numberOfMBonds)
             {
@@ -538,31 +530,62 @@ protected:
                     locals.tempBidOrder.numberOfMBonds,
                     locals.tempBidOrder.owner);
 
-                locals.fullFee = div(input.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex) * QBOND_TRADE_FEE_PERCENT, 10000ULL);
-                if (locals.fullFee <= QBOND_ASK_ORDER_FEE)
+                locals.fee += div(locals.tempBidOrder.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex) * QBOND_TRADE_FEE_PERCENT, 10000ULL);
+                locals.soldAmount += locals.tempBidOrder.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex);
+
+                input.numberOfMBonds -= locals.tempBidOrder.numberOfMBonds;
+                locals.elementIndex = state.mut()._bidOrders.remove(locals.elementIndex);
+            }
+        }
+
+        if (input.numberOfMBonds == 0)
+        {
+            if (state.get()._commissionFreeAddresses.contains(qpi.invocator()))
+            {
+                qpi.transfer(qpi.invocator(), locals.soldAmount);
+                return;
+            }
+            
+            if (locals.fee < QBOND_ASK_ORDER_FEE)
+            {
+                locals.fee = QBOND_ASK_ORDER_FEE;
+            }
+            qpi.transfer(qpi.invocator(), locals.soldAmount - (locals.fee - QBOND_ASK_ORDER_FEE));
+            state.mut()._totalEarnedAmount += locals.fee;
+            state.mut()._earnedAmountFromTrade += locals.fee;
+            return;
+        }
+        else
+        {
+            if (state.get()._commissionFreeAddresses.contains(qpi.invocator()))
+            {
+                qpi.transfer(qpi.invocator(), locals.soldAmount);
+                locals.tempFeeDebt = 0;
+            }
+            else
+            {
+                locals.remainingFee = div(input.numberOfMBonds * input.price * QBOND_TRADE_FEE_PERCENT, 10000ULL);
+                if (locals.fee + locals.remainingFee <= QBOND_ASK_ORDER_FEE)
                 {
                     locals.fee = QBOND_ASK_ORDER_FEE;
-                    locals.tempAskOrder.feeDebt = 0;
+                    locals.tempFeeDebt = 0;
                 }
                 else
                 {
-                    locals.fee = max(div(locals.tempBidOrder.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex) * QBOND_TRADE_FEE_PERCENT, 10000ULL), QBOND_ASK_ORDER_FEE);
-                    locals.tempAskOrder.feeDebt = locals.fullFee - locals.fee;
+                    if (locals.fee < QBOND_ASK_ORDER_FEE)
+                    {
+                        locals.tempFeeDebt = locals.fee + locals.remainingFee - QBOND_ASK_ORDER_FEE;
+                        locals.fee = QBOND_ASK_ORDER_FEE;
+                    }
+                    else
+                    {
+                        locals.tempFeeDebt = locals.remainingFee;
+                    }
                 }
 
-                if (state.get()._commissionFreeAddresses.contains(qpi.invocator()))
-                {
-                    qpi.transfer(qpi.invocator(), locals.tempBidOrder.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex));
-                    locals.tempAskOrder.feeDebt = 0;
-                }
-                else
-                {
-                    qpi.transfer(qpi.invocator(), locals.tempBidOrder.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex) - (locals.fee - QBOND_ASK_ORDER_FEE));
-                    state.mut()._totalEarnedAmount += locals.fee;
-                    state.mut()._earnedAmountFromTrade += locals.fee;
-                }
-                locals.elementIndex = state.mut()._bidOrders.remove(locals.elementIndex);
-                input.numberOfMBonds -= locals.tempBidOrder.numberOfMBonds;
+                qpi.transfer(qpi.invocator(), locals.soldAmount - (locals.fee - QBOND_ASK_ORDER_FEE));
+                state.mut()._totalEarnedAmount += locals.fee;
+                state.mut()._earnedAmountFromTrade += locals.fee;
             }
         }
 
@@ -571,6 +594,7 @@ protected:
             locals.tempAskOrder.epoch = input.epoch;
             locals.tempAskOrder.numberOfMBonds = input.numberOfMBonds;
             locals.tempAskOrder.owner = qpi.invocator();
+            locals.tempAskOrder.feeDebt = locals.tempFeeDebt;
             state.mut()._askOrders.add(locals.mbondIdentity, locals.tempAskOrder, -input.price);
             return;
         }
@@ -583,6 +607,7 @@ protected:
                 locals.tempAskOrder.epoch = input.epoch;
                 locals.tempAskOrder.numberOfMBonds = input.numberOfMBonds;
                 locals.tempAskOrder.owner = qpi.invocator();
+                locals.tempAskOrder.feeDebt = locals.tempFeeDebt;
                 state.mut()._askOrders.add(locals.mbondIdentity, locals.tempAskOrder, -input.price);
                 break;
             }
@@ -592,6 +617,7 @@ protected:
                 {
                     locals.tempAskOrder = state.get()._askOrders.element(locals.elementIndex);
                     locals.tempAskOrder.numberOfMBonds += input.numberOfMBonds;
+                    locals.tempAskOrder.feeDebt += locals.tempFeeDebt;
                     state.mut()._askOrders.replace(locals.elementIndex, locals.tempAskOrder);
                     break;
                 }
@@ -627,7 +653,13 @@ protected:
 
         output.removedMBondsAmount = 0;
 
-        if (input.price <= 0 || input.price >= MAX_AMOUNT || input.numberOfMBonds <= 0 || input.numberOfMBonds >= MAX_AMOUNT || !state.get()._epochMbondInfoMap.get((uint16) input.epoch, locals.tempMbondInfo))
+        if (input.price <= 0
+            || input.price > MAX_SUPPLY
+            || input.numberOfMBonds <= 0
+            || input.numberOfMBonds > QBOND_MBONDS_EMISSION
+            || smul(input.price, input.numberOfMBonds) > MAX_SUPPLY
+            || input.epoch != (uint16)input.epoch
+            || !state.get()._epochMbondInfoMap.get((uint16) input.epoch, locals.tempMbondInfo))
         {
             return;
         }
@@ -679,9 +711,11 @@ protected:
         if (qpi.invocationReward() < smul(input.numberOfMBonds, input.price)
                 || qpi.invocationReward() < QBOND_MIN_BID_AMOUNT
                 || input.price <= 0
-                || input.price >= MAX_AMOUNT
+                || input.price > MAX_SUPPLY
                 || input.numberOfMBonds <= 0
-                || input.numberOfMBonds >= MAX_AMOUNT
+                || input.numberOfMBonds > QBOND_MBONDS_EMISSION
+                || smul(input.price, input.numberOfMBonds) > MAX_SUPPLY
+                || input.epoch != (uint16)input.epoch
                 || !state.get()._epochMbondInfoMap.get((uint16)input.epoch, locals.tempMbondInfo))
         {
             output.addedMBondsAmount = 0;
@@ -841,11 +875,13 @@ protected:
 
         if (qpi.invocationReward() < QBOND_PROCEDURE_FEE
                 || input.price <= 0
-                || input.price >= MAX_AMOUNT
+                || input.price > MAX_SUPPLY
                 || input.numberOfMBonds <= 0
-                || input.numberOfMBonds >= MAX_AMOUNT
-                || !state.get()._epochMbondInfoMap.get((uint16)input.epoch, locals.tempMbondInfo)
-                || input.price * input.numberOfMBonds < QBOND_MIN_BID_AMOUNT)
+                || input.numberOfMBonds > QBOND_MBONDS_EMISSION
+                || smul(input.price, input.numberOfMBonds) > MAX_SUPPLY
+                || smul(input.price, input.numberOfMBonds) < QBOND_MIN_BID_AMOUNT
+                || input.epoch != (uint16)input.epoch
+                || !state.get()._epochMbondInfoMap.get((uint16)input.epoch, locals.tempMbondInfo))
         {
             if (qpi.invocationReward() > 0)
             {
@@ -899,10 +935,10 @@ protected:
 
     PUBLIC_PROCEDURE(BurnQU)
     {
-        if (input.amount < QBOND_MIN_BURN_AMOUNT || input.amount >= MAX_AMOUNT || qpi.invocationReward() < input.amount)
+        if (input.amount < QBOND_MIN_BURN_AMOUNT || input.amount > MAX_SUPPLY || qpi.invocationReward() < input.amount)
         {
             output.amount = 0;
-            if (qpi.invocationReward() > 0 && qpi.invocationReward() < MAX_AMOUNT)
+            if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
@@ -920,7 +956,7 @@ protected:
 
     PUBLIC_PROCEDURE(UpdateCFA)
     {
-        if (qpi.invocationReward() > 0 && qpi.invocationReward() <= MAX_AMOUNT)
+        if (qpi.invocationReward() > 0)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
@@ -1282,6 +1318,7 @@ protected:
         sint64 elementIndex;
         uint64 counter;
         _Order tempOrder;
+        sint64 quToReturn;
     };
 
     BEGIN_EPOCH_WITH_LOCALS()
@@ -1345,8 +1382,16 @@ protected:
             while (locals.elementIndex != NULL_INDEX)
             {
                 locals.tempOrder = state.get()._bidOrders.element(locals.elementIndex);
-                qpi.transfer(locals.tempOrder.owner, locals.tempOrder.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex) - QBOND_PROCEDURE_FEE);
-                qpi.burn(QBOND_PROCEDURE_FEE);
+                locals.quToReturn = locals.tempOrder.numberOfMBonds * state.get()._bidOrders.priority(locals.elementIndex);
+                if (locals.quToReturn <= QBOND_PROCEDURE_FEE)
+                {
+                    qpi.burn(locals.quToReturn);
+                }
+                else
+                {
+                    qpi.transfer(locals.tempOrder.owner, locals.quToReturn - QBOND_PROCEDURE_FEE);
+                    qpi.burn(QBOND_PROCEDURE_FEE);
+                }
                 locals.elementIndex = state.mut()._bidOrders.remove(locals.elementIndex);
             }
         }

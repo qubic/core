@@ -578,6 +578,17 @@ protected:
 
 					state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex);
 					if (state.get()._entityOrder.assetName == input.assetName
+						&& state.get()._entityOrder.issuer != input.issuer
+						&& state.get()._entityOrder.issuer.u64._0 == input.issuer.u64._0
+						&& state.get()._entityOrder.issuer.u64._1 == input.issuer.u64._1
+						&& state.get()._entityOrder.issuer.u64._2 == input.issuer.u64._2)
+					{
+						// Issuer collides with an own order in the asset order key, so the asset orders could not be told apart
+						output.addedNumberOfShares = 0;
+
+						break;
+					}
+					if (state.get()._entityOrder.assetName == input.assetName
 						&& state.get()._entityOrder.issuer == input.issuer)
 					{
 						state.mut()._entityOrder.numberOfShares += input.numberOfShares;
@@ -618,24 +629,37 @@ protected:
 						}
 
 						state.mut()._assetOrder = state.get()._assetOrders.element(state.get()._elementIndex);
+
+						state.mut()._elementIndex2 = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, state.get()._price);
+						while (state.get()._elementIndex2 != NULL_INDEX)
+						{
+							if (state.get()._entityOrders.priority(state.get()._elementIndex2) != state.get()._price)
+							{
+								state.mut()._elementIndex2 = NULL_INDEX;
+
+								break;
+							}
+
+							state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex2);
+							if (state.get()._entityOrder.assetName == input.assetName
+								&& state.get()._entityOrder.issuer == input.issuer)
+							{
+								break;
+							}
+
+							state.mut()._elementIndex2 = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex2);
+						}
+						if (state.get()._elementIndex2 == NULL_INDEX) // Asset order of a different issuer colliding in the asset order key
+						{
+							state.mut()._elementIndex = state.get()._assetOrders.nextElementIndex(state.get()._elementIndex);
+
+							continue;
+						}
+
 						if (state.get()._assetOrder.numberOfShares <= input.numberOfShares)
 						{
 							state.mut()._elementIndex = state.mut()._assetOrders.remove(state.get()._elementIndex);
-
-							state.mut()._elementIndex2 = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, state.get()._price);
-							while (true) // Impossible for the corresponding entity order to not exist
-							{
-								state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex2);
-								if (state.get()._entityOrder.assetName == input.assetName
-									&& state.get()._entityOrder.issuer == input.issuer)
-								{
-									state.mut()._entityOrders.remove(state.get()._elementIndex2);
-
-									break;
-								}
-
-								state.mut()._elementIndex2 = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex2);
-							}
+							state.mut()._entityOrders.remove(state.get()._elementIndex2);
 							if (smul(state.get()._price, state.get()._assetOrder.numberOfShares) >= div<sint64>(INT64_MAX, state.get()._tradeFee))
 							{
 								// in this case, traders will pay more fee because it's rounding down, it's better to split the trade into multiple smaller trades
@@ -662,21 +686,8 @@ protected:
 							state.mut()._assetOrder.numberOfShares -= input.numberOfShares;
 							state.mut()._assetOrders.replace(state.get()._elementIndex, state.get()._assetOrder);
 
-							state.mut()._elementIndex = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, state.get()._price);
-							while (true) // Impossible for the corresponding entity order to not exist
-							{
-								state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex);
-								if (state.get()._entityOrder.assetName == input.assetName
-									&& state.get()._entityOrder.issuer == input.issuer)
-								{
-									state.mut()._entityOrder.numberOfShares -= input.numberOfShares;
-									state.mut()._entityOrders.replace(state.get()._elementIndex, state.get()._entityOrder);
-
-									break;
-								}
-
-								state.mut()._elementIndex = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex);
-							}
+							state.mut()._entityOrder.numberOfShares -= input.numberOfShares;
+							state.mut()._entityOrders.replace(state.get()._elementIndex2, state.get()._entityOrder);
 							if (smul(state.get()._price, input.numberOfShares) >= div<sint64>(INT64_MAX, state.get()._tradeFee))
 							{
 								// in this case, traders will pay more fee because it's rounding down, it's better to split the trade into multiple smaller trades
@@ -704,14 +715,22 @@ protected:
 
 					if (input.numberOfShares > 0)
 					{
-						state.mut()._assetOrder.entity = qpi.invocator();
-						state.mut()._assetOrder.numberOfShares = input.numberOfShares;
-						state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, -input.price);
+						if (state.get()._assetOrders.population() < state.get()._assetOrders.capacity()
+							&& state.get()._entityOrders.population() < state.get()._entityOrders.capacity())
+						{
+							state.mut()._assetOrder.entity = qpi.invocator();
+							state.mut()._assetOrder.numberOfShares = input.numberOfShares;
+							state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, -input.price);
 
-						state.mut()._entityOrder.issuer = input.issuer;
-						state.mut()._entityOrder.assetName = input.assetName;
-						state.mut()._entityOrder.numberOfShares = input.numberOfShares;
-						state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, -input.price);
+							state.mut()._entityOrder.issuer = input.issuer;
+							state.mut()._entityOrder.assetName = input.assetName;
+							state.mut()._entityOrder.numberOfShares = input.numberOfShares;
+							state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, -input.price);
+						}
+						else // Order book full: only the matched part is executed
+						{
+							output.addedNumberOfShares -= input.numberOfShares;
+						}
 					}
 				}
 			}
@@ -756,6 +775,18 @@ protected:
 
 				state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex);
 				if (state.get()._entityOrder.assetName == input.assetName
+					&& state.get()._entityOrder.issuer != input.issuer
+					&& state.get()._entityOrder.issuer.u64._0 == input.issuer.u64._0
+					&& state.get()._entityOrder.issuer.u64._1 == input.issuer.u64._1
+					&& state.get()._entityOrder.issuer.u64._2 == input.issuer.u64._2)
+				{
+					// Issuer collides with an own order in the asset order key, so the asset orders could not be told apart
+					output.addedNumberOfShares = 0;
+					qpi.transfer(qpi.invocator(), smul(input.price, input.numberOfShares));
+
+					break;
+				}
+				if (state.get()._entityOrder.assetName == input.assetName
 					&& state.get()._entityOrder.issuer == input.issuer)
 				{
 					state.mut()._entityOrder.numberOfShares += input.numberOfShares;
@@ -796,24 +827,37 @@ protected:
 					}
 
 					state.mut()._assetOrder = state.get()._assetOrders.element(state.get()._elementIndex);
+
+					state.mut()._elementIndex2 = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, -state.get()._price);
+					while (state.get()._elementIndex2 != NULL_INDEX)
+					{
+						if (state.get()._entityOrders.priority(state.get()._elementIndex2) != -state.get()._price)
+						{
+							state.mut()._elementIndex2 = NULL_INDEX;
+
+							break;
+						}
+
+						state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex2);
+						if (state.get()._entityOrder.assetName == input.assetName
+							&& state.get()._entityOrder.issuer == input.issuer)
+						{
+							break;
+						}
+
+						state.mut()._elementIndex2 = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex2);
+					}
+					if (state.get()._elementIndex2 == NULL_INDEX) // Asset order of a different issuer colliding in the asset order key
+					{
+						state.mut()._elementIndex = state.get()._assetOrders.nextElementIndex(state.get()._elementIndex);
+
+						continue;
+					}
+
 					if (state.get()._assetOrder.numberOfShares <= input.numberOfShares)
 					{
 						state.mut()._elementIndex = state.mut()._assetOrders.remove(state.get()._elementIndex);
-
-						state.mut()._elementIndex2 = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, -state.get()._price);
-						while (true) // Impossible for the corresponding entity order to not exist
-						{
-							state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex2);
-							if (state.get()._entityOrder.assetName == input.assetName
-								&& state.get()._entityOrder.issuer == input.issuer)
-							{
-								state.mut()._entityOrders.remove(state.get()._elementIndex2);
-
-								break;
-							}
-
-							state.mut()._elementIndex2 = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex2);
-						}
+						state.mut()._entityOrders.remove(state.get()._elementIndex2);
 
 						if (smul(state.get()._price, state.get()._assetOrder.numberOfShares) >= div<sint64>(INT64_MAX, state.get()._tradeFee))
 						{
@@ -844,21 +888,8 @@ protected:
 						state.mut()._assetOrder.numberOfShares -= input.numberOfShares;
 						state.mut()._assetOrders.replace(state.get()._elementIndex, state.get()._assetOrder);
 
-						state.mut()._elementIndex = state.get()._entityOrders.headIndex(state.get()._assetOrder.entity, -state.get()._price);
-						while (true) // Impossible for the corresponding entity order to not exist
-						{
-							state.mut()._entityOrder = state.get()._entityOrders.element(state.get()._elementIndex);
-							if (state.get()._entityOrder.assetName == input.assetName
-								&& state.get()._entityOrder.issuer == input.issuer)
-							{
-								state.mut()._entityOrder.numberOfShares -= input.numberOfShares;
-								state.mut()._entityOrders.replace(state.get()._elementIndex, state.get()._entityOrder);
-
-								break;
-							}
-
-							state.mut()._elementIndex = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex);
-						}
+						state.mut()._entityOrder.numberOfShares -= input.numberOfShares;
+						state.mut()._entityOrders.replace(state.get()._elementIndex2, state.get()._entityOrder);
 
 						if (smul(state.get()._price, input.numberOfShares) >= div<sint64>(INT64_MAX, state.get()._tradeFee))
 						{
@@ -890,14 +921,23 @@ protected:
 
 				if (input.numberOfShares > 0)
 				{
-					state.mut()._assetOrder.entity = qpi.invocator();
-					state.mut()._assetOrder.numberOfShares = input.numberOfShares;
-					state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, input.price);
+					if (state.get()._assetOrders.population() < state.get()._assetOrders.capacity()
+						&& state.get()._entityOrders.population() < state.get()._entityOrders.capacity())
+					{
+						state.mut()._assetOrder.entity = qpi.invocator();
+						state.mut()._assetOrder.numberOfShares = input.numberOfShares;
+						state.mut()._assetOrders.add(state.get()._issuerAndAssetName, state.get()._assetOrder, input.price);
 
-					state.mut()._entityOrder.issuer = input.issuer;
-					state.mut()._entityOrder.assetName = input.assetName;
-					state.mut()._entityOrder.numberOfShares = input.numberOfShares;
-					state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, input.price);
+						state.mut()._entityOrder.issuer = input.issuer;
+						state.mut()._entityOrder.assetName = input.assetName;
+						state.mut()._entityOrder.numberOfShares = input.numberOfShares;
+						state.mut()._entityOrders.add(qpi.invocator(), state.get()._entityOrder, input.price);
+					}
+					else // Order book full: only the matched part is executed
+					{
+						output.addedNumberOfShares -= input.numberOfShares;
+						qpi.transfer(qpi.invocator(), input.price * input.numberOfShares);
+					}
 				}
 			}
 		}
@@ -1163,7 +1203,7 @@ protected:
 	BEGIN_TICK_WITH_LOCALS()
 	{
 		// One-shot removal of all orders of frozen entities (see frozen_addresses.h)
-		if (qpi.tick() != FREEZE_FROM_TICK || qpi.epoch() != 235)
+		if (qpi.tick() != FREEZE_FROM_TICK || qpi.epoch() != 237)
 		{
 			return;
 		}

@@ -324,7 +324,7 @@ public:
             LOG_INFO(locals.log);
             output.returnCode = QIPLogInfo::QIP_invalidPrice;
         }
-        else if (input.percent1 + input.percent2 + input.percent3 + input.percent4 + input.percent5 + input.percent6 + input.percent7 + input.percent8 + input.percent9 + input.percent10 != QIP_INVESTORS_DISTRIBUTION_PERCENT
+        else if ((sint64)input.percent1 + input.percent2 + input.percent3 + input.percent4 + input.percent5 + input.percent6 + input.percent7 + input.percent8 + input.percent9 + input.percent10 != QIP_INVESTORS_DISTRIBUTION_PERCENT
                     || (input.isVested && input.percent1 > QIP_MAX_PENALTY_PERCENT_FOR_VESTING))
         {
             locals.log._contractIndex = SELF_INDEX;
