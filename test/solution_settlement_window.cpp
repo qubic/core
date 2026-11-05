@@ -2,7 +2,7 @@
 
 #include "gtest/gtest.h"
 
-#include "../src/mining/solution_settlement_window.h"
+#include "../src/mining/solution_settlement_kinds.h"
 
 #include <chrono>
 #include <mutex>

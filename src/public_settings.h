@@ -165,9 +165,8 @@ static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
 // one anchor covers ANT_PUBLISH_WINDOW_TICKS / SOLUTION_SETTLEMENT_WINDOW_TICKS of them before a miner
 // must re-anchor. The width therefore trades settlement slack against that depth.
 static constexpr unsigned int SOLUTION_SETTLEMENT_WINDOW_TICKS = 64;
-// Bytes a kind may capture from its transaction at record time, and bytes a worker may produce.
+// Bytes a kind may capture from its transaction at record time.
 static constexpr unsigned int MAX_SOLUTION_RECORD_BYTES = 128;
-static constexpr unsigned int MAX_SOLUTION_RESULT_BYTES = 576;
 
 // Multipler of score
 static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;

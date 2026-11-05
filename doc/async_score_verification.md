@@ -237,9 +237,11 @@ The arena:
   section.
 - **Release.** A settled slot is released, not scrubbed: a pointer taken earlier reads the same bytes
   until an append reuses the slot. That is what lets `lookup()` run without a lock.
-- **Sizes.** A record's kind data is at most `MAX_SOLUTION_RECORD_BYTES` (128), a result at most
-  `MAX_SOLUTION_RESULT_BYTES` (576). A slot is 720 bytes: the 140-byte record, the 576-byte result, and
-  `scored` with its padding. Static asserts pin each kind's layout.
+- **Sizes.** A record's kind data is at most `MAX_SOLUTION_RECORD_BYTES` (128). A result is at most
+  `MAX_SOLUTION_RESULT_BYTES`: the largest result struct of any kind, rounded up to 8 bytes. The kinds
+  header computes it from the result layouts, so it follows the population and any new kind without a
+  setting. At population 32 it is 264, and a slot is 408 bytes: the 140-byte record, the 264-byte
+  result, and `scored` with its padding. Static asserts pin each kind's layout.
 
 ## What settlement does with each solution
 
@@ -523,8 +525,8 @@ every node.
 | File | Contents |
 | --- | --- |
 | `src/mining/solution_settlement_window.h` | The window: arena, tick index, claiming, settle and drain loops, save and load, stats |
-| `src/mining/solution_settlement_kinds.h` | Record and result layouts of both kinds, `isAntParentSettledBefore`, `resolveAntParent` |
+| `src/mining/solution_settlement_kinds.h` | Record and result layouts of both kinds, `MAX_SOLUTION_RESULT_BYTES`, `isAntParentSettledBefore`, `resolveAntParent` |
 | `src/qubic.cpp` (settlement glue) | Record, score and settle hooks of both kinds, `scoreAntChildCached`, `rejectAntSolution`, `isLastTickInEpoch`, `settlePendingSolutions`, `drainPendingSolutions`, lifecycle and save/load wrappers |
 | `src/qubic.cpp` (callers) | `processTickTransaction` (phase 1), `processTick` (phase 2 at END_TICK), `requestProcessor` (workers), the epoch switch in `tickProcessor`, `saveAllNodeStates` and `loadAllNodeStates`, F3 in `processKeyPresses` |
 | `src/qubic.cpp` (message path) | `processBroadcastMessage`, `queueAntSolution`, `publishAntSolutionFor` |
-| `src/public_settings.h` | `SOLUTION_SETTLEMENT_WINDOW_TICKS`, `MAX_SOLUTION_RECORD_BYTES`, `MAX_SOLUTION_RESULT_BYTES`, the window file names |
+| `src/public_settings.h` | `SOLUTION_SETTLEMENT_WINDOW_TICKS`, `MAX_SOLUTION_RECORD_BYTES`, the window file names |

@@ -1,10 +1,44 @@
 #pragma once
 
 #include "mining/ant_colony/ant_colony_bpp9000.h"
-#include "mining/solution_settlement_window.h"
 
 // Record and result layouts for both settlement kinds, and the ant parent-resolution logic.
 // Standalone carries layouts only: its score has no parent, so there is nothing to resolve.
+
+// What a worker produces for an ant solution. The network is stored packed
+struct AntSolutionResult
+{
+    score_engine::Rating rating;             // Rating::worst() (invalid) marks an unscorable child
+    unsigned int annHash;
+    AntColonyBpp9000T::PackedAnn ann;
+};
+
+// What a worker produces for a standalone solution. The score suffices: validity and algo type are
+// recomputable from it and the nonce.
+struct StandaloneSolutionResult
+{
+    unsigned int solutionScore;
+};
+
+// Bytes a slot reserves for a worker's result: the largest result of any kind, rounded up to eight
+// bytes. A new kind adds its result here.
+static constexpr unsigned int maxSolutionResultBytes()
+{
+    unsigned long long bytes = sizeof(AntSolutionResult);
+    if (bytes < sizeof(StandaloneSolutionResult))
+    {
+        bytes = sizeof(StandaloneSolutionResult);
+    }
+    return (unsigned int)((bytes + 7) / 8 * 8);
+}
+static constexpr unsigned int MAX_SOLUTION_RESULT_BYTES = maxSolutionResultBytes();
+static_assert(sizeof(AntSolutionResult) <= MAX_SOLUTION_RESULT_BYTES,
+    "AntSolutionResult is not counted in maxSolutionResultBytes()");
+static_assert(sizeof(StandaloneSolutionResult) <= MAX_SOLUTION_RESULT_BYTES,
+    "StandaloneSolutionResult is not counted in maxSolutionResultBytes()");
+
+// The window sizes its slots from MAX_SOLUTION_RESULT_BYTES, so it is included after it.
+#include "mining/solution_settlement_window.h"
 
 // Ready: ROOT or a settled tree solution. Absent: anything else.
 enum AntParentStatus
@@ -23,16 +57,6 @@ struct AntParentView
     unsigned int shift;                     // 0 for ROOT
     unsigned int depth;                     // 0 for ROOT
 };
-
-// What a worker produces for an ant solution. The network is stored packed
-struct AntSolutionResult
-{
-    score_engine::Rating rating;             // Rating::worst() (invalid) marks an unscorable child
-    unsigned int annHash;
-    AntColonyBpp9000T::PackedAnn ann;
-};
-static_assert(sizeof(AntSolutionResult) <= MAX_SOLUTION_RESULT_BYTES,
-    "AntSolutionResult exceeds the settlement result budget - re-derive if StoredAnn's size changes");
 
 // Phase 1 capture for an ant solution: what settlement needs beyond the slot's own tick/txIndex.
 struct AntSolutionRecordCapture
@@ -64,15 +88,6 @@ static_assert(sizeof(StandaloneSolutionRecord) <= MAX_SOLUTION_RECORD_BYTES,
 // 108 bytes of fields in 112. The window digest covers the padding after claimedScore, so the
 // record is zeroed before it is filled.
 static_assert(sizeof(StandaloneSolutionRecord) == 112, "StandaloneSolutionRecord unexpected layout");
-
-// What a worker produces for a standalone solution. The score suffices: validity and algo type are
-// recomputable from it and the nonce.
-struct StandaloneSolutionResult
-{
-    unsigned int solutionScore;
-};
-static_assert(sizeof(StandaloneSolutionResult) <= MAX_SOLUTION_RESULT_BYTES,
-    "StandaloneSolutionResult exceeds the settlement result budget");
 
 // A solution recorded at tick T may name ROOT or a solution of tick T - W - 1 or earlier. Settlement runs
 // W ticks behind, so while tick T is processed the tree holds exactly those; a later parent would

@@ -56,6 +56,8 @@ static constexpr unsigned int antAnchorRingSize(unsigned int window)
     return size;
 }
 static constexpr unsigned int ANT_ANCHOR_RING_SIZE = antAnchorRingSize(ANT_PUBLISH_WINDOW_TICKS);
+static_assert(ANT_ANCHOR_RING_SIZE > ANT_PUBLISH_WINDOW_TICKS + SOLUTION_SETTLEMENT_WINDOW_TICKS,
+    "an anchor must stay in the ring until the solutions seeded from it have settled");
 static constexpr unsigned int ANT_ANCHOR_TICK_NONE = 0xFFFFFFFFU;
 
 // (tick, solutionIndexInTick), ABSOLUTE system tick plus the solution transaction's index in tick.

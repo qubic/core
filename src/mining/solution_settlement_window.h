@@ -72,6 +72,8 @@ struct SettlementRecord
 };
 static_assert(sizeof(SettlementRecord) == 4 + 4 + 2 + 2 + MAX_SOLUTION_RECORD_BYTES, "SettlementRecord unexpected padding");
 
+// MAX_SOLUTION_RESULT_BYTES is declared by the header that includes this one, from the result layouts
+// of the kinds it registers.
 struct SettlementSlot : public SettlementRecord
 {
     unsigned char result[MAX_SOLUTION_RESULT_BYTES];   // what a worker produced; node-local, recomputable
