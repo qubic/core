@@ -8954,7 +8954,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
 
-                    if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
+                    // Only request processors run the settlement worker, so only they take a scoring slot. The tick
+                    // processor scores only the slots no worker has claimed at settlement or in the epoch-end drain.
+                    // At most NUMBER_OF_SOLUTION_PROCESSORS scores run at once: every scorer uses slot
+                    // processorNumber % NUMBER_OF_SOLUTION_PROCESSORS and waits while that slot is busy, even if
+                    // another slot is free.
+                    if (processors[numberOfProcessors].type == Processor::RequestProcessor
+                        && !solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
                         && !solutionProcessorFlags[i])
                     {
                         solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS] = true;
