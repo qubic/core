@@ -3,7 +3,7 @@
 // Parallel signTickVote with STRAGGLER RACING:
 //
 // signTickVote is a mandatory proof-of-work retry loop: signWithRandomK + verify until the
-// signature score < TARGET_TICK_VOTE_SIGNATURE.
+// signature score <= getTargetTickVoteSignature(tick).
 //
 // This optimization splits the sign tasks one-per-index across the request-processor pool. 
 // The makespan is TAIL-BOUND: each index is a SEQUENTIAL PoW loop, so the
@@ -44,6 +44,7 @@ struct ParallelSignVoteTasks
         const unsigned char* publicKey;
         const unsigned char* messageDigest;
         unsigned char* signature;   // winner writes the final signature here
+        unsigned int target;        // signature score target for this vote's tick
         volatile int claimed;   // 0 = no owner yet, 1 = an owner has taken it
         volatile int done;      // 0 = in progress, 1 = a valid signature has been committed
     };
@@ -55,6 +56,7 @@ struct ParallelSignVoteTasks
                              const unsigned char* publicKey,
                              const unsigned char* messageDigest,
                              unsigned char* outSig,
+                             unsigned int target,
                              volatile int* done);
 
     static constexpr int MAX_TASKS = NUMBER_OF_COMPUTORS;
@@ -75,6 +77,7 @@ struct ParallelSignVoteTasks
             tasks[i].publicKey = nullptr;
             tasks[i].messageDigest = nullptr;
             tasks[i].signature = nullptr;
+            tasks[i].target = 0;
             tasks[i].claimed = 0;
             tasks[i].done = 0;
         }
@@ -91,7 +94,7 @@ struct ParallelSignVoteTasks
     {
         const unsigned int myGen = generation;
         unsigned char scratch[SIGNATURE_SIZE];
-        if (func(tasks[i].subseed, tasks[i].publicKey, tasks[i].messageDigest, scratch, &tasks[i].done))
+        if (func(tasks[i].subseed, tasks[i].publicKey, tasks[i].messageDigest, scratch, tasks[i].target, &tasks[i].done))
         {
             if (generation == myGen)
             {

@@ -165,6 +165,8 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
 // Signing difficulty
 #define TARGET_TICK_VOTE_SIGNATURE 0x000242ECU // ~28,980 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE_NEW 0x0000C0F9U // ~86,940 signing operations per ID
+#define TICK_VOTE_SIGNATURE_SWITCH_TICK 91110000U // switch to the new target from this tick
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
