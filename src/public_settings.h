@@ -126,7 +126,7 @@ static constexpr unsigned char BPP9000_DATA_HASH[32] =
       0x8e, 0x53, 0x01, 0xcc, 0x13, 0xe7, 0x15, 0x81, 0x7b, 0x28, 0xef, 0x3c, 0x3e, 0xff, 0x15, 0x46 };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
-static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 32;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 1024;
 static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
 static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
 static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
@@ -150,7 +150,7 @@ static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
 
 // Ant colony: replay-cache entries, scores this node already computed so a restart does not
 // recompute them. Node-local, not consensus; a miss only costs time.
-static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 20;
+static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 19;
 static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
     "ANT_REPLAY_CACHE_SIZE must be a power of two, the slot index masks with it");
 

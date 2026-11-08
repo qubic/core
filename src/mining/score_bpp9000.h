@@ -63,6 +63,7 @@ struct ScoreBpp9000
         return (unsigned char)((nonce[1] >> 4) & 0x03);
     }
 
+    // Only the wiring mode is mined: the start state and the LUTs stay as the identity's root derived them.
     static bool isCanonicalNonceCommon(const unsigned char* nonce)
     {
         const unsigned int L = nonce[1] & 0x0F;
@@ -70,8 +71,7 @@ struct ScoreBpp9000
         return (getAlgoType(nonce) == AlgoType::Bpp9000)
             && (L >= 1)
             && (L <= BPP9000_MAX_CHANGES_PER_STEP)
-            && (mode >= BPP9000_MODE_START)
-            && (mode <= BPP9000_MODE_LUT)
+            && (mode == BPP9000_MODE_WIRING)
             && ((nonce[1] & 0xC0) == 0);
     }
 

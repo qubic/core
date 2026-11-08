@@ -709,9 +709,9 @@ static m256i makePubkey(unsigned char tag)
     return k;
 }
 
-// Canonical ant nonce: nonce[1] packs L (bits 0-3) + mode (bits 4-5, in [1,3]), nonce[2] = K; mode defaults to LUT.
+// Ant nonce: nonce[1] packs L (bits 0-3) + mode (bits 4-5), nonce[2] = K; mode defaults to WIRING, the only canonical mode.
 static m256i makeAntNonce(unsigned char L, unsigned char K, unsigned char tag,
-                          unsigned char mode = score_engine::BPP9000_MODE_LUT)
+                          unsigned char mode = score_engine::BPP9000_MODE_WIRING)
 {
     m256i n = m256i::zero();
     n.m256i_u8[0] = (unsigned char)score_engine::AlgoType::Bpp9000;
@@ -743,7 +743,7 @@ static bool findImprovingNonce(AntEngine& engine, const AntEngine::ANN& parent, 
 }
 
 // Make sure the score at the full computeScore flow have the same score with
-// the engine start directly from the best/final LUT
+// the engine start directly from the best/final network
 TEST(TestQubicScoreAntColony, BestAnnReproducesReturnedScore)
 {
     AntFixture f;
@@ -762,7 +762,7 @@ TEST(TestQubicScoreAntColony, BestAnnReproducesReturnedScore)
 }
 
 // Make sure the score at the full computeScoreFromParent flow have the same score with
-// the engine start directly from the best/final LUT
+// the engine start directly from the best/final network
 TEST(TestQubicScoreAntColony, BestAnnReproducesScoreFromParent)
 {
     AntFixture f;
@@ -918,12 +918,12 @@ TEST(TestQubicScoreAntColony, ChildIsDeterministicAndInheritsParent)
     EXPECT_EQ(s1, s2) << "same inputs gave different scores";
     AntEngine::ANN child2;
     f.engine->getBestANN(child2);
-    EXPECT_EQ(memcmp(&child1, &child2, sizeof(child1)), 0) << "same inputs gave a different child LUT";
+    EXPECT_EQ(memcmp(&child1, &child2, sizeof(child1)), 0) << "same inputs gave a different child network";
 
     f.engine->computeScoreFromParent(parentB, 0, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
     AntEngine::ANN child3;
     f.engine->getBestANN(child3);
-    EXPECT_NE(memcmp(&child1, &child3, sizeof(child1)), 0) << "the parent LUT was not inherited";
+    EXPECT_NE(memcmp(&child1, &child3, sizeof(child1)), 0) << "the parent network was not inherited";
 }
 
 // The anchor digest is part of the child's walk seed, so the same nonce on the same parent must not
@@ -976,18 +976,20 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
     AntEngine::ANN afterA;
     f.engine->getBestANN(afterA);
 
-    // L below range, L above range, wrong algorithm slot.
+    // L below range, L above range, wrong algorithm slot, start-state mode, LUT mode.
     // K-over-max is only testable when numberOfMutations fits in a byte.
     static constexpr bool kOverflowTestable = (AntCfg::numberOfMutations <= 255);
-    static constexpr unsigned int numberOfBadNonces = kOverflowTestable ? 4 : 3;
-    m256i bad[4];
+    static constexpr unsigned int numberOfBadNonces = kOverflowTestable ? 6 : 5;
+    m256i bad[6];
     bad[0] = makeAntNonce(0, 0, 64);
     bad[1] = makeAntNonce((unsigned char)(score_engine::BPP9000_MAX_CHANGES_PER_STEP + 1), 0, 65);
     bad[2] = makeAntNonce(3, 0, 67);
     bad[2].m256i_u8[0] = (unsigned char)score_engine::AlgoType::Neuraxon;
+    bad[3] = makeAntNonce(3, 5, 68, score_engine::BPP9000_MODE_START);
+    bad[4] = makeAntNonce(3, 5, 69, score_engine::BPP9000_MODE_LUT);
     if constexpr (kOverflowTestable)
     {
-        bad[3] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
+        bad[5] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
     }
 
     for (unsigned int i = 0; i < numberOfBadNonces; i++)
@@ -1019,14 +1021,14 @@ TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
     constexpr unsigned char maxL = (unsigned char)score_engine::BPP9000_MAX_CHANGES_PER_STEP;
     constexpr unsigned char maxK = (unsigned char)AntScorer::numberOfMutations;
 
-    // L in [1, maxL], every mode in [1, 3], K in [0, maxK] is canonical.
+    // L in [1, maxL], the wiring mode, K in [0, maxK] is canonical.
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(1, 0, 70).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(maxL, 0, 71).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, maxK, 72).m256i_u8));
-    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 73, score_engine::BPP9000_MODE_START).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 74, score_engine::BPP9000_MODE_WIRING).m256i_u8));
+    EXPECT_TRUE(AntScorer::isCanonicalStandaloneNonce(makeAntNonce(3, 0, 82, score_engine::BPP9000_MODE_WIRING).m256i_u8));
 
-    // L out of range, mode 0 (the empty mode field) are all rejected.
+    // L out of range, mode 0 (the empty mode field), the start-state mode and the LUT mode are all rejected.
     // K-over-max is only testable when numberOfMutations fits in a byte.
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(0, 0, 75).m256i_u8));
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 76).m256i_u8));
@@ -1035,6 +1037,10 @@ TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
         EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 77).m256i_u8));
     }
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 78, 0).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 73, score_engine::BPP9000_MODE_START).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 79, score_engine::BPP9000_MODE_LUT).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalStandaloneNonce(makeAntNonce(3, 0, 80, score_engine::BPP9000_MODE_START).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalStandaloneNonce(makeAntNonce(3, 0, 81, score_engine::BPP9000_MODE_LUT).m256i_u8));
 }
 
 
