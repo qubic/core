@@ -195,19 +195,18 @@ private:
         }
 #endif
         auto sz = asyncLoad(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
+#endif
         if (sz != pageSize)
         {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
             addDebugMessage(L"Failed to load virtualMemory from disk");
 #endif
-            // The failed/partial asyncLoad may have overwritten cache[cache_page_id] with
-            // corrupt data while cachePageId[] still points at the page that previously lived
-            // in this slot. Invalidate the slot (same empty-slot sentinel reset() fills with:
-            // setMem(cachePageId, ..., 0xff) => (unsigned long long)-1) so a later
-            // findCachePage() cannot return this slot and serve the corrupt data.
+            // A failed/partial load may leave corrupt data in the slot; clear its page id
+            // (reset()'s -1 sentinel) so findCachePage() won't serve it.
             cachePageId[cache_page_id] = (unsigned long long)-1;
             return -1;
         }
+#ifndef NO_UEFI
         lastAccessedTimestamp[cache_page_id] = now_ms();
 #endif
         cachePageId[cache_page_id] = pageId;

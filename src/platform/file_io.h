@@ -407,8 +407,7 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
 
 OPTIMIZE_OFF()
 
-// Log a file I/O failure (failed read/write) with the file name, so a failure leaves a
-// trace even when a caller does not act on the returned status.
+// Log a failed read/write so failures leave a trace even if the caller ignores the status.
 static void logFileIOFailure(bool isSave, const CHAR16* fileName)
 {
     CHAR16 message[256];
@@ -913,9 +912,8 @@ public:
         if (isMainThread())
         {
             mFileBlockingWriteQueue.flushWrite();
-            // flushWrite() ran markAsDone(), which leaves a kBlockingWait slot in kProcessed,
-            // not kFree. Free it here (as the non-main-thread path below does) after reading
-            // mResult; otherwise every main-thread call permanently consumes one blocking slot.
+            // flushWrite() leaves the slot in kProcessed; free it (like the path below) or
+            // every main-thread call permanently consumes one blocking slot.
             const long long result = pFileItem->mResult;
             pFileItem->mState = FileItem::kFree;
             return result;
@@ -958,9 +956,8 @@ public:
         if (mainThread)
         {
             mFileBlockingReadQueue.flushRead();
-            // flushRead() ran markAsDone(), which leaves a kBlockingWait slot in kProcessed,
-            // not kFree. Free it here (as the non-main-thread path below does) after reading
-            // mResult; otherwise every main-thread call permanently consumes one blocking slot.
+            // flushRead() leaves the slot in kProcessed; free it (like the path below) or
+            // every main-thread call permanently consumes one blocking slot.
             const long long result = pFileItem->mResult;
             pFileItem->mState = FileItem::kFree;
             return result;
