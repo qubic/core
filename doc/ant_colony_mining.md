@@ -42,9 +42,9 @@ Under bpp9000 a solution has three parts: the **start state** (each neuron's ini
 **wiring** (which neuron reads which), and each neuron's **lookup table (LUT)**, the ternary function it
 computes. All three start from the identity's own root, drawn in one go from the identity's public key
 (the epoch's spectrum digest seeds the random pool the draw reads). The task file supplies only the
-target output sequence the network is graded against; its topology block is not used. A miner picks **one** of three mutation modes for a
-solution and declares it in the nonce - mutate the start state, the wiring, or the LUTs - inheriting all
-three parts from the parent it extends.
+target output sequence the network is graded against; its topology block is not used. Mining mutates
+only the **wiring** (mode 2, declared in the nonce); the start state and the LUTs stay as the identity's
+root drew them. A solution inherits all three parts from the parent it extends.
 
 Standalone mining searches alone: every attempt starts from scratch. Ant-colony mining searches
 **together, as a tree**:
@@ -152,7 +152,7 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 |-------------|---------|-------------|
 | `nonce[0]`  | algorithm selector (must select bpp9000) | - |
 | `nonce[1]` bits 0-3 | `L` = changes per mutation step | `[1, MAX_CHANGES_PER_STEP]` |
-| `nonce[1]` bits 4-5 | mutation mode: 1 = start state, 2 = wiring, 3 = LUTs (bits 6-7 = 0) | `[1, 3]` |
+| `nonce[1]` bits 4-5 | mutation mode: 2 = wiring (bits 6-7 = 0); 1 = start state and 3 = LUTs are not canonical | `2` |
 | `nonce[2]`  | `K` = number of **explore** steps | `<= NUMBER_OF_MUTATIONS` (a byte, so any value) |
 | `nonce[3..31]` | the walk seed (the actual search space) | any |
 
@@ -160,7 +160,7 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 node rejects the submission with `RejectNonCanonicalNonce`. For an ant solution the rule is:
 
 ```
-algo == bpp9000  &&  L in [1, MAX_CHANGES_PER_STEP]  &&  mode in [1, 3]
+algo == bpp9000  &&  L in [1, MAX_CHANGES_PER_STEP]  &&  mode == 2
                  &&  nonce[1] bits 6-7 == 0  &&  K <= NUMBER_OF_MUTATIONS
 ```
 
