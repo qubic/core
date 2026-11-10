@@ -4369,7 +4369,7 @@ static void processTick(unsigned long long processorNumber)
                 }
             }
         }
-        // Record per-tick TX counts for V2 revenue (counted here where TX bodies are guaranteed present)
+        // Record per-tick TX counts for offline revenue analysis (counted here where TX bodies are guaranteed present)
         {
             unsigned int tickOffset = system.tick - system.initialTick;
             if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH)
@@ -5157,7 +5157,7 @@ static void endEpoch()
     if (spectrumInfo.totalAmount + ISSUANCE_RATE <= MAX_SUPPLY)
     {
 
-        // Collect mining scores for V2
+        // Collect DOGE mining scores
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
             gEpochRevenueData.dogeMiningScore[i] = gDogeMiningSharesCounter.getSharesCount(i);
@@ -5173,10 +5173,8 @@ static void endEpoch()
             oracleEngine.getRevenuePoints(oracleRevPoints);
             copyMemory(gEpochRevenueData.oracleScore, oracleRevPoints.computorRevPoints);
         }
-        computeRevenueV2(gEpochRevenueData);
 
-        // Multi-dimension revenue: computed for offline comparison; paid to computors
-        // only when USE_REVENUE_MULTI_DIMENSION is set (see src/revenue.h).
+        // Multi-dimension revenue paid to computors
         gMultiDimRevenue.totalTicks = system.tick - system.initialTick;
         computeMultiDimRevenue();
 
@@ -5192,11 +5190,7 @@ static void endEpoch()
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
-#if USE_REVENUE_MULTI_DIMENSION
             long long revenue = gMultiDimRevenue.revenue[computorIndex];
-#else
-            long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
-#endif
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
@@ -5507,7 +5501,7 @@ static bool saveAllNodeStates()
         return false;
     }
 
-    // Save V2 per-tick TX counts (recorded during processTick)
+    // Save per-tick TX counts for offline revenue analysis (recorded during processTick)
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
@@ -5727,7 +5721,7 @@ static bool loadAllNodeStates()
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
     gDogeMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.dogeMiningSharesCounterData);
 
-    // Load V2 per-tick TX counts
+    // Load per-tick TX counts for offline revenue analysis
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
@@ -5748,15 +5742,10 @@ static bool loadAllNodeStates()
     }
     if (!revenueDataLoaded)
     {
-#if USE_REVENUE_MULTI_DIMENSION
-        // v2Revenue is shadow when multi-dim is active, revenue uses gMultiDimRevenue.
-        // We mark zero to make flag out this data is invalid for analysis
-        logToConsole(L"Revenue data snapshot load/remap failed (v2 shadow mode), zeroing");
+        // Analysis data only; the revenue inputs in it are refilled at epoch end.
+        // Zero marks the per-tick counts of this epoch as invalid for analysis.
+        logToConsole(L"Revenue data snapshot load/remap failed (analysis data only), zeroing");
         setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
-#else
-        logToConsole(L"Failed to load revenue data snapshot");
-        return false;
-#endif
     }
 
     MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
@@ -5765,13 +5754,8 @@ static bool loadAllNodeStates()
     long long mdSize = load(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue, directory);
     if (mdSize != sizeof(gMultiDimRevenue))
     {
-#if USE_REVENUE_MULTI_DIMENSION
         logToConsole(L"Failed to load multi dim revenue snapshot");
         return false;
-#else
-        logToConsole(L"Multi dim revenue snapshot missing/mismatch (shadow mode), zeroing");
-        setMem(&gMultiDimRevenue, sizeof(gMultiDimRevenue), 0);
-#endif                                                                                                                 
     }
 
     // update own computor indices
@@ -6940,9 +6924,9 @@ static void tickProcessor(void*)
                                     endEpoch();
 
                                     // Save the file of revenue. This blocking save can be called from any thread
-                                    // Revenue v2 data
+                                    // Per-tick TX counts, oracle and DOGE scores, for offline analysis
                                     asyncSave(REVENUE_DATA_END_OF_EPOCH_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData);
-                                    // Multi-dim revenue (shadow) - for offline comparison against the additive
+                                    // Multi-dim revenue state and the paid per-computor revenue
                                     asyncSave(MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue);
                                     // The epoch's best networks, for offline extraction
 #ifndef NDEBUG
