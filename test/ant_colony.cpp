@@ -4,9 +4,19 @@
 
 #define ENABLE_PROFILING 0
 
+// The node's are too large for a test machine, need reduction
+#define ANT_MAX_NODES_PER_EPOCH ANT_MAX_NODES_PER_EPOCH_NODE
+#define ANT_REPLAY_CACHE_SIZE ANT_REPLAY_CACHE_SIZE_NODE
+#include "../src/public_settings.h"
+#undef ANT_MAX_NODES_PER_EPOCH
+#undef ANT_REPLAY_CACHE_SIZE
+static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 12;
+static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 19;
+
 // The bound colony, not the bare template: these tests check bpp9000's binding as well as the rules.
 #include "../src/mining/ant_colony/ant_colony_bpp9000.h"
 
+#include <string>
 #include <vector>
 
 static constexpr unsigned int TEST_THRESHOLD = 3838;   // BPP9000_SOLUTION_THRESHOLD_DEFAULT
@@ -259,7 +269,18 @@ TEST(TestAntColonyValidate, AcceptanceIsMonotoneInScore)
     EXPECT_TRUE(sawAccept) << "the sweep must cover the accepting region";
 }
 
-// init() allocates ~6.2 GB, so the colony is built once for the file and re-seeded between tests.
+// The message of a failed init(), sized from the three largest buffers it allocates.
+static std::string colonyInitFailure()
+{
+    const unsigned long long bytes = AntColonyBpp9000T::ANT_RECORDS_BYTES
+        + AntColonyBpp9000T::ANT_ANN_POOL_BYTES
+        + AntColonyBpp9000T::ANT_REPLAY_CACHE_BYTES;
+    const unsigned long long tenthsOfGiB = (bytes * 10 + (1ULL << 30) - 1) >> 30;
+    return "colony init failed; needs about " + std::to_string(tenthsOfGiB / 10) + "."
+        + std::to_string(tenthsOfGiB % 10) + " GiB";
+}
+
+// init() is a large allocation, so the colony is built once for the file and re-seeded between tests.
 // Lazy rather than SetUpTestSuite: that does not exist before gtest 1.10, and test.vcxproj builds
 // against 1.8.1, where it would compile clean and never run.
 static AntColonyBpp9000T* freshColony()
@@ -351,7 +372,7 @@ static long long commitChild(AntColonyBpp9000T* colony, const m256i& owner, cons
 TEST(TestAntColonyStore, SiblingsChainNewestFirst)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(1);
     // Same anchor tick, so all three are inside the freshness window and coexist.
@@ -371,7 +392,7 @@ TEST(TestAntColonyStore, SiblingsChainNewestFirst)
 TEST(TestAntColonyStore, SolutionRefResolvesToItsRecord)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(2);
     const long long idx = commitRootChild(colony, me, 3800, 42, 600);
@@ -389,7 +410,7 @@ TEST(TestAntColonyStore, SolutionRefResolvesToItsRecord)
 TEST(TestAntColonyStore, SameSolutionCannotCommitTwice)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(3);
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 700), ANT_INVALID_INDEX);
@@ -403,7 +424,7 @@ TEST(TestAntColonyStore, SameSolutionCannotCommitTwice)
 TEST(TestAntColonyStore, RootRefResolvesToValidWithNoRecord)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const AntSolutionRecord* parent = (const AntSolutionRecord*)1;   // must be overwritten
     EXPECT_EQ(colony->tryGetParent(ROOT_REF, &parent), ValidityResult::Valid);
@@ -417,7 +438,7 @@ TEST(TestAntColonyStore, RootRefResolvesToValidWithNoRecord)
 TEST(TestAntColonyStore, AnchorDigestRoundTrips)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i digest = makeKey(4242);
     colony->recordAnchorDigest(100000, digest);
@@ -435,7 +456,7 @@ TEST(TestAntColonyStore, AnchorDigestRoundTrips)
 TEST(TestAntColonyStore, AgedOutAnchorIsAMissNotTheWrongDigest)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const unsigned int oldTick = 100000;
     const unsigned int newTick = oldTick + ANT_ANCHOR_RING_SIZE;
@@ -456,7 +477,7 @@ TEST(TestAntColonyStore, AgedOutAnchorIsAMissNotTheWrongDigest)
 TEST(TestAntColonyStore, EpochResetClearsTheRing)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     colony->recordAnchorDigest(100000, makeKey(7));
     m256i out = m256i::zero();
@@ -492,7 +513,7 @@ static bool saveWipeLoad(AntColonyBpp9000T* colony)
 TEST(TestAntColonySnapshot, RoundTripRestoresTheTree)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(1);
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 500), ANT_INVALID_INDEX);
@@ -518,7 +539,7 @@ TEST(TestAntColonySnapshot, RoundTripRestoresTheTree)
 TEST(TestAntColonySnapshot, RoundTripRestoresTheStoredNetwork)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(2);
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 900), ANT_INVALID_INDEX);
@@ -543,7 +564,7 @@ TEST(TestAntColonySnapshot, RoundTripRestoresTheStoredNetwork)
 TEST(TestAntColonySnapshot, DedupIsRebuiltSoReplaysStillFail)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(3);
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 600), ANT_INVALID_INDEX);
@@ -558,7 +579,7 @@ TEST(TestAntColonySnapshot, DedupIsRebuiltSoReplaysStillFail)
 TEST(TestAntColonySnapshot, AnchorRingSurvivesTheRoundTrip)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i digest = makeKey(4242);
     colony->recordAnchorDigest(100000, digest);
@@ -575,7 +596,7 @@ TEST(TestAntColonySnapshot, AnchorRingSurvivesTheRoundTrip)
 TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     ASSERT_NE(commitRootChild(colony, makeKey(4), 3800, 0, 700), ANT_INVALID_INDEX);
     ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
@@ -596,7 +617,7 @@ TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
 TEST(TestAntColonySnapshot, SnapshotLoadsAfterTheFloorMoves)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(43);
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 710), ANT_INVALID_INDEX);
@@ -622,7 +643,7 @@ TEST(TestAntColonySnapshot, SnapshotLoadsAfterTheFloorMoves)
 TEST(TestAntColonySnapshot, RefusedLoadLeavesTheRunningTreeIntact)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(5);
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 800), ANT_INVALID_INDEX);
@@ -639,7 +660,7 @@ TEST(TestAntColonySnapshot, RefusedLoadLeavesTheRunningTreeIntact)
 TEST(TestAntColonySnapshot, EmptyColonyWritesTheFullFileSet)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     ASSERT_EQ(colony->solutionCount(), 0u);
 
@@ -673,7 +694,7 @@ TEST(TestAntColonySnapshot, EmptyColonyWritesTheFullFileSet)
 TEST(TestAntColonySnapshot, CorruptedPoolIsRefused)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     // score % 3 == 2, so an all-zero network is not the one this record hashes to.
     ASSERT_NE(commitRootChild(colony, makeKey(6), 3800, 0, 1000), ANT_INVALID_INDEX);
@@ -734,7 +755,7 @@ static bool annEquals(const AntColonyBpp9000T::Ann& a, const AntColonyBpp9000T::
 TEST(TestAntColonyReplayCache, StoresAndReturnsScoreAndNetwork)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const AntColonyBpp9000T::ReplayKey key = makeReplayKey(1);
     const AntColonyBpp9000T::Ann ann = makeAnn(7);
@@ -753,7 +774,7 @@ TEST(TestAntColonyReplayCache, StoresAndReturnsScoreAndNetwork)
 TEST(TestAntColonyReplayCache, EveryKeyComponentIsPartOfTheLookup)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const AntColonyBpp9000T::ReplayKey key = makeReplayKey(2);
     colony->putReplayScore(key, score_engine::Rating{ 3800, 0 }, makeAnn(1));
@@ -780,7 +801,7 @@ TEST(TestAntColonyReplayCache, EveryKeyComponentIsPartOfTheLookup)
 TEST(TestAntColonyReplayCache, BeginEpochClearsIt)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const AntColonyBpp9000T::ReplayKey key = makeReplayKey(3);
     colony->putReplayScore(key, score_engine::Rating{ 3800, 0 }, makeAnn(2));
@@ -799,7 +820,7 @@ TEST(TestAntColonyReplayCache, BeginEpochClearsIt)
 TEST(TestAntColonyReplayCache, SurvivesResetAndSnapshotLoad)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const AntColonyBpp9000T::ReplayKey key = makeReplayKey(4);
     colony->putReplayScore(key, score_engine::Rating{ 3800, 0 }, makeAnn(3));
@@ -818,7 +839,7 @@ TEST(TestAntColonyReplayCache, SurvivesResetAndSnapshotLoad)
 TEST(TestAntColonyReplayCache, RoundTripsThroughAFile)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     constexpr unsigned int COUNT = 500;
     for (unsigned int i = 0; i < COUNT; i++)
@@ -849,7 +870,7 @@ TEST(TestAntColonyReplayCache, RoundTripsThroughAFile)
 TEST(TestAntColonyReplayCache, AbsentFileIsNotAnError)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     colony->putReplayScore(makeReplayKey(7), score_engine::Rating{ 3800, 0 }, makeAnn(6));
     EXPECT_FALSE(colony->loadReplayCache((unsigned short)(TEST_EPOCH + 77), NULL));
@@ -900,7 +921,7 @@ static bool readExport(AntColonyExportHeader& header, std::vector<ExportFileEntr
 TEST(TestAntColonyExport, KeepsTheLowestScoresInOrder)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     constexpr unsigned int COMMITTED = ANT_EXPORT_MAX_SOLUTIONS + 24;
     // One identity per solution so the per-parent child cap never binds - the export set is what is
@@ -935,7 +956,7 @@ TEST(TestAntColonyExport, KeepsTheLowestScoresInOrder)
 TEST(TestAntColonyExport, OrdersFewerThanTheCap)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     constexpr unsigned int COUNT = 40;
     // One identity per solution so the per-parent child cap never binds.
@@ -962,7 +983,7 @@ TEST(TestAntColonyExport, OrdersFewerThanTheCap)
 TEST(TestAntColonyExport, TiesKeepTheEarlierSolution)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i first = makeKey(3);
     const m256i second = makeKey(4);
@@ -984,7 +1005,7 @@ TEST(TestAntColonyExport, TiesKeepTheEarlierSolution)
 TEST(TestAntColonyExport, CarriesTheNetworkAndItsDepth)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(5);
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 6200), ANT_INVALID_INDEX);
@@ -1018,7 +1039,7 @@ TEST(TestAntColonyExport, CarriesTheNetworkAndItsDepth)
 TEST(TestAntColonyExport, SurvivesASnapshot)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     const m256i me = makeKey(6);
     for (unsigned int i = 0; i < 10; i++)
@@ -1041,7 +1062,7 @@ TEST(TestAntColonyExport, SurvivesASnapshot)
 TEST(TestAntColonyExport, BeginEpochClearsIt)
 {
     AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+    ASSERT_NE(colony, nullptr) << colonyInitFailure();
 
     ASSERT_NE(commitRootChild(colony, makeKey(7), 3500, 0, 6400), ANT_INVALID_INDEX);
     colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
