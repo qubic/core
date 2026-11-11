@@ -37,16 +37,19 @@ static const std::string SAMPLES_FILE_NAME = "data/samples_bpp9000.csv";
 static const std::string PRODUCTION_TASK_FILE_NAME = "data/bpp9000.task";
 static const std::string PRODUCTION_FILE_NAME = "data/gt_production.csv";
 static const std::string PRODUCTION_ANT_FILE_NAME = "data/gt_ant_production.csv";
+static const std::string PRODUCTION_POSITIVE_FILE_NAME = "data/gt_ant_positive.csv";
 
 // true  = ALSO run the engine-vs-reference cross-check on random tasks, for isolating a divergence.
 static bool gCompareReference = true;   // engine vs the scalar reference: the SIMD bit-exactness check
 
-// Samples run per config
-static constexpr unsigned long long TEST_NUMBER_OF_SAMPLES = 32;
+// The engine-vs-reference tests when gCompareReference = true, 0 runs all rows.
+static constexpr unsigned long long ENGINE_VS_REFERENCE_SAMPLES = 32;
+// Chains of gt_ant_positive.csv to run, 0 runs all chains.
+static constexpr unsigned int POSITIVE_SAMPLE_CHAINS = 2;
 // Worker threads for the parallel path; min with hardware_concurrency and numSamples. 0 falls back to 1 (serial).
 static constexpr unsigned int TEST_NUMBER_OF_THREADS = 4;
 
-// Samples and worker threads for the Bpp9000Profile timing run.
+// Number of samples and worker threads for the Bpp9000Profile timing run, 0 runs all.
 static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 48;
 static constexpr unsigned int MAX_NUMBER_OF_PROFILING_THREADS = 12;
 
@@ -73,7 +76,7 @@ static void loadSamples(std::vector<m256i>& seeds, std::vector<m256i>& pubkeys, 
     auto rows = readCSV(SAMPLES_FILE_NAME);
     ASSERT_GT(rows.size(), 1u) << "missing/empty " << SAMPLES_FILE_NAME;
     unsigned long long n = rows.size() - 1;   // minus header
-    if (n > limit)
+    if (limit != 0 && n > limit)
     {
         n = limit;
     }
@@ -82,6 +85,24 @@ static void loadSamples(std::vector<m256i>& seeds, std::vector<m256i>& pubkeys, 
         seeds.push_back(hexTo32Bytes(trim(rows[i + 1][0]), 32));
         pubkeys.push_back(hexTo32Bytes(trim(rows[i + 1][1]), 32));
         nonces.push_back(hexTo32Bytes(trim(rows[i + 1][2]), 32));
+    }
+}
+
+// gt_ant_production.csv rows as profiling inputs; limit 0 takes every row.
+static void loadProfileSamples(std::vector<m256i>& seeds, std::vector<m256i>& pubkeys, std::vector<m256i>& nonces, unsigned long long limit)
+{
+    auto rows = readCSV(PRODUCTION_ANT_FILE_NAME);
+    ASSERT_GT(rows.size(), 1u) << "missing/empty " << PRODUCTION_ANT_FILE_NAME;
+    unsigned long long n = rows.size() - 1;
+    if (limit != 0 && n > limit)
+    {
+        n = limit;
+    }
+    for (unsigned long long i = 0; i < n; ++i)
+    {
+        pubkeys.push_back(hexTo32Bytes(trim(rows[i + 1][2]), 32));
+        nonces.push_back(hexTo32Bytes(trim(rows[i + 1][3]), 32));
+        seeds.push_back(hexTo32Bytes(trim(rows[i + 1][5]), 32));
     }
 }
 
@@ -258,6 +279,53 @@ static std::unique_ptr<score_engine::ScoreBpp9000<Cfg>> makeEngine(const unsigne
     return engine;
 }
 
+// The node's childAnnHash of a network (qubic.cpp folds it into resourceTestingDigest); the childAnnHash
+// golden columns hold this value for each row's best network.
+template<typename Cfg>
+static unsigned int childAnnHash(const typename score_engine::ScoreBpp9000<Cfg>::ANN& ann)
+{
+    unsigned int hash = 0;
+    KangarooTwelve(&ann, sizeof(ann), &hash, sizeof(hash));
+    return hash;
+}
+
+template<typename Cfg>
+static void referenceLoadAnn(score_bpp9000_reference::Miner<Cfg>& ref, const typename score_engine::ScoreBpp9000<Cfg>::ANN& ann)
+{
+    memcpy(ref.curInitial, ann.initialNeuronValues, sizeof(ref.curInitial));
+    for (unsigned long long i = 0; i < Cfg::populationThreshold * Cfg::numberOfNeighbors; ++i)
+    {
+        ref.neighborIndices[i] = ann.neighbor[i];
+    }
+    memcpy(ref.curLut, ann.lut, sizeof(ref.curLut));
+}
+
+template<typename Cfg>
+static void referenceBestAnn(const score_bpp9000_reference::Miner<Cfg>& ref, typename score_engine::ScoreBpp9000<Cfg>::ANN& out)
+{
+    memcpy(out.initialNeuronValues, ref.bestInitial, sizeof(out.initialNeuronValues));
+    for (unsigned long long i = 0; i < Cfg::populationThreshold * Cfg::numberOfNeighbors; ++i)
+    {
+        out.neighbor[i] = (unsigned short)ref.bestNeighborIndices[i];
+    }
+    memcpy(out.lut, ref.bestLut, sizeof(out.lut));
+}
+
+template<typename Cfg>
+static score_engine::Rating referenceScoreFromParent(score_bpp9000_reference::Miner<Cfg>& ref,
+    const typename score_engine::ScoreBpp9000<Cfg>::ANN& parent, unsigned long long parentShift, const m256i& pubkey,
+    const m256i& nonce, const m256i& anchor, typename score_engine::ScoreBpp9000<Cfg>::ANN& outAnn)
+{
+    using Ref = score_bpp9000_reference::Miner<Cfg>;
+    referenceLoadAnn<Cfg>(ref, parent);
+    ref.deriveMutationSeeds(pubkey.m256i_u8, nonce.m256i_u8, anchor.m256i_u8);
+    ref.shift = parentShift;
+    const score_engine::Rating rating = ref.computeScoreFromCurrent(Ref::changesPerStep(nonce.m256i_u8), nonce.m256i_u8[2],
+        Ref::modeOf(nonce.m256i_u8));
+    referenceBestAnn<Cfg>(ref, outAnn);
+    return rating;
+}
+
 // ScoreBpp9000 vs the reference on a random task. Used to debug a mismatch.
 // Note: each thread's reference owns a full pool, so this path costs ~512MB per thread.
 template<typename Cfg>
@@ -287,6 +355,8 @@ static void runRefVsEngineConfig(const std::vector<m256i>& seeds, const std::vec
             ADD_FAILURE() << "reference loadTaskFromMemory failed";
             return;
         }
+        auto engineAnn = std::make_unique<typename score_engine::ScoreBpp9000<Cfg>::ANN>();
+        auto refAnn = std::make_unique<typename score_engine::ScoreBpp9000<Cfg>::ANN>();
         for (unsigned long long s = threadIdx; s < seeds.size(); s += numThreads)
         {
             const m256i& n = nonces[s];
@@ -294,6 +364,9 @@ static void runRefVsEngineConfig(const std::vector<m256i>& seeds, const std::vec
             const score_engine::Rating r = ref->computeScore(pubkeys[s].m256i_u8, n.m256i_u8);
             EXPECT_EQ(eng.error, r.error) << "sample " << s;
             EXPECT_EQ(eng.shift, r.shift) << "sample " << s;
+            engine->getBestANN(*engineAnn);
+            referenceBestAnn<Cfg>(*ref, *refAnn);
+            EXPECT_EQ(memcmp(engineAnn.get(), refAnn.get(), sizeof(*refAnn)), 0) << "best ANN bytes, sample " << s;
         }
     });
 }
@@ -382,6 +455,7 @@ TEST(TestQubicScoreFunction, Bpp9000AntColonyRegression)
         m256i anchor;
         unsigned int score;
         unsigned int shift;
+        unsigned int annHash;
     };
     struct AntChain
     {
@@ -437,6 +511,8 @@ TEST(TestQubicScoreFunction, Bpp9000AntColonyRegression)
         node.anchor = hexTo32Bytes(trim(rows[i][4]), 32);
         node.shift = (unsigned int)std::stoul(trim(rows[i][6]));
         node.score = (unsigned int)std::stoul(trim(rows[i][7]));
+        ASSERT_GE(rows[i].size(), 9u) << "gt_ant row " << i << " has no childAnnHash";
+        node.annHash = (unsigned int)std::stoul(trim(rows[i][8]), nullptr, 16);
 
         AntChain& chain = chains[cidx];
         if ((size_t)depth >= chain.nodes.size())
@@ -484,6 +560,7 @@ TEST(TestQubicScoreFunction, Bpp9000AntColonyRegression)
                 EXPECT_EQ(rating.error, node.score) << "gt_ant chain " << ci << " depth " << d;
                 EXPECT_EQ(rating.shift, node.shift) << "gt_ant chain " << ci << " depth " << d;
                 engine->getBestANN(parent);   // this node becomes the next depth's parent
+                EXPECT_EQ(childAnnHash<ProductionConfig>(parent), node.annHash) << "gt_ant chain " << ci << " depth " << d;
                 parentShift = rating.shift;
             }
         }
@@ -496,7 +573,7 @@ TEST(TestQubicScoreFunction, Bpp9000EngineVsReference)
     if (gCompareReference)
     {
         std::vector<m256i> seeds, pubkeys, nonces;
-        loadSamples(seeds, pubkeys, nonces, TEST_NUMBER_OF_SAMPLES);
+        loadSamples(seeds, pubkeys, nonces, ENGINE_VS_REFERENCE_SAMPLES);
 
         runRefVsEngine(seeds, pubkeys, nonces);
     }
@@ -507,7 +584,7 @@ static void runBpp9000ProfileForMode(unsigned char mode, const char* modeName)
     using Cfg = ProductionConfig;
 
     std::vector<m256i> seeds, pubkeys, nonces;
-    loadSamples(seeds, pubkeys, nonces, PROFILING_NUMBER_OF_SAMPLES);
+    loadProfileSamples(seeds, pubkeys, nonces, PROFILING_NUMBER_OF_SAMPLES);
     if (seeds.empty())
     {
         return;
@@ -709,9 +786,9 @@ static m256i makePubkey(unsigned char tag)
     return k;
 }
 
-// Canonical ant nonce: nonce[1] packs L (bits 0-3) + mode (bits 4-5, in [1,3]), nonce[2] = K; mode defaults to LUT.
+// Ant nonce: nonce[1] packs L (bits 0-3) + mode (bits 4-5), nonce[2] = K; mode defaults to WIRING, the only canonical mode.
 static m256i makeAntNonce(unsigned char L, unsigned char K, unsigned char tag,
-                          unsigned char mode = score_engine::BPP9000_MODE_LUT)
+                          unsigned char mode = score_engine::BPP9000_MODE_WIRING)
 {
     m256i n = m256i::zero();
     n.m256i_u8[0] = (unsigned char)score_engine::AlgoType::Bpp9000;
@@ -743,7 +820,7 @@ static bool findImprovingNonce(AntEngine& engine, const AntEngine::ANN& parent, 
 }
 
 // Make sure the score at the full computeScore flow have the same score with
-// the engine start directly from the best/final LUT
+// the engine start directly from the best/final network
 TEST(TestQubicScoreAntColony, BestAnnReproducesReturnedScore)
 {
     AntFixture f;
@@ -762,7 +839,7 @@ TEST(TestQubicScoreAntColony, BestAnnReproducesReturnedScore)
 }
 
 // Make sure the score at the full computeScoreFromParent flow have the same score with
-// the engine start directly from the best/final LUT
+// the engine start directly from the best/final network
 TEST(TestQubicScoreAntColony, BestAnnReproducesScoreFromParent)
 {
     AntFixture f;
@@ -918,12 +995,12 @@ TEST(TestQubicScoreAntColony, ChildIsDeterministicAndInheritsParent)
     EXPECT_EQ(s1, s2) << "same inputs gave different scores";
     AntEngine::ANN child2;
     f.engine->getBestANN(child2);
-    EXPECT_EQ(memcmp(&child1, &child2, sizeof(child1)), 0) << "same inputs gave a different child LUT";
+    EXPECT_EQ(memcmp(&child1, &child2, sizeof(child1)), 0) << "same inputs gave a different child network";
 
     f.engine->computeScoreFromParent(parentB, 0, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
     AntEngine::ANN child3;
     f.engine->getBestANN(child3);
-    EXPECT_NE(memcmp(&child1, &child3, sizeof(child1)), 0) << "the parent LUT was not inherited";
+    EXPECT_NE(memcmp(&child1, &child3, sizeof(child1)), 0) << "the parent network was not inherited";
 }
 
 // The anchor digest is part of the child's walk seed, so the same nonce on the same parent must not
@@ -976,18 +1053,20 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
     AntEngine::ANN afterA;
     f.engine->getBestANN(afterA);
 
-    // L below range, L above range, wrong algorithm slot.
+    // L below range, L above range, wrong algorithm slot, start-state mode, LUT mode.
     // K-over-max is only testable when numberOfMutations fits in a byte.
     static constexpr bool kOverflowTestable = (AntCfg::numberOfMutations <= 255);
-    static constexpr unsigned int numberOfBadNonces = kOverflowTestable ? 4 : 3;
-    m256i bad[4];
+    static constexpr unsigned int numberOfBadNonces = kOverflowTestable ? 6 : 5;
+    m256i bad[6];
     bad[0] = makeAntNonce(0, 0, 64);
     bad[1] = makeAntNonce((unsigned char)(score_engine::BPP9000_MAX_CHANGES_PER_STEP + 1), 0, 65);
     bad[2] = makeAntNonce(3, 0, 67);
     bad[2].m256i_u8[0] = (unsigned char)score_engine::AlgoType::Neuraxon;
+    bad[3] = makeAntNonce(3, 5, 68, score_engine::BPP9000_MODE_START);
+    bad[4] = makeAntNonce(3, 5, 69, score_engine::BPP9000_MODE_LUT);
     if constexpr (kOverflowTestable)
     {
-        bad[3] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
+        bad[5] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
     }
 
     for (unsigned int i = 0; i < numberOfBadNonces; i++)
@@ -1019,14 +1098,14 @@ TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
     constexpr unsigned char maxL = (unsigned char)score_engine::BPP9000_MAX_CHANGES_PER_STEP;
     constexpr unsigned char maxK = (unsigned char)AntScorer::numberOfMutations;
 
-    // L in [1, maxL], every mode in [1, 3], K in [0, maxK] is canonical.
+    // L in [1, maxL], the wiring mode, K in [0, maxK] is canonical.
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(1, 0, 70).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(maxL, 0, 71).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, maxK, 72).m256i_u8));
-    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 73, score_engine::BPP9000_MODE_START).m256i_u8));
     EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 74, score_engine::BPP9000_MODE_WIRING).m256i_u8));
+    EXPECT_TRUE(AntScorer::isCanonicalStandaloneNonce(makeAntNonce(3, 0, 82, score_engine::BPP9000_MODE_WIRING).m256i_u8));
 
-    // L out of range, mode 0 (the empty mode field) are all rejected.
+    // L out of range, mode 0 (the empty mode field), the start-state mode and the LUT mode are all rejected.
     // K-over-max is only testable when numberOfMutations fits in a byte.
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(0, 0, 75).m256i_u8));
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 76).m256i_u8));
@@ -1035,6 +1114,10 @@ TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
         EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 77).m256i_u8));
     }
     EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 78, 0).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 73, score_engine::BPP9000_MODE_START).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, 0, 79, score_engine::BPP9000_MODE_LUT).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalStandaloneNonce(makeAntNonce(3, 0, 80, score_engine::BPP9000_MODE_START).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalStandaloneNonce(makeAntNonce(3, 0, 81, score_engine::BPP9000_MODE_LUT).m256i_u8));
 }
 
 
@@ -1374,3 +1457,269 @@ TEST_F(TestQubicScoreTaskQueue, OneBatchCarriesDifferentWorkFunctions)
     EXPECT_EQ(gTaskQueueProbe.altRunCount.load(), pairCount);
 }
 
+// =============================================================================
+// Agreement with the reference on cases the goldens above do not reach
+
+using TimeoutConfig = score_engine::Bpp9000Params<
+    BPP9000_NUMBER_OF_INPUT_NEURONS, BPP9000_NUMBER_OF_OUTPUT_NEURONS, BPP9000_SEQUENCE_LENGTH,
+    BPP9000_WINDOW_WIDTH, 2 * BPP9000_WINDOW_WIDTH + 3, BPP9000_NUMBER_OF_NEIGHBORS,
+    256, 100, BPP9000_SOLUTION_THRESHOLD_DEFAULT, BPP9000_SHIFT_CAP>;
+
+using Pop64Config = score_engine::Bpp9000Params<
+    BPP9000_NUMBER_OF_INPUT_NEURONS, BPP9000_NUMBER_OF_OUTPUT_NEURONS, BPP9000_SEQUENCE_LENGTH,
+    BPP9000_WINDOW_WIDTH, BPP9000_MAX_NUMBER_OF_TICKS, BPP9000_NUMBER_OF_NEIGHBORS,
+    64, BPP9000_NUMBER_OF_MUTATIONS, BPP9000_SOLUTION_THRESHOLD_DEFAULT, BPP9000_SHIFT_CAP>;
+
+// A walk start that masters frames 0 and 1 and times out in frame 2 must report {INF, 2}, as the reference does.
+TEST(TestQubicScoreFunction, Bpp9000TimeoutAfterAdvanceMatchesReference)
+{
+    using Cfg = TimeoutConfig;
+    using Engine = score_engine::ScoreBpp9000<Cfg>;
+    using Ref = score_bpp9000_reference::Miner<Cfg>;
+
+    std::vector<m256i> seeds;
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    loadSamples(seeds, pubkeys, nonces, 1);
+    ASSERT_FALSE(seeds.empty());
+    std::vector<unsigned char> pool;
+    generatePool(seeds[0], pool);
+
+    const std::vector<unsigned char> inputs(Cfg::sequenceLength * Cfg::numberOfInputNeurons, 0);
+    const std::vector<unsigned char> targets(Cfg::sequenceLength * Cfg::numberOfOutputNeurons, 0);
+    std::vector<unsigned char> data(score_task_file::dataBytes((unsigned int)Cfg::numberOfInputNeurons,
+        (unsigned int)Cfg::numberOfOutputNeurons, Cfg::sequenceLength));
+    score_task_file::packDataBlock((unsigned int)Cfg::numberOfInputNeurons, (unsigned int)Cfg::numberOfOutputNeurons,
+        Cfg::sequenceLength, inputs.data(), targets.data(), data.data());
+
+    auto engine = makeEngine<Cfg>(nullptr, data.data());
+    ASSERT_TRUE(engine);
+    engine->deriveControlOutput(seeds[0].m256i_u8, pool.data());
+    auto ref = std::make_unique<Ref>();
+    ref->initialize(seeds[0].m256i_u8);
+    ASSERT_TRUE(ref->loadTaskFromMemory(nullptr, data.data()));
+    const unsigned int control = ref->controlIndex;
+    const unsigned int output = ref->outputIndex;
+    ASSERT_EQ(engine->controlIndex, control);
+    ASSERT_EQ(engine->outputIndex, output);
+
+    const m256i pk = makePubkey(41);
+    const m256i anchor = makePubkey(42);
+    auto parent = std::make_unique<Engine::ANN>();
+    engine->deriveRootANN(pk.m256i_u8, pool.data(), *parent);
+    for (unsigned long long j = 0; j < Cfg::numberOfNeighbors; ++j)
+    {
+        parent->neighbor[control * Cfg::numberOfNeighbors + j] = (unsigned short)control;
+    }
+    parent->initialNeuronValues[control] = 0;
+    parent->lut[control * Engine::lutSize + 0] = 2;
+    parent->lut[control * Engine::lutSize + 26] = 0;
+    for (unsigned long long e = 0; e < Engine::lutSize; ++e)
+    {
+        parent->lut[output * Engine::lutSize + e] = 0;
+    }
+
+    referenceLoadAnn<Cfg>(*ref, *parent);
+    ref->shift = 0;
+    const score_engine::Rating start = ref->advanceShift();
+    ASSERT_EQ(start.error, Ref::INFINITE_ERROR);
+    ASSERT_EQ(start.shift, 2u);
+    ASSERT_EQ(ref->shift, 2ull);
+
+    auto engineAnn = std::make_unique<Engine::ANN>();
+    auto refAnn = std::make_unique<Engine::ANN>();
+    const unsigned char lValues[3] = { 1, 4, 10 };
+    const unsigned char kValues[3] = { 0, 7, 100 };
+    for (unsigned int li = 0; li < 3; ++li)
+    {
+        for (unsigned int ki = 0; ki < 3; ++ki)
+        {
+            const m256i nonce = makeAntNonce(lValues[li], kValues[ki], (unsigned char)(60 + 3 * li + ki));
+            const score_engine::Rating eng = engine->computeScoreFromParent(*parent, 0, pk.m256i_u8, nonce.m256i_u8,
+                anchor.m256i_u8, pool.data());
+            engine->getBestANN(*engineAnn);
+            const score_engine::Rating r = referenceScoreFromParent<Cfg>(*ref, *parent, 0, pk, nonce, anchor, *refAnn);
+            if (kValues[ki] == Cfg::numberOfMutations)
+            {
+                EXPECT_EQ(r.error, Ref::INFINITE_ERROR) << "L " << (int)lValues[li];
+                EXPECT_EQ(r.shift, 2u) << "L " << (int)lValues[li];
+            }
+            EXPECT_EQ(eng.error, r.error) << "L " << (int)lValues[li] << " K " << (int)kValues[ki];
+            EXPECT_EQ(eng.shift, r.shift) << "L " << (int)lValues[li] << " K " << (int)kValues[ki];
+            EXPECT_EQ(memcmp(engineAnn.get(), refAnn.get(), sizeof(*refAnn)), 0)
+                << "best ANN bytes, L " << (int)lValues[li] << " K " << (int)kValues[ki];
+        }
+    }
+}
+
+// Population 64: the AVX2 gather tick and the AVX-512 kernel at a small population, against the reference.
+TEST(TestQubicScoreFunction, Bpp9000EngineVsReferencePop64)
+{
+    if (gCompareReference)
+    {
+        std::vector<m256i> seeds;
+        std::vector<m256i> pubkeys;
+        std::vector<m256i> nonces;
+        loadSamples(seeds, pubkeys, nonces, ENGINE_VS_REFERENCE_SAMPLES);
+        runRefVsEngineConfig<Pop64Config>(seeds, pubkeys, nonces);
+    }
+}
+
+// Walks from positive parents on the production task: error, shift and a hash of the best ANN bytes.
+TEST(TestQubicScoreFunction, Bpp9000PositiveSampleRegression)
+{
+    using Engine = score_engine::ScoreBpp9000<ProductionConfig>;
+
+    struct PositiveRow
+    {
+        unsigned long long chainStart;
+        int parent;
+        m256i pubkey;
+        m256i nonce;
+        m256i anchor;
+        unsigned int shift;
+        unsigned int score;
+        unsigned int annHash;
+    };
+
+    const auto csv = readCSV(PRODUCTION_POSITIVE_FILE_NAME);
+    ASSERT_GT(csv.size(), 1u) << "missing/empty " << PRODUCTION_POSITIVE_FILE_NAME;
+    const m256i seed = hexTo32Bytes(trim(csv[1][6]), 32);
+
+    std::vector<PositiveRow> rows;
+    unsigned int chainCount = 0;
+    for (unsigned long long i = 1; i < csv.size(); ++i)
+    {
+        const bool newChain = (i == 1) || (trim(csv[i][0]) != trim(csv[i - 1][0]));
+        if (newChain)
+        {
+            if (POSITIVE_SAMPLE_CHAINS != 0 && chainCount == POSITIVE_SAMPLE_CHAINS)
+            {
+                break;
+            }
+            ++chainCount;
+        }
+        PositiveRow r;
+        r.chainStart = newChain ? rows.size() : rows.back().chainStart;
+        ASSERT_EQ(std::stoull(trim(csv[i][1])), rows.size() - r.chainStart) << "gt_ant_positive row " << i;
+        r.parent = std::stoi(trim(csv[i][2]));
+        r.pubkey = hexTo32Bytes(trim(csv[i][3]), 32);
+        r.nonce = hexTo32Bytes(trim(csv[i][4]), 32);
+        r.anchor = hexTo32Bytes(trim(csv[i][5]), 32);
+        r.shift = (unsigned int)std::stoul(trim(csv[i][7]));
+        r.score = (unsigned int)std::stoul(trim(csv[i][8]));
+        r.annHash = (unsigned int)std::stoul(trim(csv[i][9]), nullptr, 16);
+        rows.push_back(r);
+    }
+    ASSERT_FALSE(rows.empty());
+
+    std::vector<char> isParent(rows.size(), 0);
+    for (const PositiveRow& r : rows)
+    {
+        if (r.parent >= 0)
+        {
+            isParent[r.chainStart + (unsigned long long)r.parent] = 1;
+        }
+    }
+
+    std::vector<unsigned char> pool;
+    generatePool(seed, pool);
+    const auto taskBytes = readBinaryFile(PRODUCTION_TASK_FILE_NAME);
+    ASSERT_GT(taskBytes.size(), sizeof(score_task_file::TaskFileHeader)) << "missing/short " << PRODUCTION_TASK_FILE_NAME;
+    const TaskBlocks tb = taskSubview<ProductionConfig>(taskBytes);
+
+    std::vector<std::unique_ptr<Engine::ANN>> parentAnn(rows.size());
+    for (unsigned long long k = 0; k < rows.size(); ++k)
+    {
+        if (isParent[k])
+        {
+            parentAnn[k] = std::make_unique<Engine::ANN>();
+        }
+    }
+    std::vector<score_engine::Rating> results(rows.size(), score_engine::Rating::worst());
+    std::vector<unsigned int> hashes(rows.size(), 0);
+
+    const auto scoreRow = [&](Engine& engine, Engine::ANN& scratch, unsigned long long k)
+    {
+        const PositiveRow& r = rows[k];
+        const Engine::ANN* parent = &scratch;
+        unsigned long long parentShift = 0;
+        if (r.parent < 0)
+        {
+            engine.deriveRootANN(r.pubkey.m256i_u8, pool.data(), scratch);
+        }
+        else
+        {
+            const unsigned long long p = r.chainStart + (unsigned long long)r.parent;
+            parent = parentAnn[p].get();
+            parentShift = results[p].shift;
+        }
+        results[k] = engine.computeScoreFromParent(*parent, parentShift, r.pubkey.m256i_u8, r.nonce.m256i_u8,
+            r.anchor.m256i_u8, pool.data());
+        Engine::ANN& best = isParent[k] ? *parentAnn[k] : scratch;
+        engine.getBestANN(best);
+        hashes[k] = childAnnHash<ProductionConfig>(best);
+    };
+
+    std::vector<unsigned long long> chainStarts;
+    for (unsigned long long k = 0; k < rows.size(); ++k)
+    {
+        if (rows[k].chainStart == k)
+        {
+            chainStarts.push_back(k);
+        }
+    }
+    chainStarts.push_back(rows.size());
+    const unsigned long long numChains = chainStarts.size() - 1;
+
+    runWorkers(workerThreadCount(numChains), [&](unsigned int threadIdx, unsigned int numThreads)
+    {
+        auto engine = makeEngine<ProductionConfig>(tb.topo, tb.data);
+        if (!engine)
+        {
+            return;
+        }
+        engine->deriveControlOutput(seed.m256i_u8, pool.data());
+        auto scratch = std::make_unique<Engine::ANN>();
+        for (unsigned long long c = threadIdx; c < numChains; c += numThreads)
+        {
+            for (unsigned long long k = chainStarts[c]; k < chainStarts[c + 1]; ++k)
+            {
+                if (isParent[k])
+                {
+                    scoreRow(*engine, *scratch, k);
+                }
+            }
+        }
+    });
+
+    std::vector<unsigned long long> leaves;
+    for (unsigned long long k = 0; k < rows.size(); ++k)
+    {
+        if (!isParent[k])
+        {
+            leaves.push_back(k);
+        }
+    }
+    runWorkers(workerThreadCount(leaves.size()), [&](unsigned int threadIdx, unsigned int numThreads)
+    {
+        auto engine = makeEngine<ProductionConfig>(tb.topo, tb.data);
+        if (!engine)
+        {
+            return;
+        }
+        engine->deriveControlOutput(seed.m256i_u8, pool.data());
+        auto scratch = std::make_unique<Engine::ANN>();
+        for (unsigned long long i = threadIdx; i < leaves.size(); i += numThreads)
+        {
+            scoreRow(*engine, *scratch, leaves[i]);
+        }
+    });
+
+    for (unsigned long long k = 0; k < rows.size(); ++k)
+    {
+        EXPECT_EQ(results[k].error, rows[k].score) << "gt_ant_positive row " << k;
+        EXPECT_EQ(results[k].shift, rows[k].shift) << "gt_ant_positive row " << k;
+        EXPECT_EQ(hashes[k], rows[k].annHash) << "gt_ant_positive row " << k;
+    }
+}

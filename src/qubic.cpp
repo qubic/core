@@ -1153,16 +1153,10 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
     }
 }
 
-// Signing target for a vote on the given tick
-static unsigned int getTargetTickVoteSignature(unsigned int tick)
-{
-    return (tick >= TICK_VOTE_SIGNATURE_SWITCH_TICK) ? TARGET_TICK_VOTE_SIGNATURE_NEW : TARGET_TICK_VOTE_SIGNATURE;
-}
-
-static bool verifyTickVoteSignature(const unsigned char* publicKey, const unsigned char* messageDigest, const unsigned char* signature, const unsigned int tick, const bool curveVerify = true)
+static bool verifyTickVoteSignature(const unsigned char* publicKey, const unsigned char* messageDigest, const unsigned char* signature, const bool curveVerify = true)
 {
     unsigned int score = _byteswap_ulong(((unsigned int*)signature)[0]);
-    if (score > getTargetTickVoteSignature(tick)) return false;
+    if (score > TARGET_TICK_VOTE_SIGNATURE) return false;
     if (curveVerify)
     {
         if (!verify(publicKey, messageDigest, signature)) return false;
@@ -1191,7 +1185,7 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
         KangarooTwelve(&request->tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
         request->tick.computorIndex ^= BroadcastTick::type();
         const bool verifyFourQCurve = true;
-        if (verifyTickVoteSignature(broadcastedComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature, request->tick.tick, verifyFourQCurve))
+        if (verifyTickVoteSignature(broadcastedComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature, verifyFourQCurve))
         {
             if (header->isDejavuZero())
             {
@@ -2021,7 +2015,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
 
-    respondedSystemInfo.targetTickVoteSignature = getTargetTickVoteSignature(system.tick + 1);
+    respondedSystemInfo.targetTickVoteSignature = TARGET_TICK_VOTE_SIGNATURE;
 
     if (broadcastedComputors.computors.epoch != 0)
     {
@@ -4375,7 +4369,7 @@ static void processTick(unsigned long long processorNumber)
                 }
             }
         }
-        // Record per-tick TX counts for V2 revenue (counted here where TX bodies are guaranteed present)
+        // Record per-tick TX counts for offline revenue analysis (counted here where TX bodies are guaranteed present)
         {
             unsigned int tickOffset = system.tick - system.initialTick;
             if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH)
@@ -5163,7 +5157,7 @@ static void endEpoch()
     if (spectrumInfo.totalAmount + ISSUANCE_RATE <= MAX_SUPPLY)
     {
 
-        // Collect mining scores for V2
+        // Collect DOGE mining scores
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
             gEpochRevenueData.dogeMiningScore[i] = gDogeMiningSharesCounter.getSharesCount(i);
@@ -5179,10 +5173,8 @@ static void endEpoch()
             oracleEngine.getRevenuePoints(oracleRevPoints);
             copyMemory(gEpochRevenueData.oracleScore, oracleRevPoints.computorRevPoints);
         }
-        computeRevenueV2(gEpochRevenueData);
 
-        // Multi-dimension revenue: computed for offline comparison; paid to computors
-        // only when USE_REVENUE_MULTI_DIMENSION is set (see src/revenue.h).
+        // Multi-dimension revenue paid to computors
         gMultiDimRevenue.totalTicks = system.tick - system.initialTick;
         computeMultiDimRevenue();
 
@@ -5198,11 +5190,7 @@ static void endEpoch()
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
-#if USE_REVENUE_MULTI_DIMENSION
             long long revenue = gMultiDimRevenue.revenue[computorIndex];
-#else
-            long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
-#endif
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
@@ -5513,7 +5501,7 @@ static bool saveAllNodeStates()
         return false;
     }
 
-    // Save V2 per-tick TX counts (recorded during processTick)
+    // Save per-tick TX counts for offline revenue analysis (recorded during processTick)
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
@@ -5733,7 +5721,7 @@ static bool loadAllNodeStates()
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
     gDogeMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.dogeMiningSharesCounterData);
 
-    // Load V2 per-tick TX counts
+    // Load per-tick TX counts for offline revenue analysis
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
@@ -5754,15 +5742,10 @@ static bool loadAllNodeStates()
     }
     if (!revenueDataLoaded)
     {
-#if USE_REVENUE_MULTI_DIMENSION
-        // v2Revenue is shadow when multi-dim is active, revenue uses gMultiDimRevenue.
-        // We mark zero to make flag out this data is invalid for analysis
-        logToConsole(L"Revenue data snapshot load/remap failed (v2 shadow mode), zeroing");
+        // Analysis data only; the revenue inputs in it are refilled at epoch end.
+        // Zero marks the per-tick counts of this epoch as invalid for analysis.
+        logToConsole(L"Revenue data snapshot load/remap failed (analysis data only), zeroing");
         setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
-#else
-        logToConsole(L"Failed to load revenue data snapshot");
-        return false;
-#endif
     }
 
     MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
@@ -5771,13 +5754,8 @@ static bool loadAllNodeStates()
     long long mdSize = load(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue, directory);
     if (mdSize != sizeof(gMultiDimRevenue))
     {
-#if USE_REVENUE_MULTI_DIMENSION
         logToConsole(L"Failed to load multi dim revenue snapshot");
         return false;
-#else
-        logToConsole(L"Multi dim revenue snapshot missing/mismatch (shadow mode), zeroing");
-        setMem(&gMultiDimRevenue, sizeof(gMultiDimRevenue), 0);
-#endif                                                                                                                 
     }
 
     // update own computor indices
@@ -6258,28 +6236,28 @@ static void computeTxBodyDigestBase(const int tick)
 }
 
 // special procedure to sign the tick vote
-static void signTickVote(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature, const unsigned int target)
+static void signTickVote(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature)
 {
     PROFILE_SCOPE();
 
-    signWithRandomK_incremental(subseed, publicKey, messageDigest, signature, target);
+    signWithRandomK_incremental(subseed, publicKey, messageDigest, signature, TARGET_TICK_VOTE_SIGNATURE);
     return;
 }
 
 #if USE_PARALLEL_SIGN_VOTES
 // Racing variant for parallelSignVotes straggler-racing. Same mandatory PoW (signWithRandomK + verify until
-// score <= target), but writes into the caller's scratch buffer and BAILS the moment
+// score <= TARGET_TICK_VOTE_SIGNATURE), but writes into the caller's scratch buffer and BAILS the moment
 // `done` is observed set — i.e. another core already produced a valid signature for this same index.
 // Returns true with a valid signature in outSig, or false if it bailed. The pool's processTask() commits
 // outSig into the real slot only if it wins the done-CAS, so concurrent racers on one index never tear the
 // signature and exactly one valid signature is kept. Any valid signature is consensus-acceptable,
 // so racing different random K across cores is safe.
-static bool signTickVoteRacing(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* outSig, const unsigned int target, volatile int* done)
+static bool signTickVoteRacing(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* outSig, volatile int* done)
 {
     PROFILE_SCOPE();
 
     if (*done) return false; // skip starting if another core already won
-    signWithRandomK_incremental(subseed, publicKey, messageDigest, outSig, target, done);
+    signWithRandomK_incremental(subseed, publicKey, messageDigest, outSig, TARGET_TICK_VOTE_SIGNATURE, done);
     return true;
 }
 #endif
@@ -6331,7 +6309,6 @@ static void broadcastTickVotes()
         parallelSignVotes.tasks[i].publicKey = computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8;
         parallelSignVotes.tasks[i].messageDigest = perIndexDigest[i];
         parallelSignVotes.tasks[i].signature = bt.tick.signature;
-        parallelSignVotes.tasks[i].target = getTargetTickVoteSignature(bt.tick.tick);
     }
 
     // Phase 2: dispatch all signing work to the request-processor pool.
@@ -6378,7 +6355,7 @@ static void broadcastTickVotes()
         unsigned char digest[32];
         KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
         broadcastTick.tick.computorIndex ^= BroadcastTick::type();
-        signTickVote(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature, getTargetTickVoteSignature(broadcastTick.tick.tick));
+        signTickVote(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
 
 
         enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type(), 0, &broadcastTick);
@@ -6947,9 +6924,9 @@ static void tickProcessor(void*)
                                     endEpoch();
 
                                     // Save the file of revenue. This blocking save can be called from any thread
-                                    // Revenue v2 data
+                                    // Per-tick TX counts, oracle and DOGE scores, for offline analysis
                                     asyncSave(REVENUE_DATA_END_OF_EPOCH_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData);
-                                    // Multi-dim revenue (shadow) - for offline comparison against the additive
+                                    // Multi-dim revenue state and the paid per-computor revenue
                                     asyncSave(MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue);
                                     // The epoch's best networks, for offline extraction
 #ifndef NDEBUG

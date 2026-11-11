@@ -45,6 +45,7 @@ namespace score_engine
     using ScoreBpp9000T = ScoreBpp9000<Bpp9000ParamsT>;
 
     using ScoreEngineT = ScoreEngine<NeuraxonParamsT, Bpp9000ParamsT>;
+    static_assert(alignof(ScoreEngineT) <= 8, "engines live in AllocatePool memory, which is only 8-byte aligned");
 }
 
 template <unsigned long long solutionBufferCount>

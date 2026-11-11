@@ -73,12 +73,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 311
-#define VERSION_C 2
+#define VERSION_B 312
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 238
-#define TICK 89000000
+#define EPOCH 239
+#define TICK 91688000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -126,7 +126,7 @@ static constexpr unsigned char BPP9000_DATA_HASH[32] =
       0x8e, 0x53, 0x01, 0xcc, 0x13, 0xe7, 0x15, 0x81, 0x7b, 0x28, 0xef, 0x3c, 0x3e, 0xff, 0x15, 0x46 };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
-static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 32;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 1024;
 static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
 static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 1000;
 static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
@@ -134,7 +134,7 @@ static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365 + 24 * 7;
 static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 365;
 // How far the frame may slide: production predicts one week ahead.
 static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
-static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 2920;
+static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 3942;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4350;
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
@@ -150,7 +150,7 @@ static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
 
 // Ant colony: replay-cache entries, scores this node already computed so a restart does not
 // recompute them. Node-local, not consensus; a miss only costs time.
-static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 20;
+static constexpr unsigned int ANT_REPLAY_CACHE_SIZE = 1u << 19;
 static_assert((ANT_REPLAY_CACHE_SIZE & (ANT_REPLAY_CACHE_SIZE - 1)) == 0,
     "ANT_REPLAY_CACHE_SIZE must be a power of two, the slot index masks with it");
 
@@ -164,9 +164,7 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x000242ECU // ~28,980 signing operations per ID
-#define TARGET_TICK_VOTE_SIGNATURE_NEW 0x0000C0F9U // ~86,940 signing operations per ID
-#define TICK_VOTE_SIGNATURE_SWITCH_TICK 91110000U // switch to the new target from this tick
+#define TARGET_TICK_VOTE_SIGNATURE 0x0000134BU // ~869,430 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
