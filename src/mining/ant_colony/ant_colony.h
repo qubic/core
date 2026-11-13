@@ -146,7 +146,9 @@ enum ValidityResult
     RejectReplay,                // (pubkey, parentRef, nonce) already committed this epoch
     RejectDedupFull,
     RejectMinerIndexFull,        // more than MAX_NUMBER_OF_MINERS identities hold a tree this epoch
-    RejectNonCanonicalNonce,     // scorer refused the nonce; no score was produced
+    RejectNonCanonicalNonce,     // no score: nonce refused, walk timed out, the child's data does not reach its
+                                 // parent's shift, or the child does not beat its parent rated on that data
+    SkippedSupersededInTick,     // the sender has another solution at a higher index in the same tick; not looked at, refunded
 };
 
 struct AntColonyDiagnostics
@@ -162,6 +164,7 @@ struct AntColonyDiagnostics
     unsigned long long rejectDedupFull;
     unsigned long long rejectMinerIndexFull;
     unsigned long long rejectNonCanonicalNonce;
+    unsigned long long skippedSupersededInTick;
 
     unsigned long long acceptedSolutions;
     unsigned long long acceptedNotStored;
@@ -209,6 +212,8 @@ struct AntColonyDiagnostics
         appendNumber(message, rejectMinerIndexFull, TRUE);
         appendText(message, L", nonCanonicalNonce ");
         appendNumber(message, rejectNonCanonicalNonce, TRUE);
+        appendText(message, L" | skipped (later one in the tick) ");
+        appendNumber(message, skippedSupersededInTick, TRUE);
     }
 
     void count(ValidityResult r)
@@ -226,6 +231,7 @@ struct AntColonyDiagnostics
         case ValidityResult::RejectDedupFull:           rejectDedupFull++; break;
         case ValidityResult::RejectMinerIndexFull:      rejectMinerIndexFull++; break;
         case ValidityResult::RejectNonCanonicalNonce:   rejectNonCanonicalNonce++; break;
+        case ValidityResult::SkippedSupersededInTick:   skippedSupersededInTick++; break;
         default: break;
         }
     }
@@ -397,7 +403,7 @@ public:
 
     // Writes the ANT_EXPORT_MAX_SOLUTIONS lowest-scoring networks of the epoch to a file for offline
     // extraction. MUST be called between endEpoch() and the reset that starts the next epoch
-    bool exportBestSolutions(unsigned short epoch, CHAR16* directory);
+    bool exportBestSolutions(unsigned short epoch, CHAR16* directory, const unsigned char* taskDataHash);
 
     // Children already recorded under this parent, capped at ANT_MAX_CHILDREN_PER_PARENT, for query
     // purposes. Off-thread safe: the head map is read under the lock, the chain walk after it is not.
@@ -892,7 +898,7 @@ struct AntColonyExportHeader
     unsigned int solutionCount;      // the whole epoch, of which entryCount are exported
     unsigned int errorThreshold;
     unsigned char topologyHash[32];  // == BPP9000_TOPOLOGY_HASH of the build that wrote this
-    unsigned char dataHash[32];      // == BPP9000_DATA_HASH
+    unsigned char dataHash[32];      // of the task data the networks were graded on
     m256i rootSeed;
 };
 static_assert(sizeof(AntColonyExportHeader) == 24 + 64 + 32, "AntColonyExportHeader unexpected padding");
@@ -910,7 +916,7 @@ struct AntColonyExportEntry
 static_assert(sizeof(AntColonyExportEntry) == 32 + 16, "AntColonyExportEntry unexpected padding");
 
 template<typename ScoreT>
-inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16* directory)
+inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16* directory, const unsigned char* taskDataHash)
 {
     ASSERT(_exportSet != nullptr);
 
@@ -930,7 +936,7 @@ inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16*
     header.solutionCount = _solutionCount;
     header.errorThreshold = _errorThreshold;
     copyMem(header.topologyHash, BPP9000_TOPOLOGY_HASH, sizeof(header.topologyHash));
-    copyMem(header.dataHash, BPP9000_DATA_HASH, sizeof(header.dataHash));
+    copyMem(header.dataHash, taskDataHash, sizeof(header.dataHash));
     header.rootSeed = _rootSeed;
 
     if (set.count == 0)

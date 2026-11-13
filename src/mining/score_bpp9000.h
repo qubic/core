@@ -167,6 +167,11 @@ struct ScoreBpp9000
     unsigned char bestLut[maxNumberOfNeurons * lutSize];
 
     unsigned long long shift = 0;
+    // Last frame the walk in progress may reach, at most shiftCap. Set by the entry points.
+    unsigned long long shiftLimit = shiftCap;
+    // Rating of the network the walk starts from (the parent; the root for a standalone walk) on the
+    // walk's own frames, before any mutation.
+    Rating parentRating = { Rating::INVALID_ERROR, 0 };
 
     unsigned char neuronOut[maxNumberOfNeurons];
     // 4 spare bytes: the AVX2 gather tick reads 4 bytes per lane.
@@ -203,6 +208,17 @@ struct ScoreBpp9000
             }
             targetOutputs[t] = outTrit[0];
         }
+        return true;
+    }
+
+    // Replaces the first count targets with the given 0/1 values, one byte per target.
+    bool loadTaskTargets(const unsigned char* targets, unsigned long long count)
+    {
+        if (count > sequenceLength)
+        {
+            return false;
+        }
+        copyMem(targetOutputs, targets, count);
         return true;
     }
 
@@ -715,7 +731,7 @@ struct ScoreBpp9000
                     if (relJ + 1 >= windowWidth)
                     {
                         const unsigned long long frame = f0 + (relJ + 1 - windowWidth);
-                        if (!(winSum <= advanceThreshold && frame < shiftCap))
+                        if (!(winSum <= advanceThreshold && frame < shiftLimit))
                         {
                             shift = frame;
                             return Rating{ winSum, (unsigned int)frame };
@@ -1862,7 +1878,7 @@ struct ScoreBpp9000
         for (unsigned long long cm = complete; cm; cm &= cm - 1)
         {
             const unsigned int l = (unsigned int)_tzcnt_u64(cm);
-            if (laneSum[l] <= advanceThreshold && f0 < shiftCap)
+            if (laneSum[l] <= advanceThreshold && f0 < shiftLimit)
             {
                 slidingLanes |= 1ULL << l;
             }
@@ -1880,7 +1896,7 @@ struct ScoreBpp9000
             const unsigned int leaving = (unsigned int)((ringBits[l][gone >> 6] >> (gone & 63)) & 1ULL);
             laneSum[l] = laneSum[l] + (unsigned int)((wrong >> l) & 1ULL) - leaving;
             const unsigned long long frame = f0 + relJ + 1 - windowWidth;
-            if (!(laneSum[l] <= advanceThreshold && frame < shiftCap))
+            if (!(laneSum[l] <= advanceThreshold && frame < shiftLimit))
             {
                 finishLane(l, laneSum[l], (unsigned int)frame);
                 activeMask = (__mmask64)(activeMask & ~(1ULL << l));
@@ -2495,6 +2511,7 @@ struct ScoreBpp9000
                 {
                     cur = advanceShift();
                     best = cur;
+                    parentRating = cur;
                 }
                 return rollingStepsFrom(s, L, K, mode, cur, best);
             }
@@ -2586,10 +2603,12 @@ struct ScoreBpp9000
                     shift = entryShift;
                     cur = advanceShift();
                     best = cur;
+                    parentRating = cur;
                     continue;
                 }
                 cur = base;
                 best = cur;
+                parentRating = cur;
             }
 
             unsigned int acceptedLane = 0;
@@ -2659,6 +2678,7 @@ struct ScoreBpp9000
         {
             cur = advanceShift();
             best = cur;
+            parentRating = cur;
         }
         shift = best.shift;
         return best;
@@ -2676,6 +2696,7 @@ struct ScoreBpp9000
         }
         Rating cur = advanceShift();
         Rating best = cur;
+        parentRating = cur;
         snapshotBest();
         return rollingStepsFrom(0, L, K, mode, cur, best);
     }
@@ -2980,7 +3001,7 @@ struct ScoreBpp9000
         return failures;
     }
 
-    // Slides the frame while it is mastered, one score() per frame; stops at shiftCap.
+    // Slides the frame while it is mastered, one score() per frame; stops at shiftLimit.
     Rating advanceShift()
     {
         for (;;)
@@ -2990,7 +3011,8 @@ struct ScoreBpp9000
             {
                 return Rating{ frameError, (unsigned int)shift };
             }
-            if (shift == shiftCap)
+            // >=: the limit can fall below the shift when the engine is zeroed under a running walk.
+            if (shift >= shiftLimit)
             {
                 return Rating{ frameError, (unsigned int)shift };
             }
@@ -3003,6 +3025,7 @@ struct ScoreBpp9000
         activeMode = mode;
         Rating cur = advanceShift();
         Rating best = cur;
+        parentRating = cur;
         snapshotBest();
         return rollingStepsFrom(0, L, K, mode, cur, best);
     }
@@ -3022,6 +3045,7 @@ struct ScoreBpp9000
         applyRootMaterial();
 
         shift = 0;
+        shiftLimit = shiftCap;
         return computeScoreFromCurrent(L, 0, mode);
     }
 
@@ -3033,18 +3057,22 @@ struct ScoreBpp9000
     }
 
     // Ant colony: walk the child from its parent's network and shift, with the child's own seeds.
+    // The frame slides no further than limit, the last frame whose targets are loaded.
     Rating computeScoreFromParent(
         const ANN& parentANN,
         unsigned long long parentShift,
         const unsigned char* publicKey,
         const unsigned char* nonce,
         const unsigned char* anchorTickDigest,
-        const unsigned char* pRandom2Pool)
+        const unsigned char* pRandom2Pool,
+        unsigned long long limit = shiftCap)
     {
-        if (!isCanonicalAntNonce(nonce) || parentShift > shiftCap)
+        parentRating = Rating::worst();
+        if (!isCanonicalAntNonce(nonce) || limit > shiftCap || parentShift > limit)
         {
             return Rating::worst();
         }
+        shiftLimit = limit;
 
         expand(parentANN);
         if (!validateTopology())

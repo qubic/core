@@ -364,6 +364,8 @@ static void runRefVsEngineConfig(const std::vector<m256i>& seeds, const std::vec
             const score_engine::Rating r = ref->computeScore(pubkeys[s].m256i_u8, n.m256i_u8);
             EXPECT_EQ(eng.error, r.error) << "sample " << s;
             EXPECT_EQ(eng.shift, r.shift) << "sample " << s;
+            EXPECT_EQ(engine->parentRating.error, ref->parentRating.error) << "parent rating, sample " << s;
+            EXPECT_EQ(engine->parentRating.shift, ref->parentRating.shift) << "parent rating, sample " << s;
             engine->getBestANN(*engineAnn);
             referenceBestAnn<Cfg>(*ref, *refAnn);
             EXPECT_EQ(memcmp(engineAnn.get(), refAnn.get(), sizeof(*refAnn)), 0) << "best ANN bytes, sample " << s;
@@ -1122,6 +1124,154 @@ TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
 
 
 // ---------------------------------------------------------------------------
+// ScoreFunction task targets: handed in with each call, one frame plus one target per hour known at the anchor tick.
+
+// The walk is graded on the targets passed with the call; their count sets the last frame it may reach.
+TEST(TestQubicScoreTaskTargets, WalkIsGradedOnTheTargetsHandedIn)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+    std::vector<m256i> seeds;
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    loadSamples(seeds, pubkeys, nonces, 1);
+    ASSERT_FALSE(seeds.empty());
+
+    const unsigned int window = (unsigned int)AntCfg::windowWidth;
+    std::vector<unsigned char> targets(f.engine->targetOutputs, f.engine->targetOutputs + AntCfg::sequenceLength);
+
+    auto scoreFunction = std::make_unique<ScoreFunction<1>>();
+    scoreFunction->initMemory();
+    scoreFunction->initMiningData(seeds[0]);
+
+    const m256i pk = makePubkey(31);
+    const m256i nonce = makeAntNonce(3, 0, 33);
+    const m256i anchor = makePubkey(32);
+    auto wrapperAnn = std::make_unique<AntEngine::ANN>();
+    auto engineAnn = std::make_unique<AntEngine::ANN>();
+    auto rootAnn = std::make_unique<AntEngine::ANN>();
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), *rootAnn);
+
+    // No targets, and less than one full frame.
+    EXPECT_FALSE(scoreFunction->computeAntChildScore(0, nullptr, 0, targets.data(), 0, pk, nonce, anchor, *wrapperAnn).isValid());
+    EXPECT_FALSE(scoreFunction->computeAntChildScore(0, nullptr, 0, targets.data(), window - 1, pk, nonce, anchor,
+        *wrapperAnn).isValid());
+
+    // One frame: the walk stays at frame 0.
+    score_engine::Rating wrapperRating = scoreFunction->computeAntChildScore(0, nullptr, 0, targets.data(), window, pk, nonce,
+        anchor, *wrapperAnn);
+    score_engine::Rating engineRating = f.engine->computeScoreFromParent(*rootAnn, 0, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, f.pool.data(), 0);
+    f.engine->getBestANN(*engineAnn);
+    ASSERT_TRUE(wrapperRating.isValid());
+    EXPECT_EQ(wrapperRating.error, engineRating.error);
+    EXPECT_EQ(wrapperRating.shift, 0u);
+    EXPECT_EQ(engineRating.shift, 0u);
+    EXPECT_EQ(memcmp(wrapperAnn.get(), engineAnn.get(), sizeof(*engineAnn)), 0);
+
+    // Three more hours.
+    wrapperRating = scoreFunction->computeAntChildScore(0, nullptr, 0, targets.data(), window + 3, pk, nonce, anchor, *wrapperAnn);
+    engineRating = f.engine->computeScoreFromParent(*rootAnn, 0, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, f.pool.data(), 3);
+    f.engine->getBestANN(*engineAnn);
+    ASSERT_TRUE(wrapperRating.isValid());
+    EXPECT_EQ(wrapperRating.error, engineRating.error);
+    EXPECT_EQ(wrapperRating.shift, engineRating.shift);
+    EXPECT_LE(wrapperRating.shift, 3u);
+    EXPECT_EQ(memcmp(wrapperAnn.get(), engineAnn.get(), sizeof(*engineAnn)), 0);
+
+    // The limit follows the target count of each call, not the call before.
+    wrapperRating = scoreFunction->computeAntChildScore(0, nullptr, 0, targets.data(), window, pk, nonce, anchor, *wrapperAnn);
+    ASSERT_TRUE(wrapperRating.isValid());
+    EXPECT_EQ(wrapperRating.shift, 0u);
+
+    // Not more targets than the sequence holds.
+    EXPECT_FALSE(scoreFunction->computeAntChildScore(0, nullptr, 0, targets.data(), (unsigned int)AntCfg::sequenceLength + 1,
+        pk, nonce, anchor, *wrapperAnn).isValid());
+}
+
+// A stored parent that leaves no error on its frames was stored at frame 0 when one frame was known. One
+// hour later its unchanged network holds frame 1 too: ahead of its record, not ahead of itself on that data.
+TEST(TestQubicScoreTaskTargets, ChildMustBeatItsStoredParentOnTheSameData)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+    std::vector<m256i> seeds;
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    loadSamples(seeds, pubkeys, nonces, 1);
+    ASSERT_FALSE(seeds.empty());
+
+    const unsigned int window = (unsigned int)AntCfg::windowWidth;
+    const std::vector<unsigned char> zeroTargets(window + 1, 0);
+    auto scoreFunction = std::make_unique<ScoreFunction<1>>();
+    scoreFunction->initMemory();
+    scoreFunction->initMiningData(seeds[0]);
+    ASSERT_TRUE(f.engine->loadTaskTargets(zeroTargets.data(), window + 1));
+
+    // Control alternates 0, UNKNOWN; output is constant 0, so every frame of zero targets has no error.
+    const m256i pk = makePubkey(41);
+    const m256i anchor = makePubkey(42);
+    const unsigned int control = f.engine->controlIndex;
+    const unsigned int output = f.engine->outputIndex;
+    auto rootAnn = std::make_unique<AntEngine::ANN>();
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), *rootAnn);
+    auto parent = std::make_unique<AntEngine::ANN>(*rootAnn);
+    for (unsigned long long j = 0; j < AntCfg::numberOfNeighbors; ++j)
+    {
+        parent->neighbor[control * AntCfg::numberOfNeighbors + j] = (unsigned short)control;
+    }
+    parent->initialNeuronValues[control] = 0;
+    parent->lut[control * AntEngine::lutSize + 0] = 2;
+    parent->lut[control * AntEngine::lutSize + 26] = 0;
+    for (unsigned long long e = 0; e < AntEngine::lutSize; ++e)
+    {
+        parent->lut[output * AntEngine::lutSize + e] = 0;
+    }
+
+    auto childAnn = std::make_unique<AntEngine::ANN>();
+    const m256i nonce = makeAntNonce(3, 0, 43);
+    const score_engine::Rating onNewHour = f.engine->computeScoreFromParent(*parent, 0, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, f.pool.data(), 1);
+    ASSERT_TRUE(onNewHour.isValid());
+    EXPECT_EQ(f.engine->parentRating.error, 0u);
+    EXPECT_EQ(f.engine->parentRating.shift, 1u);
+    EXPECT_TRUE(onNewHour.isBetterThan(score_engine::Rating{ 0, 0 }));
+    EXPECT_FALSE(onNewHour.isBetterThan(f.engine->parentRating));
+    EXPECT_FALSE(scoreFunction->computeAntChildScore(0, parent.get(), 0, zeroTargets.data(), window + 1, pk, nonce, anchor, *childAnn).isValid());
+
+    // The identity's root handed in as a stored parent can be beaten, and such a child keeps its score.
+    bool improved = false;
+    for (unsigned char tag = 50; tag < 56 && !improved; ++tag)
+    {
+        const m256i n = makeAntNonce(3, 0, tag);
+        const score_engine::Rating eng = f.engine->computeScoreFromParent(*rootAnn, 0, pk.m256i_u8, n.m256i_u8,
+            anchor.m256i_u8, f.pool.data(), 1);
+        const score_engine::Rating wrapped = scoreFunction->computeAntChildScore(0, rootAnn.get(), 0, zeroTargets.data(), window + 1, pk, n, anchor,
+            *childAnn);
+        if (eng.isValid() && eng.isBetterThan(f.engine->parentRating))
+        {
+            improved = true;
+            EXPECT_EQ(wrapped.error, eng.error);
+            EXPECT_EQ(wrapped.shift, eng.shift);
+        }
+        else
+        {
+            EXPECT_FALSE(wrapped.isValid());
+        }
+    }
+    EXPECT_TRUE(improved) << "no nonce improved on the root";
+
+    // The root is not a stored parent: its child gets the walk's rating whether or not it beats the root.
+    const score_engine::Rating rootChild = f.engine->computeScoreFromParent(*rootAnn, 0, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, f.pool.data(), 1);
+    const score_engine::Rating wrappedRootChild = scoreFunction->computeAntChildScore(0, nullptr, 0, zeroTargets.data(), window + 1, pk, nonce, anchor,
+        *childAnn);
+    EXPECT_EQ(wrappedRootChild.error, rootChild.error);
+    EXPECT_EQ(wrappedRootChild.shift, rootChild.shift);
+}
+
+// ---------------------------------------------------------------------------
 // ScoreFunction task queue.
 
 typedef ScoreFunction<1> TaskQueueScoreFunction;
@@ -1546,10 +1696,138 @@ TEST(TestQubicScoreFunction, Bpp9000TimeoutAfterAdvanceMatchesReference)
             }
             EXPECT_EQ(eng.error, r.error) << "L " << (int)lValues[li] << " K " << (int)kValues[ki];
             EXPECT_EQ(eng.shift, r.shift) << "L " << (int)lValues[li] << " K " << (int)kValues[ki];
+            EXPECT_EQ(engine->parentRating.error, start.error) << "L " << (int)lValues[li] << " K " << (int)kValues[ki];
+            EXPECT_EQ(engine->parentRating.shift, start.shift) << "L " << (int)lValues[li] << " K " << (int)kValues[ki];
+            EXPECT_EQ(ref->parentRating.error, start.error);
+            EXPECT_EQ(ref->parentRating.shift, start.shift);
             EXPECT_EQ(memcmp(engineAnn.get(), refAnn.get(), sizeof(*refAnn)), 0)
                 << "best ANN bytes, L " << (int)lValues[li] << " K " << (int)kValues[ki];
         }
     }
+}
+
+using LimitConfig = score_engine::Bpp9000Params<
+    BPP9000_NUMBER_OF_INPUT_NEURONS, BPP9000_NUMBER_OF_OUTPUT_NEURONS, BPP9000_SEQUENCE_LENGTH,
+    BPP9000_WINDOW_WIDTH, BPP9000_MAX_NUMBER_OF_TICKS, BPP9000_NUMBER_OF_NEIGHBORS,
+    256, 100, BPP9000_SOLUTION_THRESHOLD_DEFAULT, BPP9000_SHIFT_CAP>;
+
+// A parent that masters every frame slides to the shift limit and no further. The targets after the
+// limit are set to the wrong value, so a walk that read them would stop early or score differently.
+TEST(TestQubicScoreFunction, Bpp9000ShiftLimitMatchesReference)
+{
+    using Cfg = LimitConfig;
+    using Engine = score_engine::ScoreBpp9000<Cfg>;
+    using Ref = score_bpp9000_reference::Miner<Cfg>;
+
+    std::vector<m256i> seeds;
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    loadSamples(seeds, pubkeys, nonces, 1);
+    ASSERT_FALSE(seeds.empty());
+    std::vector<unsigned char> pool;
+    generatePool(seeds[0], pool);
+
+    const std::vector<unsigned char> inputs(Cfg::sequenceLength * Cfg::numberOfInputNeurons, 0);
+    const std::vector<unsigned char> zeroTargets(Cfg::sequenceLength * Cfg::numberOfOutputNeurons, 0);
+    std::vector<unsigned char> data(score_task_file::dataBytes((unsigned int)Cfg::numberOfInputNeurons,
+        (unsigned int)Cfg::numberOfOutputNeurons, Cfg::sequenceLength));
+    score_task_file::packDataBlock((unsigned int)Cfg::numberOfInputNeurons, (unsigned int)Cfg::numberOfOutputNeurons,
+        Cfg::sequenceLength, inputs.data(), zeroTargets.data(), data.data());
+
+    auto engine = makeEngine<Cfg>(nullptr, data.data());
+    ASSERT_TRUE(engine);
+    engine->deriveControlOutput(seeds[0].m256i_u8, pool.data());
+    auto ref = std::make_unique<Ref>();
+    ref->initialize(seeds[0].m256i_u8);
+    ASSERT_TRUE(ref->loadTaskFromMemory(nullptr, data.data()));
+    const unsigned int control = ref->controlIndex;
+    const unsigned int output = ref->outputIndex;
+    ASSERT_EQ(engine->controlIndex, control);
+    ASSERT_EQ(engine->outputIndex, output);
+
+    // Control alternates 0, UNKNOWN; output is constant 0.
+    const m256i pk = makePubkey(51);
+    const m256i anchor = makePubkey(52);
+    auto parent = std::make_unique<Engine::ANN>();
+    engine->deriveRootANN(pk.m256i_u8, pool.data(), *parent);
+    for (unsigned long long j = 0; j < Cfg::numberOfNeighbors; ++j)
+    {
+        parent->neighbor[control * Cfg::numberOfNeighbors + j] = (unsigned short)control;
+    }
+    parent->initialNeuronValues[control] = 0;
+    parent->lut[control * Engine::lutSize + 0] = 2;
+    parent->lut[control * Engine::lutSize + 26] = 0;
+    for (unsigned long long e = 0; e < Engine::lutSize; ++e)
+    {
+        parent->lut[output * Engine::lutSize + e] = 0;
+    }
+
+    auto engineAnn = std::make_unique<Engine::ANN>();
+    auto refAnn = std::make_unique<Engine::ANN>();
+    std::vector<unsigned char> targets(Cfg::sequenceLength);
+    const unsigned long long limits[4] = { 0, 1, 37, Cfg::shiftCap };
+    const unsigned char kValues[2] = { 0, 7 };
+    for (unsigned int li = 0; li < 4; ++li)
+    {
+        const unsigned long long limit = limits[li];
+        const unsigned long long known = Cfg::windowWidth + limit;
+        for (unsigned long long t = 0; t < Cfg::sequenceLength; ++t)
+        {
+            targets[t] = (t < known) ? 0 : 1;
+        }
+        ASSERT_TRUE(engine->loadTaskTargets(targets.data(), targets.size()));
+        memcpy(ref->targetOutputs, targets.data(), targets.size());
+        ref->shiftLimit = limit;
+
+        referenceLoadAnn<Cfg>(*ref, *parent);
+        ref->shift = 0;
+        const score_engine::Rating start = ref->advanceShift();
+        ASSERT_EQ(start.error, 0u) << "limit " << limit;
+        ASSERT_EQ(start.shift, (unsigned int)limit) << "limit " << limit;
+
+        for (unsigned int ki = 0; ki < 2; ++ki)
+        {
+            const m256i nonce = makeAntNonce(2, kValues[ki], (unsigned char)(70 + 2 * li + ki));
+            const score_engine::Rating eng = engine->computeScoreFromParent(*parent, 0, pk.m256i_u8, nonce.m256i_u8,
+                anchor.m256i_u8, pool.data(), limit);
+            engine->getBestANN(*engineAnn);
+            const score_engine::Rating r = referenceScoreFromParent<Cfg>(*ref, *parent, 0, pk, nonce, anchor, *refAnn);
+            EXPECT_LE(eng.shift, (unsigned int)limit) << "limit " << limit;
+            EXPECT_EQ(eng.error, r.error) << "limit " << limit << " K " << (int)kValues[ki];
+            EXPECT_EQ(eng.shift, r.shift) << "limit " << limit << " K " << (int)kValues[ki];
+            EXPECT_EQ(engine->parentRating.error, start.error) << "limit " << limit << " K " << (int)kValues[ki];
+            EXPECT_EQ(engine->parentRating.shift, start.shift) << "limit " << limit << " K " << (int)kValues[ki];
+            EXPECT_EQ(ref->parentRating.error, start.error);
+            EXPECT_EQ(ref->parentRating.shift, start.shift);
+            EXPECT_FALSE(eng.isBetterThan(start)) << "a parent with no error left cannot be beaten on its own data";
+            EXPECT_EQ(memcmp(engineAnn.get(), refAnn.get(), sizeof(*refAnn)), 0)
+                << "best ANN bytes, limit " << limit << " K " << (int)kValues[ki];
+        }
+    }
+
+    // A walk whose limit drops below its shift (the engine is zeroed at the epoch switch) stops at once.
+    engine->expand(*parent);
+    engine->shift = 3;
+    engine->shiftLimit = 0;
+    const score_engine::Rating interrupted = engine->advanceShift();
+    EXPECT_EQ(interrupted.shift, 3u);
+    EXPECT_EQ(engine->shift, 3ull);
+
+    // A limit above the cap, or a parent already past the limit, cannot be scored.
+    const m256i nonce = makeAntNonce(2, 0, 90);
+    EXPECT_FALSE(engine->computeScoreFromParent(*parent, 0, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, pool.data(),
+        Cfg::shiftCap + 1).isValid());
+    EXPECT_FALSE(engine->computeScoreFromParent(*parent, 6, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, pool.data(),
+        5).isValid());
+    EXPECT_TRUE(engine->computeScoreFromParent(*parent, 5, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, pool.data(),
+        5).isValid());
+
+    // A refused walk leaves no parent rating behind from the walk before it.
+    EXPECT_TRUE(engine->parentRating.isValid());
+    EXPECT_FALSE(engine->computeScoreFromParent(*parent, 6, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, pool.data(),
+        5).isValid());
+    EXPECT_FALSE(engine->parentRating.isValid());
+    EXPECT_EQ(engine->parentRating.shift, 0u);
 }
 
 // Population 64: the AVX2 gather tick and the AVX-512 kernel at a small population, against the reference.

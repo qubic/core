@@ -71,7 +71,9 @@
     <ClInclude Include="mining\ant_colony\ant_colony.h" />
     <ClInclude Include="mining\ant_colony\ant_colony_bpp9000.h" />
     <ClInclude Include="mining\ant_colony\ant_pending_solutions.h" />
+    <ClInclude Include="mining\ant_colony\ant_tick_solutions.h" />
     <ClInclude Include="mining\custom_qubic_mining_storage.h" />
+    <ClInclude Include="mining\price_feed.h" />
     <ClInclude Include="mining\mining.h" />
     <ClInclude Include="mining\score_bpp9000.h" />
     <ClInclude Include="mining\score_common.h" />
@@ -82,6 +84,7 @@
     <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />
     <ClInclude Include="network_messages\ant_colony_message.h" />
+    <ClInclude Include="network_messages\price_feed.h" />
     <ClInclude Include="network_messages\network_message_type.h" />
     <ClInclude Include="network_messages\assets.h" />
     <ClInclude Include="network_messages\broadcast_message.h" />

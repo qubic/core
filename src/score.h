@@ -15,7 +15,6 @@ static unsigned long long top_of_stack;
 enum ScoreStatus
 {
     ScoreStatusOk = 0,
-    ScoreStatusTaskNotLoaded,
 };
 
 namespace score_engine
@@ -112,18 +111,6 @@ public:
         }
     }
 
-    // Load the task blocks into every compute buffer; returns false if any leaf rejects them.
-    bool loadTask(const unsigned char* topoBlock, const unsigned char* dataBlock)
-    {
-        bool ok = true;
-        for (unsigned long long i = 0; i < solutionBufferCount; i++)
-        {
-            ok = _computeBuffer[i].loadTask(topoBlock, dataBlock) && ok;
-        }
-        _lastStatus = ok ? ScoreStatusOk : ScoreStatusTaskNotLoaded;
-        return ok;
-    }
-
     ~ScoreFunction()
     {
         freeMemory();
@@ -136,7 +123,7 @@ public:
     bool initMemory()
     {
         random2PoolLock = 0;
-        _lastStatus = ScoreStatusTaskNotLoaded;
+        _lastStatus = ScoreStatusOk;
 
         // Make sure all padding data is set as zeros
         setMem(_computeBuffer, sizeof(_computeBuffer), 0);
@@ -218,6 +205,8 @@ public:
     // parentAnn == nullptr means the parent is the identity's root, derived here from the identity's
     // public key (the epoch pool from the spectrum digest supplies the random bytes), so each identity's
     // tree starts from its own root.
+    // targets: the task targets known at the anchor tick, one frame plus one per later frame the walk may reach.
+    // A child of a stored parent must beat that parent rated on the same data, or it gets no score.
     // Returns INVALID_SCORE_VALUE for a non-canonical nonce, in which case outChildAnn is not written
     // bestANN would still hold the previous call's network, and committing that would put one node's
     // stale bytes into childAnnHash.
@@ -225,6 +214,8 @@ public:
         const unsigned long long processor_Number,
         const score_engine::ScoreBpp9000T::ANN* parentAnn,
         const unsigned int parentShift,
+        const unsigned char* targets,
+        const unsigned int targetCount,
         const m256i& publicKey,
         const m256i& nonce,
         const m256i& anchorDigest,
@@ -233,6 +224,17 @@ public:
         const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
         LockGuard guard(solutionEngineLock[solutionBufIdx]);
         score_engine::ScoreEngineT& engine = _computeBuffer[solutionBufIdx];
+
+        if (targetCount < score_engine::ScoreBpp9000T::windowWidth || targetCount > score_engine::ScoreBpp9000T::sequenceLength)
+        {
+            return score_engine::Rating::worst();
+        }
+        const unsigned int shiftLimit = targetCount - (unsigned int)score_engine::ScoreBpp9000T::windowWidth;
+        const bool targetsLoaded = engine.loadTaskTargets(targets, targetCount);
+        if (!targetsLoaded)
+        {
+            return score_engine::Rating::worst();
+        }
 
         // Derived into this slot's scratch rather than the engine's own buffer: deriveRootANN() uses
         // currentANN as working space
@@ -245,10 +247,14 @@ public:
         }
 
         const score_engine::Rating childRating = engine.computeAntScoreFromParent(
-            *parent, parentShift, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
+            *parent, parentShift, shiftLimit, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
         if (!childRating.isValid())
         {
             return childRating;
+        }
+        if (parentAnn != nullptr && !childRating.isBetterThan(engine.getAntParentRating()))
+        {
+            return score_engine::Rating::worst();
         }
         engine.getAntBestANN(outChildAnn);
         return childRating;

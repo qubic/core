@@ -91,6 +91,11 @@ struct Miner
 
     // Rolling-frame position; every score() grades [shift, shift + windowWidth).
     unsigned long long shift = 0;
+    // Last frame a walk may reach; the frames after it have no targets yet.
+    unsigned long long shiftLimit = shiftCap;
+    // Rating of the network the walk starts from (the parent; the root for a standalone walk) on the
+    // walk's own frames, before any mutation.
+    score_engine::Rating parentRating = { score_engine::Rating::INVALID_ERROR, 0 };
 
     RootMaterial rootMaterial;
     unsigned long long mutationSeed[mutationSeedPaddedCount];
@@ -292,7 +297,7 @@ struct Miner
         return (unsigned char)((nonce[1] >> 4) & 0x03);
     }
 
-    // Slides the frame while this fixed network holds it; stops when it cannot, or at shiftCap.
+    // Slides the frame while this fixed network holds it; stops when it cannot, or at shiftLimit.
     score_engine::Rating advanceShift()
     {
         for (;;)
@@ -302,7 +307,7 @@ struct Miner
             {
                 return score_engine::Rating{ frameError, (unsigned int)shift };
             }
-            if (shift == shiftCap)
+            if (shift == shiftLimit)
             {
                 return score_engine::Rating{ frameError, (unsigned int)shift };
             }
@@ -317,6 +322,7 @@ struct Miner
     {
         score_engine::Rating cur = advanceShift();
         score_engine::Rating best = cur;
+        parentRating = cur;
         snapshotBest();
 
         for (unsigned long long s = 0; s < numberOfMutations; ++s)

@@ -18,3 +18,4 @@
 #include "system_info.h"
 #include "revenue_data.h"
 #include "ant_colony_message.h"
+#include "price_feed.h"
