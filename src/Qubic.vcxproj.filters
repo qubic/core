@@ -54,6 +54,9 @@
     <ClInclude Include="network_messages\ant_colony_message.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="network_messages\price_feed.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
     <ClInclude Include="network_messages\header.h">
       <Filter>network_messages</Filter>
     </ClInclude>
@@ -202,6 +205,9 @@
       <Filter>mining\ant_colony</Filter>
     </ClInclude>
     <ClInclude Include="mining\ant_colony\ant_pending_solutions.h">
+      <Filter>mining\ant_colony</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\ant_colony\ant_tick_solutions.h">
       <Filter>mining\ant_colony</Filter>
     </ClInclude>
     <ClInclude Include="mining\ant_colony\ant_colony_bpp9000.h">
@@ -365,6 +371,9 @@
       <Filter>oracle_interfaces</Filter>
     </ClInclude>
     <ClInclude Include="mining\custom_qubic_mining_storage.h">
+      <Filter>mining</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\price_feed.h">
       <Filter>mining</Filter>
     </ClInclude>
     <ClInclude Include="platform\virtual_memory.h">

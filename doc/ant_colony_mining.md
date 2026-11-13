@@ -14,6 +14,39 @@ This document has two parts:
 > knobs and their ranges, the mutation walk, and the numeric constants - are labelled **bpp9000** below;
 > do not treat them as fixed ant-colony rules.
 
+## Summary of changes - live BTC price feed
+
+The task data no longer comes from a task file. It is built from hourly BTC/USDT prices that the nodes
+fetch on-chain, and it grows by one hour at a time during the epoch.
+
+**New rules**
+
+| Rule | Result if broken | Section |
+|------|------------------|---------|
+| A solution is graded on the task data known before its **anchor tick**. Its frame cannot slide past the **shift limit** of that tick. | the shift stops at the limit | 2.3a |
+| The parent's shift must be within the shift limit of the child's anchor tick. | no score: `RejectNonCanonicalNonce`, deposit kept | 2.3a |
+| A child of a stored parent must beat that parent **rated on the child's task data**, not only the parent's recorded rating. A child of the virtual root is exempt. | no score: `RejectNonCanonicalNonce`, deposit kept | 2.3a |
+| One solution per identity per tick: of several in the same tick, only the one at the highest transaction index is processed. | the others: `SkippedSupersededInTick`, deposit returned, may be published again | 2.4 |
+
+**What a miner or pool has to change**
+
+- Drop the task file. Fetch the targets and the shift limit of the anchor tick with
+  `REQUEST_BPP9000_TASK_DATA` (80 / 81) and pass them to the scorer (section 2.7d).
+- Limit the shift to the shift limit of the anchor tick, and anchor a child on a tick whose shift limit
+  is at least its parent's shift.
+- After the walk, submit a child of a stored parent only if it beats the parent's rating on the same
+  targets.
+- Publish at most one solution per identity per tick.
+- `dataHash` of the epoch context is now K12 of the epoch's first 8760 targets (section 2.7a).
+
+**Other changes**
+
+- New public messages: `REQUEST_PRICE_SERIES` / `RESPOND_PRICE_SERIES` (78 / 79) and
+  `REQUEST_BPP9000_TASK_DATA` / `RESPOND_BPP9000_TASK_DATA` (80 / 81) (sections 2.7d, 2.7e, 2.8).
+- Node files: `bpp9000.task` is no longer read. The node needs `btcPriceSeries.{epoch}` or
+  `btc_price_bootstrap.bin` to start, and the snapshot set gains `snapshotBtcPriceSeries.{epoch}`
+  (Part 3).
+
 ---
 
 ## Part 1 - Overview
@@ -30,7 +63,7 @@ separate things: the structure, and the algorithm currently running in it.
 | the accept rules, the deposit, and the ranking | how to derive a child solution from a parent |
 | the request / response queries | how to score a solution |
 
-With that split in mind: mining is a search for a **solution** that does well on a fixed task, and the
+With that split in mind: mining is a search for a **solution** that does well on a task, and the
 algorithm defines what a solution is and how it scores. Under **bpp9000** a solution is a neural network
 (an "ANN") that runs on its own from a fixed start state, emitting an output sequence graded against the
 task's target - an **error count** inside one `WINDOW_WIDTH`-wide frame of that target, range
@@ -41,8 +74,8 @@ identical for any algorithm.
 Under bpp9000 a solution has three parts: the **start state** (each neuron's initial trit), the network's
 **wiring** (which neuron reads which), and each neuron's **lookup table (LUT)**, the ternary function it
 computes. All three start from the identity's own root, drawn in one go from the identity's public key
-(the epoch's spectrum digest seeds the random pool the draw reads). The task file supplies only the
-target output sequence the network is graded against; its topology block is not used. Mining mutates
+(the epoch's spectrum digest seeds the random pool the draw reads). The target output sequence the
+network is graded against is built from hourly BTC/USDT prices (section 2.3a). Mining mutates
 only the **wiring** (mode 2, declared in the nonce); the start state and the LUTs stay as the identity's
 root drew them. A solution inherits all three parts from the parent it extends.
 
@@ -132,13 +165,13 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 ### 2.1 The mining loop
 
 1. **Epoch context** - `REQUEST_ANT_EPOCH_CONTEXT` (public). Read the threshold, freshness window,
-   epoch spectrum digest, and child cap for this epoch, and **verify your task file** against the
-   returned `topologyHash` / `dataHash` (section 2.7a) before doing any work.
+   epoch spectrum digest, and child cap for this epoch (section 2.7a).
 2. **Get a starting point** - derive the identity's virtual root (from its public key), or
    fetch an existing node you want to extend (`REQUEST_ANT_PARENT_ANN`).
 3. **Pick a parent** - the root, or any node in your own tree.
-4. **Search** - choose a nonce (section 2.2), inherit the parent's start state, wiring, and LUTs, run the
-   mutation walk, score (section 2.3).
+4. **Search** - choose an anchor tick and fetch its task data (`REQUEST_BPP9000_TASK_DATA`, sections
+   2.3a and 2.7d), choose a nonce (section 2.2), inherit the parent's start state, wiring, and LUTs,
+   run the mutation walk, score (section 2.3).
 5. **Submit** - if it passes the local rules (section 2.4), send `AntSolutionBroadcastPayload` to the
    computor you mine for (section 2.6, stage 1).
 6. **Publish + confirm** - the computor validates and scores it, then publishes it on-chain as an
@@ -179,7 +212,7 @@ see below.
 **Root.** `deriveRootANN(publicKey, epochPool)`: the root **wiring**, **start state** and **LUTs** all
 come from `K12(publicKey)`, drawn from the epoch's random pool. The pool itself is seeded from the
 epoch-start spectrum digest in the epoch context, so every identity draws from the same pool but at its
-own position. The task file's topology block is **not** loaded. No mutation walk. Never stored.
+own position. No mutation walk. Never stored.
 **One root per identity per epoch**, so two identities start from different networks.
 
 **Child.** `computeScoreFromParent(parentANN, publicKey, nonce, anchorTickDigest)`:
@@ -192,7 +225,8 @@ own position. The task file's topology block is **not** loaded. No mutation walk
    nonce - `L` start-state trits, `L` links, or `L` LUT entries. For the first `K` steps accept a
    worse-or-equal result (**explore**); after that accept only better-or-equal (**exploit**); one-step
    rollback on reject. Keep and return the **best** score seen. The best is seeded with the inherited
-   network's own score, so a child that fails to improve on its parent is rejected (see `RejectLeParent`).
+   network's own score, so a child of a stored parent that fails to improve on it gets no score
+   (section 2.3a, parent rule).
 
 **Anchor digest.** `anchorTickDigest = K12(anchorTick || transactionDigest)`, where `transactionDigest`
 is `K12(TickData)` of the anchor tick's `TickData` (`REQUEST_TICK_DATA`). This binds a solution to a tick.
@@ -203,19 +237,75 @@ forfeited**. Anchor only on ticks that have `TickData`, make sure select a non-e
 
 **Shift.** The frame graded is not fixed: `shift` is where it starts in the task data, and a score is the
 error count over `[shift, shift + WINDOW_WIDTH)`. When a frame is scored at or below
-`WINDOW_WIDTH / 3`, the network has mastered it: `shift` advances by one and the frame is re-scored at
-the new position, repeating until it fails or reaches `SHIFT_CAP`. A solution therefore reports a
+`ADVANCE_THRESHOLD` (3942), the network has mastered it: `shift` advances by one and the frame is
+re-scored at the new position, repeating until it fails or reaches the **shift limit** of the
+solution's anchor tick (section 2.3a; never above `SHIFT_CAP` = 168). A solution therefore reports a
 **pair** - the shift it reached and the error in that frame.
 
 `shift` is **inherited**: a child's walk starts at its parent's shift, not at 0, so a lineage
 accumulates shift and depth buys frame position as well as a lower error. Only a child of the virtual
-root starts at 0, once per epoch. It never moves backwards, and an inherited shift above `SHIFT_CAP`
-is rejected. A node with `shift > 0` also **bypasses the epoch threshold** entirely - the threshold
-gates frame-0 solutions only.
+root starts at 0, once per epoch. It never moves backwards, and an inherited shift above the shift
+limit of the child's anchor tick gets no score. A node with `shift > 0` also **bypasses the epoch
+threshold** entirely - the threshold gates frame-0 solutions only.
 
 Score is an error count in `[0, WINDOW_WIDTH]` for the frame at that shift; lower is better. Between
 two solutions the **higher shift always wins** and error only breaks a tie at equal shift - a better
 error can never make up for a lower shift.
+
+### 2.3a Task data - live BTC/USDT prices (bpp9000)
+
+The targets a network is graded against do not come from a file. Every node keeps an **hourly BTC/USDT
+price series**, fetched on-chain through the Price oracle (Binance), and builds the targets from it.
+The series grows by one hour at a time during the epoch, so the task data of a solution depends on its
+**anchor tick**.
+
+**Hours and prices.** Hour `H` is the time `H` hours after 2022-04-13 12:00:00 UTC. The price of hour
+`H` is the oracle's reply for that timestamp, stored as an integer in units of 0.00000001 USDT
+(`priceE8`).
+
+**Targets.** One target per hour, one byte, `0` or `1`:
+
+```
+usdt(H)   = (priceE8(H) + 50000000) / 100000000        // whole USDT, rounded half up
+target[t] = usdt(h) >= usdt(h - 1) ? 1 : 0             // h = baseHour - WINDOW_WIDTH + 1 + t
+```
+
+`baseHour` is the last hour the series held when the epoch began; it is fixed for the epoch. Targets
+`0 .. WINDOW_WIDTH - 1` (8760 targets) are the first frame and end at `baseHour`. Every hour stored
+during the epoch adds one target, up to `SHIFT_CAP` (168) more.
+
+**Shift limit.** For an anchor tick `A`, the shift limit is the number of hours after `baseHour` that
+were stored in a tick **before** `A`, at most `SHIFT_CAP`. A solution anchored at `A` is graded on
+`WINDOW_WIDTH + shiftLimit` targets, and its frame cannot slide past `shiftLimit`:
+
+- the shift stops advancing at `shiftLimit`, even when the frame there scores at or below
+  `ADVANCE_THRESHOLD`;
+- a child whose parent's shift is above the `shiftLimit` of the child's anchor tick gets no score.
+  Anchor a child on a tick whose shift limit is at least its parent's shift.
+
+**Parent rule.** The walk first rates the unmutated parent on the **child's** targets, starting at the
+parent's recorded shift. With hours the parent did not have, this rating can be better than the one in
+the parent's record. A child of a stored parent gets a score only if its rating strictly beats that
+rating. A child of the virtual root is exempt. A miner has both ratings after its own walk: submit only
+a child that passes.
+
+**No score.** Both cases end like a non-canonical nonce, as `RejectNonCanonicalNonce`: the solution is
+not stored, not ranked, and the deposit is kept.
+
+**When a new hour appears.** The leader of every 5th tick (`BTC_FEED_SLOT_PERIOD`) may send one free
+oracle query for the next missing hour, not earlier than 300 seconds after that hour
+(`BTC_FEED_QUERY_DELAY_SEC`). The hour is stored in the tick in which the query finishes with a valid
+price, and it counts for anchor ticks after that tick. A failed query is repeated after 300 seconds
+(`BTC_FEED_RETRY_BACKOFF_SEC`). After 24 hours of failed attempts for one hour
+(`BTC_FEED_GIVE_UP_SEC`) the hour is stored with the previous hour's price and flag bit 0 (filled);
+its target is `1`.
+
+**Consensus.** Every stored hour is folded into `resourceTestingDigest`, and the state of the series is
+folded at the epoch switch and at a start from files. A node that holds a different series differs
+from the network in its first vote.
+
+**Reading it.** `REQUEST_BPP9000_TASK_DATA` returns the shift limit and the targets of an anchor tick,
+ready for the scorer (section 2.7d). `REQUEST_PRICE_SERIES` returns the prices (section 2.7e).
 
 ### 2.4 Accept rules
 
@@ -227,10 +317,10 @@ detail and can change):
 |-------|---------------------------|
 | Parent record exists | `RejectParentNotRegistered` |
 | Parent is in the **same** identity's tree (the tx `sourcePublicKey`) | `RejectWrongTree` |
-| Nonce is canonical | `RejectNonCanonicalNonce` |
+| The scorer returns a score: the nonce is canonical, the parent's shift is within the shift limit of the anchor tick, and a child of a stored parent beats that parent rated on the child's task data (section 2.3a) | `RejectNonCanonicalNonce` |
 | Anchor not in the future, published within `freshnessWindow` ticks of it | `RejectStale` / `RejectTickOutOfRange` |
 | Clears the floor: `error <= threshold`, **or** `shift > 0` (an advanced frame bypasses it) | `RejectBelowThreshold` |
-| **Beats the parent** on `(shift, error)`: higher shift, or equal shift and strictly lower error | `RejectLeParent` |
+| **Beats the parent's recorded rating** on `(shift, error)`: higher shift, or equal shift and strictly lower error | `RejectLeParent` |
 | Parent holds fewer than `maxChildrenPerParent` children (`0` = unbounded) | `RejectMaxChildrenPerParent` |
 | `(publicKey, parentRef, nonce)` not already committed this epoch | `RejectReplay` |
 | Store and miner index not full | `RejectDedupFull` / `RejectMinerIndexFull` |
@@ -244,6 +334,11 @@ tree. A root scores far above the threshold, so a start still requires real muta
 
 **`ValidNotStored`.** Accepted, refunded, and ranked exactly like `Valid`, but the per-epoch store was
 full so the node was not persisted for others to extend. Ranking and refund are unaffected.
+
+**One solution per identity per tick.** When one identity (`sourcePublicKey`) has several solution
+transactions in the same tick, only the one at the highest transaction index is processed. The others
+end as `SkippedSupersededInTick`: they are not scored, the deposit is returned, and the same solution
+may be published again in a later tick.
 
 ### 2.5 The deposit
 
@@ -353,8 +448,8 @@ solution. Once accepted, the node becomes a normal parent - extend it by copying
 
 ### 2.7 Read queries
 
-Three request/response pairs. **Identity tree** and **parent ANN** are **operator-signed**; **epoch
-context** is **public**.
+Five request/response pairs. **Identity tree** and **parent ANN** are **operator-signed**; **epoch
+context**, **task data** and **price series** are **public**.
 
 Operator signing: the request payload is followed by a **64-byte signature** over `K12(payload)`,
 verified against the node's configured **operator public key**. This lets a pool route and filter its
@@ -372,8 +467,8 @@ Request: empty. Response `RespondAntEpochContext` (120 bytes, packed):
 
 ```
 m256i          spectrumDigest;       // epoch-start spectrum digest; IS the root seed (and seeds the pool)
-m256i          topologyHash;         // canonical task topology-block hash (BPP9000_TOPOLOGY_HASH)
-m256i          dataHash;             // canonical task data-block hash (BPP9000_DATA_HASH)
+m256i          topologyHash;         // constant BPP9000_TOPOLOGY_HASH
+m256i          dataHash;             // K12 of the epoch's first WINDOW_WIDTH targets (section 2.3a)
 unsigned int   threshold;            // per-epoch accept bound
 unsigned int   freshnessWindow;      // publish within this many ticks of the anchor
 unsigned int   solutionCount;        // accepted solutions so far this epoch
@@ -383,11 +478,10 @@ unsigned short epoch;
 unsigned short padding;
 ```
 
-`topologyHash` / `dataHash` identify the exact task the node scores against. After loading your task
-file, recompute K12 over your own topology and data blocks and compare against these. If either
-differs you are holding the wrong task: **stop**. Mining a stale task wastes work, and the mismatched
-score forfeits the computor's deposit on every submission (the node scores with *its* task, so your
-claimed score never matches).
+`dataHash` identifies the task data of the epoch: K12 over its first `WINDOW_WIDTH` (8760) targets, one
+byte each. The first 8760 target bytes of every valid `RESPOND_BPP9000_TASK_DATA` of the epoch
+(section 2.7d) hash to this value. `topologyHash` is a build constant; scoring reads no topology
+block (section 2.3).
 
 **(b) Identity tree** - `REQUEST_ANT_IDENTITY_TREE` (72) / `RESPOND_ANT_IDENTITY_TREE` (73).
 **Operator-signed.** Paginated.
@@ -461,6 +555,74 @@ byte[line] of a row, line = t0 + 3*t1 + 9*t2
 
 Each neuron's LUT sits at its absolute index, so a miner or tool that keeps the ANN by absolute neuron number uses these bytes directly.
 
+**(d) Task data** - `REQUEST_BPP9000_TASK_DATA` (80) / `RESPOND_BPP9000_TASK_DATA` (81). **Public.**
+
+Request `RequestBpp9000TaskData` (4 bytes):
+
+```
+unsigned int anchorTick;
+```
+
+Response `RespondBpp9000TaskData`: a 20-byte header (packed), then the targets:
+
+```
+unsigned int   tick;        // the node's current tick
+unsigned int   anchorTick;  // as requested
+unsigned short epoch;
+unsigned char  valid;       // 1 = the fields below are set and the targets follow; 0 = nothing follows
+unsigned char  reserved;
+unsigned int   baseHour;    // target t belongs to hour baseHour - WINDOW_WIDTH + 1 + t
+unsigned int   shiftLimit;  // last shift a solution with this anchor tick may reach
+// then WINDOW_WIDTH + shiftLimit bytes: the targets, 0 or 1 each
+```
+
+`valid` is 0 when `anchorTick` is before the first tick of the epoch or after the node's current tick,
+or when the node holds no price series. The number of targets is the payload size minus 20. Pass the
+targets to the scorer unchanged and limit the shift to `shiftLimit`. The task data of an anchor tick
+does not change once the node has reached that tick.
+
+**(e) Price series** - `REQUEST_PRICE_SERIES` (78) / `RESPOND_PRICE_SERIES` (79). **Public.**
+
+Request `RequestPriceSeries` (8 bytes):
+
+```
+unsigned int fromHour;  // first hour wanted
+unsigned int count;     // number of hours wanted; at most 256 are returned
+```
+
+Response `RespondPriceSeries`: a 124-byte header (packed), then `count` points:
+
+```
+unsigned int       tick;             // the node's current tick
+unsigned short     epoch;
+unsigned char      synced;           // 1 = the node holds a usable series
+unsigned char      bound;            // 1 = a query for nextHour is running
+unsigned int       source;           // kind of file the series was loaded from:
+                                     // 1 bootstrap, 2 epoch switch, 3 F6, 4 snapshot
+unsigned int       nextHour;         // first hour not stored yet
+unsigned int       failedAttempts;   // failed queries for nextHour
+long long          firstFailMs;      // first and last failed attempt for nextHour,
+long long          lastFailMs;       // in milliseconds since 2022-04-13 12:00:00 UTC
+unsigned char      seriesDigest[32]; // digest of the series, for comparing nodes
+unsigned long long numSuccess;       // node-local counters of feed queries
+unsigned long long numTimeout;
+unsigned long long numUnresolvable;
+unsigned long long numInvalidReply;
+unsigned long long numStartFailed;
+unsigned long long numFilled;        // hours stored with the previous hour's price
+unsigned int       baseHour;         // last hour known when the epoch began
+unsigned int       count;            // points that follow
+
+RespondPriceSeriesPoint {            // 20 bytes
+    unsigned int hour;
+    unsigned int appendTick;         // tick the hour was stored in (hours after baseHour)
+    unsigned int flags;              // bit 0 = filled with the previous hour's price
+    long long    priceE8;            // price in 0.00000001 USDT
+}
+```
+
+Points are returned from `fromHour` up to `nextHour - 1`; an hour the node does not hold is left out.
+
 ### 2.8 Network message + transaction types
 
 | Type | Value | Signed | Direction |
@@ -470,6 +632,8 @@ Each neuron's LUT sits at its absolute index, so a miner or tool that keeps the 
 | `REQUEST_ANT_IDENTITY_TREE` / `RESPOND_ANT_IDENTITY_TREE` | `72` / `73` | operator | read tree |
 | `REQUEST_ANT_PARENT_ANN` / `RESPOND_ANT_PARENT_ANN` | `74` / `75` | operator | read one node's ANN |
 | `REQUEST_ANT_EPOCH_CONTEXT` / `RESPOND_ANT_EPOCH_CONTEXT` | `76` / `77` | public | read epoch params |
+| `REQUEST_PRICE_SERIES` / `RESPOND_PRICE_SERIES` | `78` / `79` | public | read the BTC price series |
+| `REQUEST_BPP9000_TASK_DATA` / `RESPOND_BPP9000_TASK_DATA` | `80` / `81` | public | read the task data of an anchor tick |
 
 ## Part 3 - Node files
 
@@ -484,9 +648,13 @@ The ant colony adds the following files on the node's disk. File names are defin
 | `snapshotAntSolutionFlag` | ant solution flags bitmap | snapshot set |
 | `antColonyReplayCache.{epoch}` | score cache | optional, recommended |
 | `antColonySolutions.eoe` | end-of-epoch export: best 676 networks (pubkey, score, depth, ANN) | output only |
-| `bpp9000.task` | the epoch's pinned task | required at boot |
+| `btcPriceSeries.{epoch}` | BTC price series the epoch starts from | required at boot, unless the bootstrap file is used |
+| `btc_price_bootstrap.bin` | BTC price series shipped with a release | read only when no `btcPriceSeries.{epoch}` is usable |
+| `snapshotBtcPriceSeries.{epoch}` | BTC price series at the snapshot tick | snapshot set |
 
-**Snapshot set**: the four snapshot files are part of the node snapshot. When you back up, copy, or restore node state, take them TOGETHER with the other snapshot files (spectrum, universe, contracts, system) from the same point. On load the node cross-checks the colony snapshot's rootSeed and initial tick against the restored node state, plus the record and ANN sizes the build lays out; a colony snapshot from a different moment or a different build is refused and the node will not start from it. The error threshold is logged when it differs but not enforced, so a snapshot still loads after a mid-epoch threshold change.
+**Snapshot set**: the five snapshot files are part of the node snapshot. When you back up, copy, or restore node state, take them TOGETHER with the other snapshot files (spectrum, universe, contracts, system) from the same point. On load the node cross-checks the colony snapshot's rootSeed and initial tick against the restored node state, plus the record and ANN sizes the build lays out; a colony snapshot from a different moment or a different build is refused and the node will not start from it. The error threshold is logged when it differs but not enforced, so a snapshot still loads after a mid-epoch threshold change.
+
+**Price series**: each file is 393304 bytes. The node writes `btcPriceSeries.{epoch}` for the new epoch at every epoch switch, and `btcPriceSeries.000` on F6. A start at the first tick of an epoch takes the epoch-switch file; if there is none, it takes `btc_price_bootstrap.bin`, which must match `BTC_PRICE_BOOTSTRAP_HASH` and be built for that epoch. A mid-epoch restart with a new initial tick takes the F6 file, renamed to the epoch like the other F6 files. Without a usable series the node does not start. A snapshot whose `snapshotBtcPriceSeries.{epoch}` is missing or unusable is not used.
 
 **Replay cache**: a score memo, not consensus state, same behavior with standalone score. Without it a restart recomputes every stored solution, so keep it for fast restarts; losing it only costs time.
 

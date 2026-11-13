@@ -115,15 +115,11 @@ static constexpr unsigned long long NEURAXON_NUMBER_OF_MUTATIONS = 1;
 static constexpr unsigned int NEURAXON_SOLUTION_THRESHOLD_DEFAULT = 1;
 
 // bpp9000 (odd-nonce slot) - the active mining algorithm
-// bpp9000 task file: the fixed ANN wiring + windowed target series the scorer runs against. It is loaded
-// and hash-verified at node init
-static unsigned short SCORE_BPP9000_TASK_FILE_NAME[] = L"bpp9000.task";
+// Its task data is the BTC price series below. The topology hash is reported to miners and written into
+// the export of an epoch's best networks.
 static constexpr unsigned char BPP9000_TOPOLOGY_HASH[32] =
     { 0x1d, 0xcc, 0x19, 0x94, 0x1b, 0xb5, 0x25, 0xe8, 0xa8, 0x1f, 0xbd, 0xac, 0x61, 0x2d, 0x3d, 0xa9,
       0x2a, 0xba, 0x06, 0xe8, 0x75, 0x3a, 0xfb, 0x29, 0x74, 0xbc, 0xbe, 0xa6, 0xa6, 0x86, 0xd5, 0xda };
-static constexpr unsigned char BPP9000_DATA_HASH[32] =
-    { 0xe5, 0xb6, 0xd8, 0x75, 0x64, 0x25, 0x99, 0x17, 0xe3, 0x98, 0xc1, 0xa5, 0x06, 0x64, 0x01, 0x02,
-      0x8e, 0x53, 0x01, 0xcc, 0x13, 0xe7, 0x15, 0x81, 0x7b, 0x28, 0xef, 0x3c, 0x3e, 0xff, 0x15, 0x46 };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
 static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 1024;
@@ -136,6 +132,27 @@ static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 365;
 static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
 static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 3942;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4350;
+
+// BTC price feed: the hourly Binance BTC/USDT price, captured through the Price oracle.
+static unsigned short BTC_PRICE_SERIES_FILE_NAME[] = L"btcPriceSeries.???";
+static unsigned short BTC_PRICE_SERIES_SNAPSHOT_FILE_NAME[] = L"snapshotBtcPriceSeries.???";
+static unsigned short BTC_PRICE_BOOTSTRAP_FILE_NAME[] = L"btc_price_bootstrap.bin";
+// K12 of the bootstrap file.
+static constexpr unsigned char BTC_PRICE_BOOTSTRAP_HASH[32] =
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+// Lowest hour a free feed query may ask for.
+static constexpr unsigned int BTC_FEED_MIN_HOUR = 31223;
+// The leader of every BTC_FEED_SLOT_PERIOD-th tick may send one free feed query.
+static constexpr unsigned int BTC_FEED_SLOT_PERIOD = 5;
+// One step of the price series: an hour on mainnet.
+static constexpr unsigned int BTC_FEED_PERIOD_SEC = 3600;
+// An hour is queried once it has been over for this long.
+static constexpr unsigned int BTC_FEED_QUERY_DELAY_SEC = 300;
+static constexpr unsigned int BTC_FEED_QUERY_TIMEOUT_MS = 120000;
+// Pause after a failed attempt. After BTC_FEED_GIVE_UP_SEC of failed attempts the previous price is reused.
+static constexpr unsigned int BTC_FEED_RETRY_BACKOFF_SEC = 300;
+static constexpr unsigned int BTC_FEED_GIVE_UP_SEC = 24 * 60 * 60;
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
 static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;

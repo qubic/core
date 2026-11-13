@@ -492,6 +492,8 @@ TEST(TestAntColonyStore, EpochResetClearsTheRing)
 // Snapshot test cases
 
 static constexpr unsigned short TEST_EPOCH = 200;
+// Stands for the hash of the epoch's task data in the export header.
+static const unsigned char TEST_TASK_DATA_HASH[32] = { 7, 7, 7, 7 };
 static const m256i TEST_ROOT_SEED = makeKey(999);   // what freshColony() seeds with
 
 // Save, wipe, load. beginEpoch() clears everything the load has to bring back, so anything that
@@ -930,7 +932,7 @@ TEST(TestAntColonyExport, KeepsTheLowestScoresInOrder)
     {
         ASSERT_NE(commitRootChild(colony, makeKey(1 + i), 3000 + i, i, 5000 + i), ANT_INVALID_INDEX) << "commit " << i;
     }
-    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL, TEST_TASK_DATA_HASH));
 
     AntColonyExportHeader header;
     std::vector<ExportFileEntry> entries;
@@ -964,7 +966,7 @@ TEST(TestAntColonyExport, OrdersFewerThanTheCap)
     {
         ASSERT_NE(commitRootChild(colony, makeKey(2000 + i), 3800 - i, i, 6000 + i), ANT_INVALID_INDEX);
     }
-    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL, TEST_TASK_DATA_HASH));
 
     AntColonyExportHeader header;
     std::vector<ExportFileEntry> entries;
@@ -989,7 +991,7 @@ TEST(TestAntColonyExport, TiesKeepTheEarlierSolution)
     const m256i second = makeKey(4);
     ASSERT_NE(commitRootChild(colony, first, 3500, 0, 6100), ANT_INVALID_INDEX);
     ASSERT_NE(commitRootChild(colony, second, 3500, 1, 6101), ANT_INVALID_INDEX);
-    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL, TEST_TASK_DATA_HASH));
 
     AntColonyExportHeader header;
     std::vector<ExportFileEntry> entries;
@@ -1011,7 +1013,7 @@ TEST(TestAntColonyExport, CarriesTheNetworkAndItsDepth)
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 6200), ANT_INVALID_INDEX);
     const SolutionRef aRef = { TEST_PUBLISH_TICK,0 };
     ASSERT_NE(commitChild(colony, me, aRef, 3700, 1, 6201), ANT_INVALID_INDEX);
-    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL, TEST_TASK_DATA_HASH));
 
     AntColonyExportHeader header;
     std::vector<ExportFileEntry> entries;
@@ -1047,7 +1049,7 @@ TEST(TestAntColonyExport, SurvivesASnapshot)
         ASSERT_NE(commitRootChild(colony, me, 3700 + i, i, 6300 + i), ANT_INVALID_INDEX);
     }
     ASSERT_TRUE(saveWipeLoad(colony));
-    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL, TEST_TASK_DATA_HASH));
 
     AntColonyExportHeader header;
     std::vector<ExportFileEntry> entries;
@@ -1066,7 +1068,7 @@ TEST(TestAntColonyExport, BeginEpochClearsIt)
 
     ASSERT_NE(commitRootChild(colony, makeKey(7), 3500, 0, 6400), ANT_INVALID_INDEX);
     colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
-    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL, TEST_TASK_DATA_HASH));
 
     AntColonyExportHeader header;
     std::vector<ExportFileEntry> entries;

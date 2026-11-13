@@ -22,10 +22,10 @@ struct ScoreEngine
         _bpp9000Score.initMemory();
     }
 
-    // Load the task blocks into the active bpp9000 leaf; returns false on invalid topology/data.
-    bool loadTask(const unsigned char* topoBlock, const unsigned char* dataBlock)
+    // Replace the first count task targets of the active bpp9000 leaf.
+    bool loadTaskTargets(const unsigned char* targets, unsigned long long count)
     {
-        return _bpp9000Score.loadTaskFromMemory(topoBlock, dataBlock);
+        return _bpp9000Score.loadTaskTargets(targets, count);
     }
 
     // Derive the epoch's global control/output neurons from the digest; run once per epoch before scoring.
@@ -97,14 +97,14 @@ struct ScoreEngine
 
     // Ant colony: score a child by inheriting the parent's network and walking it with the child's
     // own seeds. Returns INVALID_SCORE_VALUE for a non-canonical nonce or an unsupported algorithm.
-    Rating computeAntScoreFromParent(const AntAnn& parent, unsigned long long parentShift,
+    Rating computeAntScoreFromParent(const AntAnn& parent, unsigned long long parentShift, unsigned long long shiftLimit,
         const unsigned char* publicKey,
         const unsigned char* nonce, const unsigned char* anchorDigest, const unsigned char* randomPool)
     {
         switch (getAlgoType(nonce))
         {
             case AlgoType::Bpp9000:
-                return _bpp9000Score.computeScoreFromParent(parent, parentShift, publicKey, nonce, anchorDigest, randomPool);
+                return _bpp9000Score.computeScoreFromParent(parent, parentShift, publicKey, nonce, anchorDigest, randomPool, shiftLimit);
             default:
                 return Rating::worst();
         }
@@ -114,6 +114,12 @@ struct ScoreEngine
     void getAntBestANN(AntAnn& out)
     {
         _bpp9000Score.getBestANN(out);
+    }
+
+    // Ant colony: the parent's own rating on the frames the last walk was graded on.
+    Rating getAntParentRating() const
+    {
+        return _bpp9000Score.parentRating;
     }
 
     // returns last computed output neurons of the active bpp9000 slot

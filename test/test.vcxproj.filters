@@ -58,6 +58,7 @@
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
     <ClCompile Include="oracle_engine.cpp" />
+    <ClCompile Include="price_feed.cpp" />
     <ClCompile Include="oc_engine.cpp" />
     <ClCompile Include="contract_qrwa.cpp" />
     <ClCompile Include="contract_escrow.cpp" />
