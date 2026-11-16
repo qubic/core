@@ -130,7 +130,7 @@ static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365 + 24 * 7;
 static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 365;
 // How far the frame may slide: production predicts one week ahead.
 static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
-static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 3942;
+static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 3504;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4350;
 
 // BTC price feed: the hourly Binance BTC/USDT price, captured through the Price oracle.
