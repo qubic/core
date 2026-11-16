@@ -64,7 +64,7 @@ public:
 	// get and compress number of votes of 676 computors to 676x10 bit numbers between [fromTick, toTick)
 	void compressNewVotesPacket(unsigned int fromTick, unsigned int toTick, unsigned int computorIdx, unsigned char votePacket[VOTE_COUNTER_DATA_SIZE_IN_BYTES])
 	{
-		setMem(votePacket, sizeof(votePacket), 0);
+		setMem(votePacket, VOTE_COUNTER_DATA_SIZE_IN_BYTES, 0);
 		setMem(buffer, sizeof(buffer), 0);
 		for (unsigned int i = fromTick; i < toTick; i++)
 		{

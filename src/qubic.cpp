@@ -5781,7 +5781,7 @@ static bool loadAllNodeStates()
         return false;
     }
 
-    setMem(assetChangeFlags, sizeof(assetChangeFlags), 0);
+    setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0);
     setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
     CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
     loadedSize = load(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);

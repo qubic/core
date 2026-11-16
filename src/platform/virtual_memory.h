@@ -57,7 +57,7 @@ private:
 
     void generatePageName(CHAR16 pageName[64], unsigned long long page_id)
     {
-        setMem(pageName, sizeof(pageName), 0);
+        setMem(pageName, 64 * sizeof(CHAR16), 0);
         char input[32];
         setMem(input, sizeof(input), 0);
         unsigned long long prefix_name = prefixName;
