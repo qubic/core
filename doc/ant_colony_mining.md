@@ -215,7 +215,8 @@ epoch-start spectrum digest in the epoch context, so every identity draws from t
 own position. No mutation walk. Never stored.
 **One root per identity per epoch**, so two identities start from different networks.
 
-**Child.** `computeScoreFromParent(parentANN, publicKey, nonce, anchorTickDigest)`:
+**Child.** `loadTaskTargets(targets, count)`, then `computeScoreFromParent(parentANN, parentShift,
+publicKey, nonce, anchorTickDigest, epochPool, shiftLimit)`:
 
 1. Inherit the parent's start state, wiring, and LUTs.
 2. `mutationSeed = K12(publicKey || nonce || anchorTickDigest)` with `nonce[0..2]` zeroed in place
@@ -235,12 +236,12 @@ is `K12(TickData)` of the anchor tick's `TickData` (`REQUEST_TICK_DATA`). This b
 solution whose `anchorTick` is an empty tick is rejected (`RejectStale`) with the **deposit
 forfeited**. Anchor only on ticks that have `TickData`, make sure select a non-empty tick as an anchor tick.
 
-**Shift.** The frame graded is not fixed: `shift` is where it starts in the task data, and a score is the
-error count over `[shift, shift + WINDOW_WIDTH)`. When a frame is scored at or below
-`ADVANCE_THRESHOLD` (3942), the network has mastered it: `shift` advances by one and the frame is
-re-scored at the new position, repeating until it fails or reaches the **shift limit** of the
-solution's anchor tick (section 2.3a; never above `SHIFT_CAP` = 168). A solution therefore reports a
-**pair** - the shift it reached and the error in that frame.
+**Shift.** The frame graded is not fixed: `shift` is where it starts in the task data, and a score is
+the error count over `[shift, shift + WINDOW_WIDTH)`. When a frame is scored at or below
+`ADVANCE_THRESHOLD` (`BPP9000_ADVANCE_THRESHOLD` in `src/public_settings.h`), the network has mastered
+it: `shift` advances by one and the frame is re-scored at the new position, repeating until it fails or
+reaches the **shift limit** of the solution's anchor tick (section 2.3a; never above `SHIFT_CAP` = 168).
+A solution therefore reports a **pair** - the shift it reached and the error in that frame.
 
 `shift` is **inherited**: a child's walk starts at its parent's shift, not at 0, so a lineage
 accumulates shift and depth buys frame position as well as a lower error. Only a child of the virtual
@@ -296,9 +297,9 @@ not stored, not ranked, and the deposit is kept.
 oracle query for the next missing hour, not earlier than 300 seconds after that hour
 (`BTC_FEED_QUERY_DELAY_SEC`). The hour is stored in the tick in which the query finishes with a valid
 price, and it counts for anchor ticks after that tick. A failed query is repeated after 300 seconds
-(`BTC_FEED_RETRY_BACKOFF_SEC`). After 24 hours of failed attempts for one hour
-(`BTC_FEED_GIVE_UP_SEC`) the hour is stored with the previous hour's price and flag bit 0 (filled);
-its target is `1`.
+(`BTC_FEED_RETRY_BACKOFF_SEC`). When an attempt fails 24 hours or more after the first failed attempt for
+that hour (`BTC_FEED_GIVE_UP_SEC`), the hour is stored with the previous hour's price and flag bit 0
+(filled); its target is `1`.
 
 **Consensus.** Every stored hour is folded into `resourceTestingDigest`, and the state of the series is
 folded at the epoch switch and at a start from files. A node that holds a different series differs
@@ -338,7 +339,9 @@ full so the node was not persisted for others to extend. Ranking and refund are 
 **One solution per identity per tick.** When one identity (`sourcePublicKey`) has several solution
 transactions in the same tick, only the one at the highest transaction index is processed. The others
 end as `SkippedSupersededInTick`: they are not scored, the deposit is returned, and the same solution
-may be published again in a later tick.
+may be published again in a later tick. The others are skipped even if the last one is then not
+executed because the identity's balance no longer covers its deposit; in that case no solution of the
+identity counts in the tick.
 
 ### 2.5 The deposit
 
@@ -577,9 +580,9 @@ unsigned int   shiftLimit;  // last shift a solution with this anchor tick may r
 ```
 
 `valid` is 0 when `anchorTick` is before the first tick of the epoch or after the node's current tick,
-or when the node holds no price series. The number of targets is the payload size minus 20. Pass the
-targets to the scorer unchanged and limit the shift to `shiftLimit`. The task data of an anchor tick
-does not change once the node has reached that tick.
+or when the node cannot build the task data (it holds no usable price series). The number of targets is
+the payload size minus 20. Pass the targets to the scorer unchanged and limit the shift to `shiftLimit`.
+The task data of an anchor tick does not change once the node has reached that tick.
 
 **(e) Price series** - `REQUEST_PRICE_SERIES` (78) / `RESPOND_PRICE_SERIES` (79). **Public.**
 

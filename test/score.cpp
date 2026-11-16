@@ -313,15 +313,14 @@ static void referenceBestAnn(const score_bpp9000_reference::Miner<Cfg>& ref, typ
 
 template<typename Cfg>
 static score_engine::Rating referenceScoreFromParent(score_bpp9000_reference::Miner<Cfg>& ref,
-    const typename score_engine::ScoreBpp9000<Cfg>::ANN& parent, unsigned long long parentShift, const m256i& pubkey,
-    const m256i& nonce, const m256i& anchor, typename score_engine::ScoreBpp9000<Cfg>::ANN& outAnn)
+    const typename score_engine::ScoreBpp9000<Cfg>::ANN& parent, unsigned long long parentShift, unsigned long long limit,
+    const m256i& pubkey, const m256i& nonce, const m256i& anchor, typename score_engine::ScoreBpp9000<Cfg>::ANN& outAnn)
 {
     using Ref = score_bpp9000_reference::Miner<Cfg>;
     referenceLoadAnn<Cfg>(ref, parent);
     ref.deriveMutationSeeds(pubkey.m256i_u8, nonce.m256i_u8, anchor.m256i_u8);
-    ref.shift = parentShift;
-    const score_engine::Rating rating = ref.computeScoreFromCurrent(Ref::changesPerStep(nonce.m256i_u8), nonce.m256i_u8[2],
-        Ref::modeOf(nonce.m256i_u8));
+    const score_engine::Rating rating = ref.computeScoreFromParentShift(parentShift, limit,
+        Ref::changesPerStep(nonce.m256i_u8), nonce.m256i_u8[2], Ref::modeOf(nonce.m256i_u8));
     referenceBestAnn<Cfg>(ref, outAnn);
     return rating;
 }
@@ -1190,6 +1189,62 @@ TEST(TestQubicScoreTaskTargets, WalkIsGradedOnTheTargetsHandedIn)
         pk, nonce, anchor, *wrapperAnn).isValid());
 }
 
+// The walk is graded on the targets of its own call.
+TEST(TestQubicScoreTaskTargets, TargetsOfEachCallAreTheOnesGraded)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+    std::vector<m256i> seeds;
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    loadSamples(seeds, pubkeys, nonces, 1);
+    ASSERT_FALSE(seeds.empty());
+
+    const unsigned int window = (unsigned int)AntCfg::windowWidth;
+    const std::vector<unsigned char> first(f.engine->targetOutputs, f.engine->targetOutputs + window);
+    std::vector<unsigned char> flipped(window);
+    for (unsigned int t = 0; t < window; ++t)
+    {
+        flipped[t] = (first[t] == 0) ? 1 : 0;
+    }
+
+    auto scoreFunction = std::make_unique<ScoreFunction<1>>();
+    scoreFunction->initMemory();
+    scoreFunction->initMiningData(seeds[0]);
+
+    const m256i pk = makePubkey(35);
+    const m256i nonce = makeAntNonce(3, 0, 37);
+    const m256i anchor = makePubkey(36);
+    auto firstAnn = std::make_unique<AntEngine::ANN>();
+    auto flippedAnn = std::make_unique<AntEngine::ANN>();
+    auto engineAnn = std::make_unique<AntEngine::ANN>();
+    auto rootAnn = std::make_unique<AntEngine::ANN>();
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), *rootAnn);
+
+    const score_engine::Rating onFirst = scoreFunction->computeAntChildScore(0, nullptr, 0, first.data(), window, pk, nonce,
+        anchor, *firstAnn);
+    const score_engine::Rating onFlipped = scoreFunction->computeAntChildScore(0, nullptr, 0, flipped.data(), window, pk,
+        nonce, anchor, *flippedAnn);
+    ASSERT_TRUE(onFirst.isValid());
+    ASSERT_TRUE(onFlipped.isValid());
+    EXPECT_NE(onFlipped.error, onFirst.error);
+
+    // Same result as an engine loaded with the flipped targets.
+    ASSERT_TRUE(f.engine->loadTaskTargets(flipped.data(), flipped.size()));
+    const score_engine::Rating engineRating = f.engine->computeScoreFromParent(*rootAnn, 0, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, f.pool.data(), 0);
+    f.engine->getBestANN(*engineAnn);
+    EXPECT_EQ(onFlipped.error, engineRating.error);
+    EXPECT_EQ(onFlipped.shift, engineRating.shift);
+    EXPECT_EQ(memcmp(flippedAnn.get(), engineAnn.get(), sizeof(*engineAnn)), 0);
+
+    // The first targets again give the first result.
+    const score_engine::Rating again = scoreFunction->computeAntChildScore(0, nullptr, 0, first.data(), window, pk, nonce,
+        anchor, *engineAnn);
+    EXPECT_EQ(again.error, onFirst.error);
+    EXPECT_EQ(memcmp(firstAnn.get(), engineAnn.get(), sizeof(*engineAnn)), 0);
+}
+
 // A stored parent that leaves no error on its frames was stored at frame 0 when one frame was known. One
 // hour later its unchanged network holds frame 1 too: ahead of its record, not ahead of itself on that data.
 TEST(TestQubicScoreTaskTargets, ChildMustBeatItsStoredParentOnTheSameData)
@@ -1688,7 +1743,8 @@ TEST(TestQubicScoreFunction, Bpp9000TimeoutAfterAdvanceMatchesReference)
             const score_engine::Rating eng = engine->computeScoreFromParent(*parent, 0, pk.m256i_u8, nonce.m256i_u8,
                 anchor.m256i_u8, pool.data());
             engine->getBestANN(*engineAnn);
-            const score_engine::Rating r = referenceScoreFromParent<Cfg>(*ref, *parent, 0, pk, nonce, anchor, *refAnn);
+            const score_engine::Rating r = referenceScoreFromParent<Cfg>(*ref, *parent, 0, Cfg::shiftCap, pk, nonce, anchor,
+                *refAnn);
             if (kValues[ki] == Cfg::numberOfMutations)
             {
                 EXPECT_EQ(r.error, Ref::INFINITE_ERROR) << "L " << (int)lValues[li];
@@ -1791,7 +1847,7 @@ TEST(TestQubicScoreFunction, Bpp9000ShiftLimitMatchesReference)
             const score_engine::Rating eng = engine->computeScoreFromParent(*parent, 0, pk.m256i_u8, nonce.m256i_u8,
                 anchor.m256i_u8, pool.data(), limit);
             engine->getBestANN(*engineAnn);
-            const score_engine::Rating r = referenceScoreFromParent<Cfg>(*ref, *parent, 0, pk, nonce, anchor, *refAnn);
+            const score_engine::Rating r = referenceScoreFromParent<Cfg>(*ref, *parent, 0, limit, pk, nonce, anchor, *refAnn);
             EXPECT_LE(eng.shift, (unsigned int)limit) << "limit " << limit;
             EXPECT_EQ(eng.error, r.error) << "limit " << limit << " K " << (int)kValues[ki];
             EXPECT_EQ(eng.shift, r.shift) << "limit " << limit << " K " << (int)kValues[ki];
@@ -1805,7 +1861,7 @@ TEST(TestQubicScoreFunction, Bpp9000ShiftLimitMatchesReference)
         }
     }
 
-    // A walk whose limit drops below its shift (the engine is zeroed at the epoch switch) stops at once.
+    // A walk whose limit is below its shift stops at once.
     engine->expand(*parent);
     engine->shift = 3;
     engine->shiftLimit = 0;
@@ -1828,6 +1884,121 @@ TEST(TestQubicScoreFunction, Bpp9000ShiftLimitMatchesReference)
         5).isValid());
     EXPECT_FALSE(engine->parentRating.isValid());
     EXPECT_EQ(engine->parentRating.shift, 0u);
+}
+
+// A parent that stops before the limit, and a parent whose shift is the limit.
+TEST(TestQubicScoreFunction, Bpp9000ParentBelowTheLimitMatchesReference)
+{
+    using Cfg = LimitConfig;
+    using Engine = score_engine::ScoreBpp9000<Cfg>;
+    using Ref = score_bpp9000_reference::Miner<Cfg>;
+
+    std::vector<m256i> seeds;
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    loadSamples(seeds, pubkeys, nonces, 1);
+    ASSERT_FALSE(seeds.empty());
+    std::vector<unsigned char> pool;
+    generatePool(seeds[0], pool);
+
+    const unsigned int gate = (unsigned int)BPP9000_ADVANCE_THRESHOLD;
+    const unsigned long long firstWrong = Cfg::shiftCap + 1;
+    ASSERT_LT(firstWrong + gate, Cfg::windowWidth);
+    // An output of 0 has gate - 2 errors on frame 0, and one more with each later hour.
+    const std::vector<unsigned char> inputs(Cfg::sequenceLength * Cfg::numberOfInputNeurons, 0);
+    std::vector<unsigned char> targets(Cfg::sequenceLength, 0);
+    for (unsigned long long t = firstWrong; t < firstWrong + gate - 2; ++t)
+    {
+        targets[t] = 1;
+    }
+    for (unsigned long long t = Cfg::windowWidth; t < Cfg::sequenceLength; ++t)
+    {
+        targets[t] = 1;
+    }
+    std::vector<unsigned char> data(score_task_file::dataBytes((unsigned int)Cfg::numberOfInputNeurons,
+        (unsigned int)Cfg::numberOfOutputNeurons, Cfg::sequenceLength));
+    score_task_file::packDataBlock((unsigned int)Cfg::numberOfInputNeurons, (unsigned int)Cfg::numberOfOutputNeurons,
+        Cfg::sequenceLength, inputs.data(), targets.data(), data.data());
+
+    auto engine = makeEngine<Cfg>(nullptr, data.data());
+    ASSERT_TRUE(engine);
+    engine->deriveControlOutput(seeds[0].m256i_u8, pool.data());
+    auto ref = std::make_unique<Ref>();
+    ref->initialize(seeds[0].m256i_u8);
+    ASSERT_TRUE(ref->loadTaskFromMemory(nullptr, data.data()));
+    const unsigned int control = ref->controlIndex;
+    const unsigned int output = ref->outputIndex;
+    ASSERT_EQ(engine->controlIndex, control);
+    ASSERT_EQ(engine->outputIndex, output);
+
+    // Control alternates 0, UNKNOWN; output is constant 0.
+    const m256i pk = makePubkey(53);
+    const m256i anchor = makePubkey(54);
+    auto parent = std::make_unique<Engine::ANN>();
+    engine->deriveRootANN(pk.m256i_u8, pool.data(), *parent);
+    for (unsigned long long j = 0; j < Cfg::numberOfNeighbors; ++j)
+    {
+        parent->neighbor[control * Cfg::numberOfNeighbors + j] = (unsigned short)control;
+    }
+    parent->initialNeuronValues[control] = 0;
+    parent->lut[control * Engine::lutSize + 0] = 2;
+    parent->lut[control * Engine::lutSize + 26] = 0;
+    for (unsigned long long e = 0; e < Engine::lutSize; ++e)
+    {
+        parent->lut[output * Engine::lutSize + e] = 0;
+    }
+
+    // Frames 0 to 2 hold; frame 3 is one error over the gate.
+    const unsigned long long limit = 37;
+    referenceLoadAnn<Cfg>(*ref, *parent);
+    ref->shiftLimit = limit;
+    ref->shift = 0;
+    const score_engine::Rating start = ref->advanceShift();
+    ASSERT_EQ(start.shift, 3u);
+    ASSERT_EQ(start.error, gate + 1);
+
+    auto engineAnn = std::make_unique<Engine::ANN>();
+    auto refAnn = std::make_unique<Engine::ANN>();
+    const unsigned char kValues[2] = { 0, 7 };
+    for (unsigned int ki = 0; ki < 2; ++ki)
+    {
+        const m256i nonce = makeAntNonce(2, kValues[ki], (unsigned char)(92 + ki));
+        const score_engine::Rating eng = engine->computeScoreFromParent(*parent, 0, pk.m256i_u8, nonce.m256i_u8,
+            anchor.m256i_u8, pool.data(), limit);
+        engine->getBestANN(*engineAnn);
+        const score_engine::Rating r = referenceScoreFromParent<Cfg>(*ref, *parent, 0, limit, pk, nonce, anchor, *refAnn);
+        EXPECT_EQ(eng.error, r.error) << "K " << (int)kValues[ki];
+        EXPECT_EQ(eng.shift, r.shift) << "K " << (int)kValues[ki];
+        EXPECT_LE(eng.shift, (unsigned int)limit) << "K " << (int)kValues[ki];
+        EXPECT_EQ(engine->parentRating.error, start.error) << "K " << (int)kValues[ki];
+        EXPECT_EQ(engine->parentRating.shift, start.shift) << "K " << (int)kValues[ki];
+        EXPECT_EQ(ref->parentRating.error, start.error);
+        EXPECT_EQ(ref->parentRating.shift, start.shift);
+        EXPECT_EQ(memcmp(engineAnn.get(), refAnn.get(), sizeof(*refAnn)), 0) << "best ANN bytes, K " << (int)kValues[ki];
+    }
+
+    // The parent's shift is the limit: the walk stays on frame 2.
+    const m256i nonce = makeAntNonce(2, 0, 94);
+    const score_engine::Rating engAtLimit = engine->computeScoreFromParent(*parent, 2, pk.m256i_u8, nonce.m256i_u8,
+        anchor.m256i_u8, pool.data(), 2);
+    engine->getBestANN(*engineAnn);
+    const score_engine::Rating refAtLimit = referenceScoreFromParent<Cfg>(*ref, *parent, 2, 2, pk, nonce, anchor, *refAnn);
+    ASSERT_TRUE(engAtLimit.isValid());
+    EXPECT_EQ(engAtLimit.error, refAtLimit.error);
+    EXPECT_EQ(engAtLimit.shift, 2u);
+    EXPECT_EQ(refAtLimit.shift, 2u);
+    EXPECT_EQ(engine->parentRating.error, gate);
+    EXPECT_EQ(engine->parentRating.shift, 2u);
+    EXPECT_EQ(ref->parentRating.error, gate);
+    EXPECT_EQ(ref->parentRating.shift, 2u);
+    EXPECT_EQ(memcmp(engineAnn.get(), refAnn.get(), sizeof(*refAnn)), 0);
+
+    // Refused by both.
+    EXPECT_FALSE(referenceScoreFromParent<Cfg>(*ref, *parent, 0, Cfg::shiftCap + 1, pk, nonce, anchor, *refAnn).isValid());
+    EXPECT_FALSE(referenceScoreFromParent<Cfg>(*ref, *parent, 6, 5, pk, nonce, anchor, *refAnn).isValid());
+    EXPECT_FALSE(ref->parentRating.isValid());
+    EXPECT_FALSE(engine->computeScoreFromParent(*parent, 6, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, pool.data(),
+        5).isValid());
 }
 
 // Population 64: the AVX2 gather tick and the AVX-512 kernel at a small population, against the reference.

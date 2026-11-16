@@ -207,9 +207,7 @@ public:
     // tree starts from its own root.
     // targets: the task targets known at the anchor tick, one frame plus one per later frame the walk may reach.
     // A child of a stored parent must beat that parent rated on the same data, or it gets no score.
-    // Returns INVALID_SCORE_VALUE for a non-canonical nonce, in which case outChildAnn is not written
-    // bestANN would still hold the previous call's network, and committing that would put one node's
-    // stale bytes into childAnnHash.
+    // No score: returns Rating::worst(), outChildAnn is not written.
     score_engine::Rating computeAntChildScore(
         const unsigned long long processor_Number,
         const score_engine::ScoreBpp9000T::ANN* parentAnn,

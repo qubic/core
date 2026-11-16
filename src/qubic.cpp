@@ -2122,9 +2122,11 @@ static void processRequestBpp9000TaskData(unsigned long long processorNumber, Pe
     {
         unsigned int shiftLimit = 0;
         unsigned int baseHour = 0;
-        targetCount = gBtcPriceFeed.taskDataAt(request->anchorTick, response.targets, BPP9000_TASK_DATA_MAX_TARGETS, shiftLimit, baseHour);
-        if (targetCount != 0)
+        // The first frame is fixed for the epoch.
+        if (gBtcPriceFeed.taskTailAt(request->anchorTick, response.targets + BPP9000_WINDOW_WIDTH, shiftLimit, baseHour))
         {
+            copyMem(response.targets, gBpp9000FirstFrameTargets, BPP9000_WINDOW_WIDTH);
+            targetCount = (unsigned int)BPP9000_WINDOW_WIDTH + shiftLimit;
             response.valid = 1;
             response.baseHour = baseHour;
             response.shiftLimit = shiftLimit;

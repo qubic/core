@@ -153,7 +153,12 @@ static bool btcFeedMakeQuery(unsigned int hour, OI::Price::OracleQuery& query)
 // Whole USDT, rounded half up; the task targets compare these.
 static long long btcFeedPriceUsdt(long long priceE8)
 {
-    return (priceE8 + BTC_FEED_PRICE_SCALE / 2) / BTC_FEED_PRICE_SCALE;
+    const long long whole = priceE8 / BTC_FEED_PRICE_SCALE;
+    if (priceE8 % BTC_FEED_PRICE_SCALE >= BTC_FEED_PRICE_SCALE / 2)
+    {
+        return whole + 1;
+    }
+    return whole;
 }
 
 // 1e-8 units, rounded down. False for a non-positive input, a zero result or an overflow.
@@ -323,7 +328,7 @@ struct BtcPriceFeed
     BtcPriceImage image;
     unsigned char seriesDigest[32];
 
-    // Node-local. Not synced: no usable series, no part in the capture.
+    // Node-local. Not synced: no usable series, the feed is idle.
     long long boundQueryId;
     volatile char lock;
     bool synced;
@@ -616,6 +621,39 @@ struct BtcPriceFeed
         }
         RELEASE(lock);
         return count;
+    }
+
+    // Shift limit and the targets after the first frame. tail holds BPP9000_SHIFT_CAP bytes. False without a series.
+    bool taskTailAt(unsigned int anchorTick, unsigned char* tail, unsigned int& shiftLimit, unsigned int& baseHour)
+    {
+        bool complete = false;
+        shiftLimit = 0;
+        baseHour = 0;
+        ACQUIRE(lock);
+        if (synced && image.baseHour >= BPP9000_WINDOW_WIDTH && image.baseHour < image.nextHour)
+        {
+            const unsigned int limit = hoursBeforeLocked(anchorTick);
+            const BtcPricePoint* point = findPoint(image.baseHour);
+            unsigned int count = 0;
+            while (point && count < limit)
+            {
+                const long long previousUsdt = btcFeedPriceUsdt(point->priceE8);
+                point = findPoint(image.baseHour + count + 1);
+                if (point)
+                {
+                    tail[count] = (btcFeedPriceUsdt(point->priceE8) >= previousUsdt) ? 1 : 0;
+                    count++;
+                }
+            }
+            if (point && count == limit)
+            {
+                complete = true;
+                shiftLimit = limit;
+                baseHour = image.baseHour;
+            }
+        }
+        RELEASE(lock);
+        return complete;
     }
 
     // True if the leader of targetTick sends a query now; hour is the hour to ask for.

@@ -898,7 +898,7 @@ struct AntColonyExportHeader
     unsigned int solutionCount;      // the whole epoch, of which entryCount are exported
     unsigned int errorThreshold;
     unsigned char topologyHash[32];  // == BPP9000_TOPOLOGY_HASH of the build that wrote this
-    unsigned char dataHash[32];      // of the task data the networks were graded on
+    unsigned char dataHash[32];      // of the first frame
     m256i rootSeed;
 };
 static_assert(sizeof(AntColonyExportHeader) == 24 + 64 + 32, "AntColonyExportHeader unexpected padding");

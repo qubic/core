@@ -3011,7 +3011,7 @@ struct ScoreBpp9000
             {
                 return Rating{ frameError, (unsigned int)shift };
             }
-            // >=: the limit can fall below the shift when the engine is zeroed under a running walk.
+            // Stop at the limit.
             if (shift >= shiftLimit)
             {
                 return Rating{ frameError, (unsigned int)shift };

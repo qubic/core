@@ -1126,3 +1126,119 @@ TEST(TestBtcPriceFeed, StateDigestCoversBaseAttemptsAndHoursAfterTheBase)
     reference->onEpochSwitch();
     EXPECT_NE(stateDigestOf(*reference), withHour);
 }
+
+// Whole USDT, rounded half up, for every price that can be stored.
+TEST(TestBtcPriceFeed, WholeUsdtRounding)
+{
+    EXPECT_EQ(btcFeedPriceUsdt(1), 0);
+    EXPECT_EQ(btcFeedPriceUsdt(49999999), 0);
+    EXPECT_EQ(btcFeedPriceUsdt(50000000), 1);
+    EXPECT_EQ(btcFeedPriceUsdt(100000000), 1);
+    EXPECT_EQ(btcFeedPriceUsdt(149999999), 1);
+    EXPECT_EQ(btcFeedPriceUsdt(150000000), 2);
+    EXPECT_EQ(btcFeedPriceUsdt(5000049999999LL), 50000);
+    EXPECT_EQ(btcFeedPriceUsdt(5000050000000LL), 50001);
+
+    // The highest price that can be stored.
+    EXPECT_EQ(btcFeedPriceUsdt(0x7FFFFFFFFFFFFFFFLL), 92233720369LL);
+    EXPECT_EQ(btcFeedPriceUsdt(0x7FFFFFFFFFFFFFFFLL - 4775808), 92233720368LL);
+}
+
+// Target t compares hour baseHour - WINDOW + 1 + t with the hour before.
+TEST(TestBtcPriceFeed, FirstFrameTargetsFollowTheirHours)
+{
+    auto feed = makeSyncedFeed();
+    const unsigned int base = feed->image.baseHour;
+
+    // Prices hold for two hours, then move up or down.
+    const auto wholeUsdt = [](unsigned int hour) -> long long
+    {
+        return 50000 + (long long)(((hour / 2) * 7) % 11);
+    };
+    for (unsigned int hour = base - WINDOW; hour <= base; ++hour)
+    {
+        pointOf(*feed, hour).priceE8 = wholeUsdt(hour) * 100000000LL + 25000000LL;
+    }
+
+    std::vector<unsigned char> targets(SEQUENCE, 7);
+    ASSERT_EQ(feed->buildTaskTargets(targets.data(), SEQUENCE), WINDOW);
+    unsigned int ups = 0;
+    unsigned int downs = 0;
+    unsigned int held = 0;
+    for (unsigned int t = 0; t < WINDOW; ++t)
+    {
+        const unsigned int hour = base - WINDOW + 1 + t;
+        const long long now = wholeUsdt(hour);
+        const long long before = wholeUsdt(hour - 1);
+        ASSERT_EQ(targets[t], (now >= before) ? 1 : 0) << "target " << t << " of hour " << hour;
+        ups += (now > before) ? 1 : 0;
+        downs += (now < before) ? 1 : 0;
+        held += (now == before) ? 1 : 0;
+    }
+    EXPECT_GT(ups, 1000u);
+    EXPECT_GT(downs, 1000u);
+    EXPECT_GT(held, 1000u);
+    EXPECT_EQ(targets[WINDOW], 7);
+}
+
+// The task tail equals the end of the full task data.
+TEST(TestBtcPriceFeed, TaskTailCompletesTheFirstFrame)
+{
+    auto feed = makeSyncedFeed();
+    appendHour(*feed, 5000100000000LL, 2000);   // up
+    appendHour(*feed, 4999900000000LL, 2010);   // down
+    appendHour(*feed, 4999900000000LL, 2020);   // held
+    appendHour(*feed, 5000300000000LL, 2030);   // up
+    appendHour(*feed, 5000200000000LL, 2040);   // down
+
+    std::vector<unsigned char> firstFrame(WINDOW, 7);
+    ASSERT_EQ(feed->buildTaskTargets(firstFrame.data(), WINDOW), WINDOW);
+
+    const unsigned int anchors[7] = { 1000, 2000, 2001, 2011, 2040, 2041, 9000 };
+    const unsigned int limits[7] = { 0, 0, 1, 2, 4, 5, 5 };
+    for (unsigned int i = 0; i < 7; ++i)
+    {
+        std::vector<unsigned char> full(SEQUENCE, 7);
+        unsigned int fullLimit = 99;
+        unsigned int fullBase = 0;
+        ASSERT_EQ(feed->taskDataAt(anchors[i], full.data(), SEQUENCE, fullLimit, fullBase), WINDOW + limits[i]);
+
+        std::vector<unsigned char> tail((unsigned int)BPP9000_SHIFT_CAP, 7);
+        unsigned int tailLimit = 99;
+        unsigned int tailBase = 0;
+        ASSERT_TRUE(feed->taskTailAt(anchors[i], tail.data(), tailLimit, tailBase)) << "anchor " << anchors[i];
+        EXPECT_EQ(tailLimit, limits[i]) << "anchor " << anchors[i];
+        EXPECT_EQ(tailLimit, fullLimit);
+        EXPECT_EQ(tailBase, fullBase);
+        EXPECT_EQ(memcmp(full.data(), firstFrame.data(), WINDOW), 0);
+        EXPECT_EQ(memcmp(full.data() + WINDOW, tail.data(), tailLimit), 0) << "anchor " << anchors[i];
+        EXPECT_EQ(tail[tailLimit], 7) << "anchor " << anchors[i];
+    }
+
+    // Both stop at the cap.
+    for (unsigned int i = 5; i < (unsigned int)BPP9000_SHIFT_CAP + 2; ++i)
+    {
+        appendHour(*feed, 5000000000000LL + (long long)((i * 37) % 5) * 100000000LL, 2050 + 10 * i);
+    }
+    std::vector<unsigned char> full(SEQUENCE, 7);
+    std::vector<unsigned char> tail((unsigned int)BPP9000_SHIFT_CAP, 7);
+    unsigned int fullLimit = 0;
+    unsigned int fullBase = 0;
+    unsigned int tailLimit = 0;
+    unsigned int tailBase = 0;
+    ASSERT_EQ(feed->taskDataAt(900000, full.data(), SEQUENCE, fullLimit, fullBase), SEQUENCE);
+    ASSERT_TRUE(feed->taskTailAt(900000, tail.data(), tailLimit, tailBase));
+    EXPECT_EQ(tailLimit, (unsigned int)BPP9000_SHIFT_CAP);
+    EXPECT_EQ(memcmp(full.data() + WINDOW, tail.data(), tailLimit), 0);
+
+    // After the epoch switch no hour lies after the base.
+    feed->onEpochSwitch();
+    ASSERT_TRUE(feed->taskTailAt(900000, tail.data(), tailLimit, tailBase));
+    EXPECT_EQ(tailLimit, 0u);
+    EXPECT_EQ(tailBase, feed->image.nextHour - 1);
+
+    // A node without the series has no task data.
+    feed->synced = false;
+    EXPECT_FALSE(feed->taskTailAt(900000, tail.data(), tailLimit, tailBase));
+    EXPECT_EQ(tailLimit, 0u);
+}

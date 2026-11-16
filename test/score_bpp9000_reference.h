@@ -307,7 +307,7 @@ struct Miner
             {
                 return score_engine::Rating{ frameError, (unsigned int)shift };
             }
-            if (shift == shiftLimit)
+            if (shift >= shiftLimit)
             {
                 return score_engine::Rating{ frameError, (unsigned int)shift };
             }
@@ -375,6 +375,20 @@ struct Miner
 
         shift = best.shift;
         return best;
+    }
+
+    // Ant colony walk from the parent in cur*. No score if limit > shiftCap or parentShift > limit.
+    score_engine::Rating computeScoreFromParentShift(unsigned long long parentShift, unsigned long long limit, unsigned int L,
+        unsigned long long K, unsigned char mode)
+    {
+        parentRating = score_engine::Rating::worst();
+        if (limit > shiftCap || parentShift > limit)
+        {
+            return score_engine::Rating::worst();
+        }
+        shiftLimit = limit;
+        shift = parentShift;
+        return computeScoreFromCurrent(L, K, mode);
     }
 
     // Standalone: root from the pubkey, walk with K = 0 (no explore). control/output already set by initialize.

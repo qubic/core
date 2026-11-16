@@ -147,10 +147,10 @@ static constexpr unsigned int BTC_FEED_MIN_HOUR = 31223;
 static constexpr unsigned int BTC_FEED_SLOT_PERIOD = 5;
 // One step of the price series: an hour on mainnet.
 static constexpr unsigned int BTC_FEED_PERIOD_SEC = 3600;
-// An hour is queried once it has been over for this long.
+// Wait after an hour before its price is queried.
 static constexpr unsigned int BTC_FEED_QUERY_DELAY_SEC = 300;
 static constexpr unsigned int BTC_FEED_QUERY_TIMEOUT_MS = 120000;
-// Pause after a failed attempt. After BTC_FEED_GIVE_UP_SEC of failed attempts the previous price is reused.
+// Pause after a failed attempt. A failure BTC_FEED_GIVE_UP_SEC after the hour's first one stores the previous price.
 static constexpr unsigned int BTC_FEED_RETRY_BACKOFF_SEC = 300;
 static constexpr unsigned int BTC_FEED_GIVE_UP_SEC = 24 * 60 * 60;
 
