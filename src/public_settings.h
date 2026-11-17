@@ -147,20 +147,30 @@ static unsigned short BTC_PRICE_BOOTSTRAP_FILE_NAME[] = L"btc_price_bootstrap.bi
 static constexpr unsigned char BTC_PRICE_BOOTSTRAP_HASH[32] =
     { 0xce, 0x2a, 0x26, 0x2d, 0xa3, 0x4a, 0xc4, 0x75, 0xbd, 0xb2, 0x37, 0x15, 0xa3, 0x96, 0x09, 0xe8,
       0x64, 0xf4, 0xcd, 0x84, 0x47, 0x85, 0x01, 0x2b, 0xe2, 0x3d, 0xf3, 0xa5, 0x87, 0x6c, 0x85, 0x58 };
-// Lowest hour a free feed query may ask for.
-static constexpr unsigned int BTC_FEED_MIN_HOUR = 1199812;
 // The leader of every BTC_FEED_SLOT_PERIOD-th tick may send one free feed query.
 static constexpr unsigned int BTC_FEED_SLOT_PERIOD = 5;
-// One step of the price series: an hour on mainnet.
-// Testnet: 2 minutes, so a short epoch still gets new steps.
-static constexpr unsigned int BTC_FEED_PERIOD_SEC = 120;
-// An hour is queried once it has been over for this long.
-static constexpr unsigned int BTC_FEED_QUERY_DELAY_SEC = 60;
 static constexpr unsigned int BTC_FEED_QUERY_TIMEOUT_MS = 120000;
-// Pause after a failed attempt. After BTC_FEED_GIVE_UP_SEC of failed attempts the previous price is reused.
-// Testnet: retry after 1 minute, reuse the previous price after 10 minutes.
+// BTC_FEED_MIN_HOUR: lowest hour a free feed query may ask for.
+// BTC_FEED_PERIOD_SEC: one step of the price series, an hour on mainnet.
+// BTC_FEED_QUERY_DELAY_SEC: an hour is queried once it has been over for this long.
+// BTC_FEED_RETRY_BACKOFF_SEC: pause after a failed attempt.
+// BTC_FEED_GIVE_UP_SEC: after this long of failed attempts the previous price is reused.
+#ifdef NO_UEFI
+// Test builds use the mainnet feed settings: the unit tests are written against them.
+static constexpr unsigned int BTC_FEED_MIN_HOUR = 31363;
+static constexpr unsigned int BTC_FEED_PERIOD_SEC = 3600;
+static constexpr unsigned int BTC_FEED_QUERY_DELAY_SEC = 300;
+static constexpr unsigned int BTC_FEED_RETRY_BACKOFF_SEC = 300;
+static constexpr unsigned int BTC_FEED_GIVE_UP_SEC = 24 * 60 * 60;
+#else
+// Testnet: a step of 2 minutes, so a short epoch still gets new steps; retry after 1 minute, reuse the
+// previous price after 10 minutes.
+static constexpr unsigned int BTC_FEED_MIN_HOUR = 1199812;
+static constexpr unsigned int BTC_FEED_PERIOD_SEC = 120;
+static constexpr unsigned int BTC_FEED_QUERY_DELAY_SEC = 60;
 static constexpr unsigned int BTC_FEED_RETRY_BACKOFF_SEC = 60;
 static constexpr unsigned int BTC_FEED_GIVE_UP_SEC = 10 * 60;
+#endif
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
 static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 1600;
