@@ -327,6 +327,16 @@
 #define CONTRACT_STATE2_TYPE QPUMP2
 #include "contracts/Qpump.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QNFT_CONTRACT_INDEX 32
+#define CONTRACT_INDEX QNFT_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QNFT
+#define CONTRACT_STATE2_TYPE QNFT2
+#include "contracts/QNft.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -445,6 +455,7 @@ constexpr struct ContractDescription
     {"QPAYHUB", 231, 10000, sizeof(QPAYHUB::StateData)}, // proposal in epoch 229, IPO in 230, construction and first use in 231
     {"QTREAT", 233, 10000, sizeof(QTREAT::StateData)}, // proposal in epoch 231, IPO in 232, construction and first use in 233
     {"QPUMP", 238, 10000, sizeof(QPUMP::StateData)}, // proposal in epoch 236, IPO in 237, construction and first use in 238
+    {"QNFT", 9999, 10000, sizeof(QNFT::StateData)}, // TODO: Set the approved construction epoch before deployment.
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -580,6 +591,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPAYHUB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTREAT);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPUMP);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QNFT);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
