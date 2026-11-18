@@ -57,6 +57,10 @@ enum NetworkMessageType : unsigned char
     RESPOND_ANT_PARENT_ANN = 75,
     REQUEST_ANT_EPOCH_CONTEXT = 76,
     RESPOND_ANT_EPOCH_CONTEXT = 77,
+    REQUEST_PRICE_SERIES = 78,
+    RESPOND_PRICE_SERIES = 79,
+    REQUEST_BPP9000_TASK_DATA = 80,
+    RESPOND_BPP9000_TASK_DATA = 81,
     ORACLE_MACHINE_QUERY = 190, // only on communication channel Core node <-> OM node
     ORACLE_MACHINE_REPLY = 191, // only on communication channel Core node <-> OM node
     OC_MACHINE_INVOCATION = 192, // only on communication channel Core node <-> OC machine

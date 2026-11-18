@@ -47,7 +47,8 @@ constexpr unsigned int ANT_IDENTITY_TREE_SCAN_BUDGET = 1024;
 // ref a child sets as its own parentRef to extend this node; parentTick/parentSolutionIndexInTick
 // is this node's OWN parent - (0, 0xFFFFFFFF) means the root - so paging every node of a pubkey
 // reconstructs the whole tree, edges included, without fetching any network bytes.
-// The score is an error count, so smaller is better: a child must score strictly below score.
+// The score is an error count, so smaller is better. A child must beat this node's rating on the data
+// of the child's own anchor tick, which is never below (shift, score).
 // childCount is how many children this node already holds, capped at ANT_MAX_CHILDREN_PER_PARENT; at
 // the cap it takes no more children (0 for the cap means unbound).
 struct AntIdentityTreeNode
@@ -151,7 +152,7 @@ struct RespondAntEpochContext
 {
     // The epoch-start spectrum digest
     m256i spectrumDigest;
-    // confirm its task file matches the one the node scores against.
+    // What the node scores against: the wiring parameters and the first frame's task data of this epoch.
     m256i topologyHash;
     m256i dataHash;
     // score threshold for this epoch
