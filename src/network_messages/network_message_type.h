@@ -61,6 +61,10 @@ enum NetworkMessageType : unsigned char
     RESPOND_PRICE_SERIES = 79,
     REQUEST_BPP9000_TASK_DATA = 80,
     RESPOND_BPP9000_TASK_DATA = 81,
+    REQUEST_PREDICTION_PHASE = 82,
+    RESPOND_PREDICTION_PHASE = 83,
+    REQUEST_PREDICTION_IDENTITY = 84,
+    RESPOND_PREDICTION_IDENTITY = 85,
     ORACLE_MACHINE_QUERY = 190, // only on communication channel Core node <-> OM node
     ORACLE_MACHINE_REPLY = 191, // only on communication channel Core node <-> OM node
     OC_MACHINE_INVOCATION = 192, // only on communication channel Core node <-> OC machine

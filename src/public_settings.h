@@ -133,6 +133,15 @@ static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
 static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 3504;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4350;
 
+// Prediction phase. An identity qualifies with a solution at shift >= 1, or at shift 0 with at most this many errors.
+static constexpr unsigned int BPP9000_PREDICTION_THRESHOLD = 3504;
+// The epoch switches to the prediction ranking when this many computors have qualified ...
+static constexpr unsigned int BPP9000_PREDICTION_SWITCH_COMPUTORS = 226;
+// ... unless fewer than this many hours of the epoch are left.
+static constexpr unsigned int BPP9000_PREDICTION_SWITCH_CLOSE_HOURS = 24;
+// A solution answers an hour if it is executed at least this long before the hour.
+static constexpr unsigned int BPP9000_PREDICTION_DEADLINE_SEC = 50 * 60;
+
 // BTC price feed: the hourly Binance BTC/USDT price, captured through the Price oracle.
 static unsigned short BTC_PRICE_SERIES_FILE_NAME[] = L"btcPriceSeries.???";
 static unsigned short BTC_PRICE_SERIES_SNAPSHOT_FILE_NAME[] = L"snapshotBtcPriceSeries.???";

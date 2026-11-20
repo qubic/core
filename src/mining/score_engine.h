@@ -116,6 +116,12 @@ struct ScoreEngine
         _bpp9000Score.getBestANN(out);
     }
 
+    // Ant colony: output trit of emits [first, first + count) of a network.
+    void collectAntOutputs(const AntAnn& ann, unsigned long long first, unsigned long long count, unsigned char* outputs)
+    {
+        _bpp9000Score.collectOutputs(ann, first, count, outputs);
+    }
+
     // Ant colony: the parent's own rating on the frames the last walk was graded on.
     Rating getAntParentRating() const
     {

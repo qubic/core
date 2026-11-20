@@ -92,6 +92,7 @@
 #include "qpi/impl/qpi_mining_impl.h"
 #include "revenue.h"
 #include "mining/price_feed.h"
+#include "mining/prediction_phase.h"
 
 #if USE_PARALLEL_SIGN_VOTES
 #include "optimizations/opt_parallel_sign_votes.h"
@@ -290,6 +291,12 @@ static AntColonyBpp9000T::Ann gAntParentAnnScratch[MAX_NUMBER_OF_PROCESSORS];
 static AntColonyBpp9000T::Ann gAntChildAnnScratch[MAX_NUMBER_OF_PROCESSORS];
 // Task targets of the solution a processor is scoring, one byte per hour.
 static unsigned char gAntTaskTargets[MAX_NUMBER_OF_PROCESSORS][BPP9000_SEQUENCE_LENGTH];
+
+static PredictionPhase gPredictionPhase;
+// The tick processor holds it while it changes the entries, the identity request while it reads one.
+static volatile char gPredictionPhaseLock = 0;
+// Tick processor only: answers of the solution being committed.
+static unsigned char gPredictionAnswers[PREDICTION_MAX_HOURS];
 
 // Fills this processor's buffer with the targets of a solution anchored at anchorTick.
 // Returns the count, 0 without a price series.
@@ -701,6 +708,7 @@ struct
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
     unsigned char dogeMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
+    PredictionPhase predictionPhase;
 } nodeStateBuffer;
 #endif
 static bool saveContractStateFiles(CHAR16* directory = NULL);
@@ -1871,6 +1879,56 @@ static_assert(sizeof(AntParentAnnResponse)
     "AntParentAnnResponse must have no padding between the header and the network");
 static AntParentAnnResponse gAntParentAnnResponseBuffer[MAX_NUMBER_OF_PROCESSORS];
 
+// Request the phase of the prediction ranking. Read without the lock: in the tick of a switch or of a
+// counted hour the fields can be from two moments of that tick.
+static void processRequestPredictionPhase(Peer* peer, RequestResponseHeader* header)
+{
+    RespondPredictionPhase respond;
+
+    respond.switchTick = gPredictionPhase.switchTick;
+    respond.switchFirstHour = gPredictionPhase.switchFirstHour;
+    respond.computorsQualified = gPredictionPhase.computorsQualified;
+    respond.foldedDigest = gPredictionPhase.foldedDigest;
+    respond.threshold = BPP9000_PREDICTION_THRESHOLD;
+    respond.deadlineSeconds = BPP9000_PREDICTION_DEADLINE_SEC;
+
+    enqueueResponse(peer, sizeof(respond), RespondPredictionPhase::type(), header->dejavu(), &respond);
+}
+
+static_assert(PREDICTION_IDENTITY_ANSWERS == PREDICTION_MAX_HOURS, "the response holds every answer of an identity");
+
+// Request the prediction state of one identity. An identity that has not qualified gets firstHour 0.
+static void processRequestPredictionIdentity(Peer* peer, RequestResponseHeader* header)
+{
+    if (!header->checkPayloadSize(sizeof(RequestPredictionIdentity)))
+    {
+        return;
+    }
+    const RequestPredictionIdentity* request = header->getPayload<RequestPredictionIdentity>();
+    const m256i publicKey = request->publicKey;
+
+    RespondPredictionIdentity respond;
+    setMem(&respond, sizeof(respond), 0);
+    setMem(respond.answers, sizeof(respond.answers), PREDICTION_NO_ANSWER);
+    respond.baseHour = gBtcPriceFeed.image.baseHour;
+
+    ACQUIRE(gPredictionPhaseLock);
+    const int index = gPredictionPhase.find(publicKey);
+    if (index >= 0)
+    {
+        const PredictionEntry& entry = gPredictionPhase.entries[index];
+        respond.firstHour = entry.firstHour;
+        respond.hours = entry.hours;
+        respond.correct = entry.correct;
+        respond.solutionTick = entry.solutionTick;
+        respond.solutionIndexInTick = entry.solutionIndexInTick;
+        copyMem(respond.answers, entry.answers, sizeof(respond.answers));
+    }
+    RELEASE(gPredictionPhaseLock);
+
+    enqueueResponse(peer, sizeof(respond), RespondPredictionIdentity::type(), header->dejavu(), &respond);
+}
+
 // Request ant colony in epoch contex
 static void processRequestAntEpochContext(Peer* peer, RequestResponseHeader* header)
 {
@@ -2929,6 +2987,18 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestPredictionPhase::type():
+                {
+                    processRequestPredictionPhase(peer, header);
+                }
+                break;
+
+                case RequestPredictionIdentity::type():
+                {
+                    processRequestPredictionIdentity(peer, header);
+                }
+                break;
+
                 case RequestAntEpochContext::type():
                 {
                     processRequestAntEpochContext(peer, header);
@@ -3432,6 +3502,136 @@ static void updateMinerRankingAndFutureComputors(
     }
 }
 
+// Tick processor only. The digest kept by the last PredictionPhase::updateFoldedDigest() enters the mining digest.
+static void foldPredictionDigest()
+{
+    resourceTestingDigest ^= gPredictionPhase.foldedDigest;
+    KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
+}
+
+// Tick processor only. The epoch has switched: every qualified identity moves to its prediction ranking key
+// and the switch enters the mining digest. 
+static void applyPredictionSwitch()
+{
+    for (unsigned int i = 0; i < gPredictionPhase.count; i++)
+    {
+        const PredictionEntry& entry = gPredictionPhase.entries[i];
+        updateMinerRankingAndFutureComputors(entry.publicKey, PredictionPhase::rankingKey(entry), entry.bestTick);
+    }
+    foldPredictionDigest();
+
+    PredictionSwitchLogMessage logMsg;
+    logMsg._type = CUSTOM_MESSAGE_PREDICTION_SWITCH;
+    logMsg.computorsQualified = gPredictionPhase.computorsQualified;
+    logMsg.firstHour = gPredictionPhase.switchFirstHour;
+    logger.logCustomMessage(logMsg);
+}
+
+// Time the prediction rules use for the tick that executes tickData: the later of the tick time and the
+// time stamp of tickData. The tick time alone is the stamp of the tick data before it.
+static bool getPredictionTickTimeMs(const TickData& tickData, long long& nowMs)
+{
+    if (!btcFeedTimeToMs(QPI::DateAndTime::now(), nowMs))
+    {
+        return false;
+    }
+    if (tickData.epoch == system.epoch)
+    {
+        const QPI::DateAndTime stamp((unsigned int)tickData.year + 2000U, tickData.month, tickData.day,
+            tickData.hour, tickData.minute, tickData.second, tickData.millisecond);
+        long long stampMs = 0;
+        if (btcFeedTimeToMs(stamp, stampMs))
+        {
+            nowMs = PredictionPhase::laterTimeMs(nowMs, stampMs);
+        }
+    }
+    return true;
+}
+
+// An hour closes when its deadline has passed: no later solution can change its answers.
+// Logs the final answers of every hour that closes in this tick. Tick processor only, before the tick's transactions.
+static void closePredictionHours()
+{
+    long long nowMs = 0;
+    if (!getPredictionTickTimeMs(nextTickData, nowMs))
+    {
+        return;
+    }
+    const unsigned int baseHour = gBtcPriceFeed.image.baseHour;
+    unsigned int hour = 0;
+    while (gPredictionPhase.closeNextHour(nowMs, hour))
+    {
+        if (hour <= baseHour || hour - baseHour > PREDICTION_MAX_HOURS)
+        {
+            continue;
+        }
+        for (unsigned int i = 0; i < gPredictionPhase.count; i++)
+        {
+            const PredictionEntry& entry = gPredictionPhase.entries[i];
+            if (gPredictionPhase.participatesIn(entry, hour))
+            {
+                PredictionAnswerLogMessage logMsg;
+                logMsg._type = CUSTOM_MESSAGE_PREDICTION_ANSWER;
+                logMsg.publicKey = entry.publicKey;
+                logMsg.hour = hour;
+                logMsg.solutionTick = entry.solutionTick;
+                logMsg.solutionIndexInTick = entry.solutionIndexInTick;
+                logMsg.answer = entry.answers[hour - baseHour - 1];
+                logger.logCustomMessage(logMsg);
+            }
+        }
+    }
+}
+
+// The price of an hour has arrived: its target is up or down against the hour before.
+// Checks every answer for the hour against the target and updates each identity's counts, the ranking and the mining digest.
+// A filled hour has no price of its own and is counted for nobody. Tick processor only.
+static void applyPredictionTarget()
+{
+    if (!gPredictionPhase.isSwitched())
+    {
+        return;
+    }
+    const unsigned int hour = gBtcPriceFeed.image.nextHour - 1;
+    const BtcPricePoint* point = gBtcPriceFeed.findPoint(hour);
+    const BtcPricePoint* previous = gBtcPriceFeed.findPoint(hour - 1);
+    if (!point || !previous)
+    {
+        return;
+    }
+
+    PredictionResultLogMessage logMsg;
+    logMsg._type = CUSTOM_MESSAGE_PREDICTION_RESULT;
+    logMsg.hour = hour;
+    logMsg.target = PREDICTION_NO_ANSWER;
+    if ((point->flags & BTC_PRICE_FLAG_FILLED) == 0)
+    {
+        const unsigned char target = (btcFeedPriceUsdt(point->priceE8) >= btcFeedPriceUsdt(previous->priceE8)) ? 1 : 0;
+        logMsg.target = target;
+        ACQUIRE(gPredictionPhaseLock);
+        const unsigned int counted = gPredictionPhase.countHour(hour, gBtcPriceFeed.image.baseHour, target);
+        if (counted != 0)
+        {
+            gPredictionPhase.updateFoldedDigest();
+        }
+        RELEASE(gPredictionPhaseLock);
+        if (counted != 0)
+        {
+            for (unsigned int i = 0; i < gPredictionPhase.count; i++)
+            {
+                const PredictionEntry& entry = gPredictionPhase.entries[i];
+                if (gPredictionPhase.participatesIn(entry, hour))
+                {
+                    updateMinerRankingAndFutureComputors(entry.publicKey, PredictionPhase::rankingKey(entry), entry.bestTick);
+                }
+            }
+            foldPredictionDigest();
+        }
+    }
+    logger.registerNewTx(system.tick, logger.SC_NOTIFICATION_TX);
+    logger.logCustomMessage(logMsg);
+}
+
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -3731,8 +3931,34 @@ static void processTickTransactionAntColonySolution(
         logger.logQuTransfer(quTransfer);
 
         // A miner is ranked by its single best rating of the epoch: reach first, then errors.
-        const unsigned int newScore = childRating.rankingKey();
+        // After the switch an identity that qualified is ranked by its correct hours first.
+        unsigned int newScore = childRating.rankingKey();
+        bool switchedNow = false;
+        long long nowMs = 0;
+        if (getPredictionTickTimeMs(nextTickData, nowMs)
+            && gPredictionPhase.needsAnswers(transaction->sourcePublicKey, childRating))
+        {
+            score->computeAntAnswers(processorNumber, *childAnn, gPredictionAnswers);
+            ACQUIRE(gPredictionPhaseLock);
+            const PredictionEntry& entry = gPredictionPhase.recordSolution(
+                transaction->sourcePublicKey, childRating, system.tick, transactionIndex, nowMs,
+                gBtcPriceFeed.image.baseHour, computorIndex(transaction->sourcePublicKey) >= 0, gPredictionAnswers);
+            switchedNow = gPredictionPhase.trySwitch(system.tick, nowMs, PredictionPhase::epochEndHour(system.epoch));
+            if (switchedNow)
+            {
+                gPredictionPhase.updateFoldedDigest();
+            }
+            RELEASE(gPredictionPhaseLock);
+            if (gPredictionPhase.isSwitched())
+            {
+                newScore = PredictionPhase::rankingKey(entry);
+            }
+        }
         updateMinerRankingAndFutureComputors(transaction->sourcePublicKey, newScore, system.tick);
+        if (switchedNow)
+        {
+            applyPredictionSwitch();
+        }
     }
 }
 
@@ -4543,6 +4769,8 @@ static void processTick(unsigned long long processorNumber)
     copyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
     ts.tickData.releaseLock();
 
+    closePredictionHours();
+
     unsigned long long solutionProcessStartTick = __rdtsc(); // for tracking the time processing solutions
     if (nextTickData.epoch == system.epoch)
     {
@@ -4854,6 +5082,7 @@ static void processTick(unsigned long long processorNumber)
             if (gBtcPriceFeed.image.nextHour != nextHourBefore)
             {
                 foldAppendedBtcPricePoint();
+                applyPredictionTarget();
             }
         }
         else if (finishedUserQuery->interfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
@@ -5461,6 +5690,9 @@ static void beginEpoch()
     setMem(competitorScores, sizeof(competitorScores), 0xFF);
     setMem(competitorTicks, sizeof(competitorTicks), 0);
     setMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
+    ACQUIRE(gPredictionPhaseLock);
+    gPredictionPhase.reset();
+    RELEASE(gPredictionPhaseLock);
     minimumComputorScore = NO_MINER_SCORE;
     minimumCandidateScore = NO_MINER_SCORE;
 
@@ -5855,6 +6087,7 @@ static bool saveAllNodeStates()
     copyMem(nodeStateBuffer.minerBestScoreTicks, (void*)minerBestScoreTicks, sizeof(minerBestScoreTicks));
     copyMem(nodeStateBuffer.competitorPublicKeys, (void*)competitorPublicKeys, sizeof(competitorPublicKeys));
     copyMem(nodeStateBuffer.competitorScores, (void*)competitorScores, sizeof(competitorScores));
+    copyMem(&nodeStateBuffer.predictionPhase, &gPredictionPhase, sizeof(gPredictionPhase));
     copyMem(nodeStateBuffer.competitorTicks, (void*)competitorTicks, sizeof(competitorTicks));
     copyMem(nodeStateBuffer.competitorComputorStatuses, (void*)competitorComputorStatuses, sizeof(competitorComputorStatuses));
     copyMem(nodeStateBuffer.solutionPublicationTicks, (void*)solutionPublicationTicks, sizeof(solutionPublicationTicks));
@@ -6094,12 +6327,23 @@ static bool loadAllNodeStates()
         logToConsole(L"Failed to load mining state");
         return false;
     }
+    if (!nodeStateBuffer.predictionPhase.isValid())
+    {
+        logToConsole(L"Damaged prediction state in the mining state");
+        return false;
+    }
+    if (nodeStateBuffer.numberOfMiners > MAX_NUMBER_OF_MINERS)
+    {
+        logToConsole(L"Damaged miner count in the mining state");
+        return false;
+    }
     copyMem(&etalonTick, &nodeStateBuffer.etalonTick, sizeof(etalonTick));
     copyMem((void*)minerPublicKeys, nodeStateBuffer.minerPublicKeys, sizeof(minerPublicKeys));
     copyMem((void*)minerScores, nodeStateBuffer.minerScores, sizeof(minerScores));
     copyMem((void*)minerBestScoreTicks, nodeStateBuffer.minerBestScoreTicks, sizeof(minerBestScoreTicks));
     copyMem((void*)competitorPublicKeys, nodeStateBuffer.competitorPublicKeys, sizeof(competitorPublicKeys));
     copyMem((void*)competitorScores, nodeStateBuffer.competitorScores, sizeof(competitorScores));
+    copyMem(&gPredictionPhase, &nodeStateBuffer.predictionPhase, sizeof(gPredictionPhase));
     copyMem((void*)competitorTicks, nodeStateBuffer.competitorTicks, sizeof(competitorTicks));
     copyMem((void*)competitorComputorStatuses, nodeStateBuffer.competitorComputorStatuses, sizeof(competitorComputorStatuses));
     copyMem((void*)solutionPublicationTicks, nodeStateBuffer.solutionPublicationTicks, sizeof(solutionPublicationTicks));
