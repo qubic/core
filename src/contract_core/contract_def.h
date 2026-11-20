@@ -612,7 +612,9 @@ struct ContractStateChangeInfo
 // When enabling, replace both lines below, e.g.:
 //constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
 //constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QUSINO_CONTRACT_INDEX, RESET, 234} };
+// QBAY: on-chain random drop state appended to StateData (zero-padded, existing data untouched). Set the epoch to the
+// epoch in which the new QBAY code is deployed.
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QUSINO_CONTRACT_INDEX, RESET, 234}, { QBAY_CONTRACT_INDEX, PADDING, 241 } };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 

@@ -357,6 +357,87 @@ public:
     
 };
 
+// Off-chain reference implementation of the drop commitment (what the QubicBay server / creator tool has to do).
+struct QbayDropList
+{
+    uint32 collectionId = 0;
+    uint32 depth = 0;
+    std::vector<Array<uint8, 64>> uris;
+    std::vector<std::vector<id>> levels; // levels[0] = leaves (padded with NULL_ID to 2^depth), levels.back()[0] = root
+
+    static id hashLeaf(uint32 collectionId, uint32 dropIndex, const Array<uint8, 64>& uri)
+    {
+        QBAY::DropMerkleLeaf leaf;
+        leaf.collectionId = collectionId;
+        leaf.dropIndex = dropIndex;
+        for (uint32 i = 0; i < 64; i++)
+        {
+            leaf.URI.set(i, i < QBAY_LENGTH_OF_URI ? uri.get(i) : 0);
+        }
+        id digest;
+        KangarooTwelve(&leaf, sizeof(leaf), &digest, sizeof(digest));
+        return digest;
+    }
+
+    static id hashNode(const id& left, const id& right)
+    {
+        QBAY::DropMerkleNode node;
+        node.left = left;
+        node.right = right;
+        id digest;
+        KangarooTwelve(&node, sizeof(node), &digest, sizeof(digest));
+        return digest;
+    }
+
+    QbayDropList(uint32 collectionId_, uint32 numberOfItems) : collectionId(collectionId_)
+    {
+        uint32 capacity = 1;
+        while (capacity < numberOfItems)
+        {
+            capacity <<= 1;
+            depth++;
+        }
+        std::vector<id> leaves(capacity, NULL_ID);
+        for (uint32 i = 0; i < numberOfItems; i++)
+        {
+            Array<uint8, 64> uri;
+            uri.setAll(0);
+            // distinct, deterministic 59-char "CID-like" URIs: "bafkrei" + item index digits + filler
+            const char* prefix = "bafkrei";
+            for (uint32 k = 0; k < 7; k++)
+                uri.set(k, (uint8)prefix[k]);
+            uint32 v = i;
+            for (uint32 k = 58; k >= 7; k--)
+            {
+                uri.set(k, (uint8)('a' + (v % 26)));
+                v /= 26;
+            }
+            uris.push_back(uri);
+            leaves[i] = hashLeaf(collectionId, i, uri);
+        }
+        levels.push_back(leaves);
+        while (levels.back().size() > 1)
+        {
+            const std::vector<id>& prev = levels.back();
+            std::vector<id> next(prev.size() / 2);
+            for (size_t j = 0; j < next.size(); j++)
+                next[j] = hashNode(prev[2 * j], prev[2 * j + 1]);
+            levels.push_back(next);
+        }
+    }
+
+    id root() const { return levels.back()[0]; }
+
+    Array<id, QBAY_DROP_MAX_MERKLE_DEPTH> proof(uint32 dropIndex) const
+    {
+        Array<id, QBAY_DROP_MAX_MERKLE_DEPTH> p;
+        p.setAll(NULL_ID);
+        for (uint32 l = 0; l < depth; l++)
+            p.set(l, levels[l][(dropIndex >> l) ^ 1]);
+        return p;
+    }
+};
+
 class ContractTestingQBAY : protected ContractTesting
 {
 public:
@@ -553,20 +634,85 @@ public:
         return output;
     }
 
-    QBAY::mintOfDrop_output mintOfDrop(const id& user, uint32 collectionId, Array<uint8, 64> URI, uint64 mintOfDropFee)
+    QBAY::mintOfDrop_output mintOfDrop(const id& user, uint32 collectionId, uint64 mintOfDropFee)
     {
         QBAY::mintOfDrop_input input;
         QBAY::mintOfDrop_output output;
 
         input.collectionId = collectionId;
-        
-        for(uint32 i = 0; i < 64; i++)
-        {
-            input.URI.set(i, URI.get(i));
-        }
 
         invokeUserProcedure(QBAY_CONTRACT_INDEX, 4, input, output, user, mintOfDropFee);
 
+        return output;
+    }
+
+    // Layout used by clients before the random-drop upgrade (collectionId + caller-chosen URI).
+    struct LegacyMintOfDropInput
+    {
+        uint32 collectionId;
+        Array<uint8, 64> URI;
+    };
+
+    QBAY::mintOfDrop_output mintOfDropLegacyInput(const id& user, uint32 collectionId, const Array<uint8, 64>& URI, uint64 mintOfDropFee)
+    {
+        LegacyMintOfDropInput input;
+        QBAY::mintOfDrop_output output;
+
+        input.collectionId = collectionId;
+        input.URI = URI;
+
+        invokeUserProcedure(QBAY_CONTRACT_INDEX, 4, input, output, user, mintOfDropFee, /*checkInputSize=*/false);
+
+        return output;
+    }
+
+    QBAY::configureDrop_output configureDrop(const id& user, uint32 collectionId, const id& merkleRoot, uint32 numberOfItems)
+    {
+        QBAY::configureDrop_input input;
+        QBAY::configureDrop_output output;
+
+        input.collectionId = collectionId;
+        input.merkleRoot = merkleRoot;
+        input.numberOfItems = numberOfItems;
+
+        invokeUserProcedure(QBAY_CONTRACT_INDEX, 18, input, output, user, 0);
+
+        return output;
+    }
+
+    QBAY::revealDropNFT_output revealDropNFT(const id& user, uint32 NFTid, const Array<uint8, 64>& URI, const Array<id, QBAY_DROP_MAX_MERKLE_DEPTH>& proof)
+    {
+        QBAY::revealDropNFT_input input;
+        QBAY::revealDropNFT_output output;
+
+        input.NFTid = NFTid;
+        input.URI = URI;
+        input.proof = proof;
+
+        invokeUserProcedure(QBAY_CONTRACT_INDEX, 19, input, output, user, 0);
+
+        return output;
+    }
+
+    QBAY::getDropConfig_output getDropConfig(uint32 collectionId) const
+    {
+        QBAY::getDropConfig_input input;
+        QBAY::getDropConfig_output output;
+
+        input.collectionId = collectionId;
+
+        callFunction(QBAY_CONTRACT_INDEX, 10, input, output);
+        return output;
+    }
+
+    QBAY::getDropNFTInfo_output getDropNFTInfo(uint32 NFTid) const
+    {
+        QBAY::getDropNFTInfo_input input;
+        QBAY::getDropNFTInfo_output output;
+
+        input.NFTid = NFTid;
+
+        callFunction(QBAY_CONTRACT_INDEX, 11, input, output);
         return output;
     }
 
@@ -978,11 +1124,17 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     EXPECT_EQ(numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, id(QBAY_CONTRACT_INDEX, 0, 0, 0), id(QBAY_CONTRACT_INDEX, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), earnedCFB);
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), earnedQubic);
 
-    // dropMint
+    // dropMint: the item list has to be committed first, then the contract draws the item and the URI is revealed
+    QbayDropList dropList(10, 200);
+    EXPECT_EQ(pfp.configureDrop(users[0], 10, dropList.root(), 200).returnCode, QBAY::LogInfo::success);
     increaseEnergy(users[0], pfp.getState()->getDropMintPrice(10));
-    pfp.mintOfDrop(users[0], 10, URI, pfp.getState()->getDropMintPrice(10));
+    auto mintOfDrop_output = pfp.mintOfDrop(users[0], 10, pfp.getState()->getDropMintPrice(10));
+    EXPECT_EQ(mintOfDrop_output.returnCode, QBAY::LogInfo::success);
     numberOfNFTCreated++;
-    pfp.getState()->mintChecker(users[0], 10, 10, URI, 0, numberOfNFTCreated - 1);
+    EXPECT_EQ(mintOfDrop_output.NFTid, numberOfNFTCreated - 1);
+    EXPECT_LT(mintOfDrop_output.dropIndex, 200u);
+    EXPECT_EQ(pfp.revealDropNFT(users[0], mintOfDrop_output.NFTid, dropList.uris[mintOfDrop_output.dropIndex], dropList.proof(mintOfDrop_output.dropIndex)).returnCode, QBAY::LogInfo::success);
+    pfp.getState()->mintChecker(users[0], 10, 10, dropList.uris[mintOfDrop_output.dropIndex], 0, numberOfNFTCreated - 1);
 
     // transfer NFT
 
@@ -1458,4 +1610,246 @@ TEST(TestContractQBAY, EconomicExploit_BuyWithCFBModeCanAcquireForFreeWhenSalePr
         + numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
     EXPECT_EQ(buyerCfbBefore, buyerCfbAfter);
     EXPECT_EQ(getBalance(buyer), 0ULL);
+}
+// ---------------------------------------------------------------------------------------------------------------
+// On-chain random drop (fix for "reverse lookup + re-roll" exploit of mintOfDrop)
+// ---------------------------------------------------------------------------------------------------------------
+namespace {
+
+constexpr uint32 kDropCollectionId = 0;
+constexpr uint32 kDropCollectionSize = 200; // volume 0
+
+static void initQbayWithDropCollection(ContractTestingQBAY& pfp, const id& creator, uint64 dropPrice, uint32 maxPerId)
+{
+    pfp.beginEpoch();
+    system.epoch = 200;
+
+    increaseEnergy(MARKETPLACE_OWNER, 1);
+    pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, 1000, 1000);
+    pfp.changeStatusOfMarketPlace(MARKETPLACE_OWNER, 1);
+
+    const uint64 assetName = assetNameFromString("CFB");
+    increaseEnergy(CFB_ISSUER, QBAY_ISSUE_ASSET_FEE);
+    EXPECT_EQ(pfp.issueAsset(CFB_ISSUER, assetName, QBAY_CREATED_CFB_AMOUNT, 0, 0), QBAY_CREATED_CFB_AMOUNT);
+
+    increaseEnergy(CFB_ISSUER, QBAY_TOKEN_TRANSFER_FEE);
+    increaseEnergy(creator, QBAY_TOKEN_TRANSFER_FEE);
+    EXPECT_EQ(pfp.TransferShareOwnershipAndPossession(CFB_ISSUER, assetName, 10000000000, creator), 10000000000ULL);
+    // two collections of volume 0 can be paid (100 CFB units * priceOfCFB 1000 each)
+    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, 2ULL * 1000ULL * 100ULL, creator), 200000ULL);
+
+    Array<uint8, 64> uri = makeTestUri();
+    EXPECT_EQ(pfp.createCollection(creator, dropPrice, 0, 10, maxPerId, 0, uri).returnCode, QBAY::LogInfo::success);
+}
+
+static bool isUriEmpty(const Array<uint8, 64>& uri)
+{
+    for (uint32 i = 0; i < 64; i++)
+    {
+        if (uri.get(i) != 0)
+            return false;
+    }
+    return true;
+}
+
+static bool isUriEqual(const Array<uint8, 64>& a, const Array<uint8, 64>& b)
+{
+    for (uint32 i = 0; i < 64; i++)
+    {
+        if (a.get(i) != b.get(i))
+            return false;
+    }
+    return true;
+}
+
+} // namespace
+
+TEST(TestContractQBAY, RandomDrop_MintIsDisabledUntilItemListIsCommitted)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(601);
+    const id minter = getUser(602);
+    initQbayWithDropCollection(pfp, creator, 1000, kDropCollectionSize);
+
+    increaseEnergy(minter, 1000);
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, 1000).returnCode, QBAY::LogInfo::dropNotConfigured);
+    // old client layout with a caller-chosen URI is rejected the same way
+    EXPECT_EQ(pfp.mintOfDropLegacyInput(minter, kDropCollectionId, makeTestUri(), 1000).returnCode, QBAY::LogInfo::dropNotConfigured);
+    EXPECT_EQ(getBalance(minter), 1000ULL);
+    EXPECT_EQ(pfp.getState()->numberOfNFT, 0u);
+    EXPECT_EQ(pfp.getState()->Collections.get(kDropCollectionId).currentSize, (sint16)kDropCollectionSize);
+}
+
+TEST(TestContractQBAY, RandomDrop_ConfigureDropValidation)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(611);
+    const id stranger = getUser(612);
+    initQbayWithDropCollection(pfp, creator, 0, kDropCollectionSize);
+    QbayDropList dropList(kDropCollectionId, kDropCollectionSize);
+
+    increaseEnergy(stranger, 1);
+    EXPECT_EQ(pfp.configureDrop(stranger, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::notCollectionCreator);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize - 1).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize + 1).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, NULL_ID, kDropCollectionSize).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.configureDrop(creator, 7, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).status, QBAY_DROP_STATUS_NOT_CONFIGURED);
+
+    // normal (non-drop) collection cannot be configured
+    Array<uint8, 64> uri = makeTestUri();
+    EXPECT_EQ(pfp.createCollection(creator, 0, 0, 10, 100, 1, uri).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.configureDrop(creator, 1, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::notCollectionForDrop);
+
+    // marketplace owner may configure (needed for drops that were running before the upgrade), only once
+    EXPECT_EQ(pfp.configureDrop(MARKETPLACE_OWNER, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::dropAlreadyConfigured);
+
+    auto cfg = pfp.getDropConfig(kDropCollectionId);
+    EXPECT_EQ(cfg.status, QBAY_DROP_STATUS_CONFIGURED);
+    EXPECT_EQ(cfg.merkleRoot, dropList.root());
+    EXPECT_EQ(cfg.numberOfItems, kDropCollectionSize);
+    EXPECT_EQ(cfg.remainingItems, kDropCollectionSize);
+    EXPECT_EQ(cfg.merkleDepth, 8u);
+    EXPECT_EQ(pfp.getState()->dropPoolUsed, kDropCollectionSize);
+}
+
+TEST(TestContractQBAY, RandomDrop_EachCommittedItemIsDrawnExactlyOnceAndCallerCannotChooseIt)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(621);
+    const id minter = getUser(622);
+    initQbayWithDropCollection(pfp, creator, 0, kDropCollectionSize);
+    QbayDropList dropList(kDropCollectionId, kDropCollectionSize);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::success);
+
+    increaseEnergy(minter, 1);
+    std::vector<uint32> drawn;
+    std::vector<bool> seen(kDropCollectionSize, false);
+
+    // First mint uses the old input layout and passes the URI of item 0: it must be ignored.
+    auto first = pfp.mintOfDropLegacyInput(minter, kDropCollectionId, dropList.uris[0], 0);
+    EXPECT_EQ(first.returnCode, QBAY::LogInfo::success);
+    EXPECT_TRUE(isUriEmpty(pfp.getState()->NFTs.get(first.NFTid).URI));
+    drawn.push_back(first.dropIndex);
+
+    for (uint32 i = 1; i < kDropCollectionSize; i++)
+    {
+        auto out = pfp.mintOfDrop(minter, kDropCollectionId, 0);
+        EXPECT_EQ(out.returnCode, QBAY::LogInfo::success);
+        EXPECT_EQ(out.NFTid, i);
+        drawn.push_back(out.dropIndex);
+    }
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, 0).returnCode, QBAY::LogInfo::limitCollectionVolume);
+
+    bool isIdentityOrder = true;
+    for (uint32 i = 0; i < kDropCollectionSize; i++)
+    {
+        ASSERT_LT(drawn[i], kDropCollectionSize);
+        EXPECT_FALSE(seen[drawn[i]]) << "item drawn twice: " << drawn[i];
+        seen[drawn[i]] = true;
+        if (drawn[i] != i)
+            isIdentityOrder = false;
+
+        auto info = pfp.getDropNFTInfo(i);
+        EXPECT_TRUE(info.isRandomDrop);
+        EXPECT_FALSE(info.isRevealed);
+        EXPECT_EQ(info.collectionId, kDropCollectionId);
+        EXPECT_EQ(info.dropIndex, drawn[i]);
+        EXPECT_EQ(pfp.getState()->NFTs.get(i).creator, creator);
+        EXPECT_EQ(pfp.getState()->NFTs.get(i).possessor, minter);
+    }
+    EXPECT_FALSE(isIdentityOrder);
+    EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).remainingItems, 0u);
+}
+
+TEST(TestContractQBAY, RandomDrop_RevealOnlyAcceptsCommittedUriOfDrawnIndex)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(631);
+    const id minter = getUser(632);
+    const id anybody = getUser(633);
+    initQbayWithDropCollection(pfp, creator, 0, kDropCollectionSize);
+    QbayDropList dropList(kDropCollectionId, kDropCollectionSize);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::success);
+
+    increaseEnergy(minter, 1);
+    increaseEnergy(anybody, 1);
+    auto out = pfp.mintOfDrop(minter, kDropCollectionId, 0);
+    ASSERT_EQ(out.returnCode, QBAY::LogInfo::success);
+    const uint32 idx = out.dropIndex;
+    const uint32 otherIdx = (idx + 1) % kDropCollectionSize;
+
+    // another item's URI (e.g. a "legendary" one) cannot be attached, neither with its own nor with the right proof
+    EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, dropList.uris[otherIdx], dropList.proof(otherIdx)).returnCode, QBAY::LogInfo::invalidMerkleProof);
+    EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, dropList.uris[otherIdx], dropList.proof(idx)).returnCode, QBAY::LogInfo::invalidMerkleProof);
+    EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, dropList.uris[idx], dropList.proof(otherIdx)).returnCode, QBAY::LogInfo::invalidMerkleProof);
+    EXPECT_TRUE(isUriEmpty(pfp.getState()->NFTs.get(out.NFTid).URI));
+
+    // reveal is permissionless
+    EXPECT_EQ(pfp.revealDropNFT(anybody, out.NFTid, dropList.uris[idx], dropList.proof(idx)).returnCode, QBAY::LogInfo::success);
+    EXPECT_TRUE(isUriEqual(pfp.getState()->NFTs.get(out.NFTid).URI, dropList.uris[idx]));
+    EXPECT_TRUE(pfp.getDropNFTInfo(out.NFTid).isRevealed);
+    EXPECT_TRUE(isUriEqual(pfp.getInfoOfNFTById(out.NFTid).URI, dropList.uris[idx]));
+    EXPECT_EQ(pfp.revealDropNFT(anybody, out.NFTid, dropList.uris[idx], dropList.proof(idx)).returnCode, QBAY::LogInfo::alreadyRevealed);
+
+    EXPECT_EQ(pfp.revealDropNFT(anybody, out.NFTid + 1, dropList.uris[idx], dropList.proof(idx)).returnCode, QBAY::LogInfo::wrongNFTId);
+
+    // NFTs not minted through the random drop cannot be "revealed"
+    increaseEnergy(creator, QBAY_SINGLE_NFT_CREATE_FEE);
+    EXPECT_EQ(pfp.mint(creator, 0, 0, makeTestUri(), 1, QBAY_SINGLE_NFT_CREATE_FEE).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.revealDropNFT(anybody, out.NFTid + 1, dropList.uris[idx], dropList.proof(idx)).returnCode, QBAY::LogInfo::notDropNFT);
+    EXPECT_FALSE(pfp.getDropNFTInfo(out.NFTid + 1).isRandomDrop);
+}
+
+TEST(TestContractQBAY, RandomDrop_LegacyPartiallyMintedCollectionCommitsRemainingItems)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(641);
+    const id minter = getUser(642);
+    initQbayWithDropCollection(pfp, creator, 0, kDropCollectionSize);
+
+    // emulate a drop that was partially minted (with off-chain chosen URIs) before the upgrade
+    constexpr uint32 remaining = 150;
+    QBAY::InfoOfCollection c = pfp.getState()->Collections.get(kDropCollectionId);
+    c.currentSize = (sint16)remaining;
+    pfp.getState()->Collections.set(kDropCollectionId, c);
+
+    QbayDropList fullList(kDropCollectionId, kDropCollectionSize);
+    QbayDropList remainingList(kDropCollectionId, remaining);
+    EXPECT_EQ(pfp.configureDrop(MARKETPLACE_OWNER, kDropCollectionId, fullList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.configureDrop(MARKETPLACE_OWNER, kDropCollectionId, remainingList.root(), remaining).returnCode, QBAY::LogInfo::success);
+
+    increaseEnergy(minter, 1);
+    std::vector<bool> seen(remaining, false);
+    for (uint32 i = 0; i < remaining; i++)
+    {
+        auto out = pfp.mintOfDrop(minter, kDropCollectionId, 0);
+        ASSERT_EQ(out.returnCode, QBAY::LogInfo::success);
+        ASSERT_LT(out.dropIndex, remaining);
+        EXPECT_FALSE(seen[out.dropIndex]);
+        seen[out.dropIndex] = true;
+        EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, remainingList.uris[out.dropIndex], remainingList.proof(out.dropIndex)).returnCode, QBAY::LogInfo::success);
+    }
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, 0).returnCode, QBAY::LogInfo::limitCollectionVolume);
+}
+
+TEST(TestContractQBAY, RandomDrop_PaymentGoesToCreatorAndOverpaymentIsRefunded)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(651);
+    const id minter = getUser(652);
+    constexpr uint64 price = 1000;
+    initQbayWithDropCollection(pfp, creator, price, kDropCollectionSize);
+    QbayDropList dropList(kDropCollectionId, kDropCollectionSize);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::success);
+
+    const uint64 creatorBefore = getBalance(creator);
+    increaseEnergy(minter, 1500);
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, 999).returnCode, QBAY::LogInfo::insufficientQubic);
+    EXPECT_EQ(getBalance(minter), 1500ULL);
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, 1500).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(getBalance(minter), 500ULL);
+    EXPECT_EQ(getBalance(creator), creatorBefore + price);
+    EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), 0ULL);
 }
