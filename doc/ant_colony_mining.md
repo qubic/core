@@ -14,6 +14,41 @@ This document has two parts:
 > knobs and their ranges, the mutation walk, and the numeric constants - are labelled **bpp9000** below;
 > do not treat them as fixed ant-colony rules.
 
+## Summary of changes - prediction phase
+
+Every epoch still starts as before (**training**): an identity is ranked by its best `(shift, error)`.
+Once enough computors have mastered the first frame, the epoch **switches**. From then on the network
+of an identity that has mastered the first frame itself **predicts**: for every coming hour it answers
+"up" or "down" before the price of that hour exists, and the node counts the hours it got right. With
+enough counted hours the identity is ranked by its **accuracy**.
+
+**New rules**
+
+| Rule | Result | Section |
+|------|--------|---------|
+| An identity **qualifies** with an accepted solution at `shift >= 1`, or at shift 0 with `error <= BPP9000_PREDICTION_THRESHOLD` (3504). | only a qualified identity takes part in the prediction | 2.4a |
+| The epoch **switches** when `BPP9000_PREDICTION_SWITCH_COMPUTORS` (226) computors have qualified, unless 24 hours or less of the epoch are left. | without a switch the epoch stays in training | 2.4a |
+| After the switch the **last accepted** solution of an identity gives its answers, also when it is weaker than an earlier one. | the answers of every hour that is still open are replaced | 2.4a |
+| A solution answers hour `H` only if it is executed at least `BPP9000_PREDICTION_DEADLINE_SEC` (3000 s, 50 minutes) before `H`. | a later solution is valid but answers only the hours after `H` | 2.4a |
+| An identity with `BPP9000_PREDICTION_MIN_ATTEMPTS` (24) counted hours, or with `BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS` (12) counted hours and none of them wrong, is ranked by its **accuracy**: correct hours / counted hours. | it ranks above every identity that is not ranked by accuracy; those stay ranked as in training | 2.4a |
+
+**What a miner or pool has to change**
+
+- Nothing in the solution, the scoring, the transaction or the deposit.
+- Read the phase with `REQUEST_PREDICTION_PHASE` (82 / 83) and the state of an identity with
+  `REQUEST_PREDICTION_IDENTITY` (84 / 85) (sections 2.7f, 2.7g).
+- After the switch, publish a solution only if its network is the one meant to predict: every accepted
+  solution of the identity replaces its answers for the open hours.
+- A network's answers are fixed when the network is created. Compute them before publishing
+  (section 2.4a).
+
+**Other changes**
+
+- New public messages: `REQUEST_PREDICTION_PHASE` / `RESPOND_PREDICTION_PHASE` (82 / 83) and
+  `REQUEST_PREDICTION_IDENTITY` / `RESPOND_PREDICTION_IDENTITY` (84 / 85) (sections 2.7f, 2.7g, 2.8).
+- Three event log messages for the switch, the answers and the result of each hour (section 2.4a).
+- No new node file: the prediction state is saved with the node state in the snapshot (Part 3).
+
 ## Summary of changes - live BTC price feed
 
 The task data no longer comes from a task file. It is built from hourly BTC/USDT prices that the nodes
@@ -144,6 +179,12 @@ parent that cleared it.
 
 At epoch end the node ranks every identity by its **single best** `(shift, error)` and **harvests the top 676**
 (the number of computors).
+
+**Prediction phase (bpp9000).** That ranking holds while the epoch is in training. When 226 computors
+have mastered the first frame, the epoch switches and the networks start to predict the coming hours.
+An identity with enough counted hours is then ranked first by its accuracy (correct hours / counted
+hours), and its best `(shift, error)` only breaks ties. All other identities stay ranked as in training,
+below those. Section 2.4a has the rules.
 
 **Anti-spam deposit.** Each solution a computor publishes on-chain carries a **refundable
 1000000 QU deposit**, funded by the computor - not the worker. It is returned when the solution is
@@ -343,6 +384,97 @@ may be published again in a later tick. The others are skipped even if the last 
 executed because the identity's balance no longer covers its deposit; in that case no solution of the
 identity counts in the tick.
 
+### 2.4a Prediction phase (bpp9000)
+
+An epoch has two phases. It starts in **training**, where an identity is ranked by its single best
+`(shift, error)`. After the **switch** the network of a qualified identity predicts. The accept
+rules of section 2.4 are the same in both phases.
+
+**Qualifying.** An identity qualifies with a solution that is accepted, has a matching claimed score,
+and has `shift >= 1`, or `error <= BPP9000_PREDICTION_THRESHOLD` at shift 0. Computors and candidates
+can qualify.
+
+**The switch.** The epoch switches in the tick in which the 226th current computor qualifies
+(`BPP9000_PREDICTION_SWITCH_COMPUTORS`); candidates do not count for this number. It does not switch
+when 24 hours or less of the epoch are left (`BPP9000_PREDICTION_SWITCH_CLOSE_HOURS`); the epoch then
+ends in training. There is one switch per epoch, and the next epoch starts in training again.
+
+**The answer of a network.** For hour `H` it is the network's output at target position
+
+```
+t = WINDOW_WIDTH - 1 + (H - baseHour)          // H = baseHour + 1 .. baseHour + SHIFT_CAP
+```
+
+This is the output that is graded against the target of hour `H` once that hour is stored
+(section 2.3a). `1` = up, `0` = down. An UNKNOWN output, or no output within the tick budget, is no
+answer and never counts as correct. The network has no inputs, so all its answers are fixed when it is
+created: a miner gets them by running the network on for `SHIFT_CAP` more outputs after the first
+frame.
+
+**Which network answers.** Before the switch the node keeps the answers of the identity's best-rated
+network. After the switch every accepted solution of the identity with a matching claimed score
+replaces them, also a weaker one, and also a `ValidNotStored` one. An identity that publishes nothing
+keeps the answers it has.
+
+**The deadline.** A solution answers hour `H` only if the tick that executes it has a time not later
+than `H` minus `BPP9000_PREDICTION_DEADLINE_SEC`. That time is the later of the tick's own time and
+the timestamp in the tick's `TickData`. A solution executed later is still valid; it keeps the answer
+the identity already has for `H` and replaces only the answers of the later hours. After its deadline
+an hour is **closed**: its answers are final.
+
+**Counting.** An identity takes part in hour `H` if, at the deadline of `H`, the epoch has switched
+and the identity has qualified. When the price of `H` is stored (section 2.3a), every identity that
+takes part gets one more counted hour, and one more correct hour if its answer equals the target of
+`H`. A filled hour (no price of its own) is counted for nobody.
+
+**Ranking.** An identity is **ranked by accuracy** once it has `BPP9000_PREDICTION_MIN_ATTEMPTS` (24)
+counted hours, or `BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS` (12) counted hours with none of them wrong.
+Its accuracy is its correct hours divided by its counted hours. The order of the ranking is:
+
+1. Identities ranked by accuracy: the higher accuracy first. At equal accuracy the one with more counted
+   hours first, then the higher shift, the lower error and the earlier tick of its best solution.
+2. All other identities, ranked as in training by their best `(shift, error)`.
+
+```
+counted hours   correct   ranked by accuracy
+     11           11      no    fewer than 12 counted hours
+     12           12      yes   100%
+     13           12      no    one wrong hour and fewer than 24 counted hours
+     24           10      yes   41.7%
+     24           18      yes   75%, behind 27 of 36 (same accuracy, more counted hours)
+```
+
+Accuracies are compared exactly: 18 of 24 equals 27 of 36. A new solution does not change the accuracy
+of its identity; it only changes the answers for the hours that are still open. Seats are given from
+the ranking as before.
+
+```
+example with the deadline at 50 minutes, predicted hour 16:00 UTC
+
+15:00      price that the target of 16:00 is compared with
+15:10:00   deadline: last time a solution can still answer 16:00
+16:00      the predicted price
+~16:05     the 16:00 price is stored; every identity that takes part gets the hour as correct or wrong
+```
+
+**Consensus.** The prediction state is folded into `resourceTestingDigest` in the switch tick and
+after every counted hour. A node that switches or counts differently differs from the network in its
+vote of that tick.
+
+**Event log.** A node built with `LOG_CUSTOM_MESSAGES` logs three custom messages:
+
+| Message | When | Content |
+|---------|------|---------|
+| `PRED_SWI` | the switch tick | `computorsQualified`, `firstHour` (first hour that is counted) |
+| `PRED_ANS` | the tick an hour closes, one per identity that takes part | `publicKey`, `hour`, `solutionTick`, `solutionIndexInTick` (the answering solution), `answer` (0 down, 1 up, 2 none) |
+| `PRED_RES` | the tick the price of an hour is stored | `hour`, `target` (0 down, 1 up, 2 = no price, the hour counts for nobody) |
+
+**For a miner.** Read the phase (section 2.7f). Before the switch nothing changes. After the switch
+and once the identity has qualified, every accepted solution becomes the identity's predictor, so
+publish only a network whose answers you want, and publish it well before the deadline of the next
+hour. `threshold` and `deadlineSeconds` in the phase reply are the values the node uses. `hours` and
+`correct` in the identity reply (section 2.7g) are the two numbers the accuracy is made of.
+
 ### 2.5 The deposit
 
 Every on-chain `AntColonyMiningSolutionTransaction` carries a **1000000 QU** deposit
@@ -451,8 +583,9 @@ solution. Once accepted, the node becomes a normal parent - extend it by copying
 
 ### 2.7 Read queries
 
-Five request/response pairs. **Identity tree** and **parent ANN** are **operator-signed**; **epoch
-context**, **task data** and **price series** are **public**.
+Seven request/response pairs. **Identity tree** and **parent ANN** are **operator-signed**; **epoch
+context**, **task data**, **price series**, **prediction phase** and **prediction identity** are
+**public**.
 
 Operator signing: the request payload is followed by a **64-byte signature** over `K12(payload)`,
 verified against the node's configured **operator public key**. This lets a pool route and filter its
@@ -626,6 +759,47 @@ RespondPriceSeriesPoint {            // 20 bytes
 
 Points are returned from `fromHour` up to `nextHour - 1`; an hour the node does not hold is left out.
 
+**(f) Prediction phase** - `REQUEST_PREDICTION_PHASE` (82) / `RESPOND_PREDICTION_PHASE` (83). **Public.**
+
+Request: empty. Response `RespondPredictionPhase` (24 bytes):
+
+```
+unsigned int switchTick;         // 0 = training; else the tick the epoch switched in
+unsigned int switchFirstHour;    // first hour that is counted; 0 in training
+unsigned int computorsQualified; // computors that have qualified so far
+unsigned int threshold;          // BPP9000_PREDICTION_THRESHOLD of the node
+unsigned int deadlineSeconds;    // BPP9000_PREDICTION_DEADLINE_SEC of the node
+unsigned int foldedDigest;       // digest of the prediction state at its last fold into the
+                                 // mining digest; 0 in training. For comparing nodes
+```
+
+Two nodes that report the same tick can be one tick of state apart, because one has already executed
+the tick's transactions. Compare `foldedDigest` a second time before treating a difference as real.
+
+**(g) Prediction identity** - `REQUEST_PREDICTION_IDENTITY` (84) / `RESPOND_PREDICTION_IDENTITY` (85).
+**Public.**
+
+Request `RequestPredictionIdentity` (32 bytes):
+
+```
+m256i publicKey;   // the identity asked about
+```
+
+Response `RespondPredictionIdentity` (192 bytes):
+
+```
+unsigned int  firstHour;            // 0 = the identity has not qualified; else its first counted hour
+unsigned int  hours;                // counted hours
+unsigned int  correct;              // how many of them were correct
+unsigned int  solutionTick;         // the solution whose network answers now
+unsigned int  solutionIndexInTick;
+unsigned int  baseHour;             // answers[k] is for hour baseHour + 1 + k
+unsigned char answers[168];         // 0 = down, 1 = up, 2 = none
+```
+
+The reply holds the answers for every hour of the epoch, the open ones included. For an identity that
+has not qualified all answers are `2`.
+
 ### 2.8 Network message + transaction types
 
 | Type | Value | Signed | Direction |
@@ -637,6 +811,8 @@ Points are returned from `fromHour` up to `nextHour - 1`; an hour the node does 
 | `REQUEST_ANT_EPOCH_CONTEXT` / `RESPOND_ANT_EPOCH_CONTEXT` | `76` / `77` | public | read epoch params |
 | `REQUEST_PRICE_SERIES` / `RESPOND_PRICE_SERIES` | `78` / `79` | public | read the BTC price series |
 | `REQUEST_BPP9000_TASK_DATA` / `RESPOND_BPP9000_TASK_DATA` | `80` / `81` | public | read the task data of an anchor tick |
+| `REQUEST_PREDICTION_PHASE` / `RESPOND_PREDICTION_PHASE` | `82` / `83` | public | read the phase of the epoch |
+| `REQUEST_PREDICTION_IDENTITY` / `RESPOND_PREDICTION_IDENTITY` | `84` / `85` | public | read the prediction state of one identity |
 
 ## Part 3 - Node files
 
@@ -658,6 +834,8 @@ The ant colony adds the following files on the node's disk. File names are defin
 **Snapshot set**: the five snapshot files are part of the node snapshot. When you back up, copy, or restore node state, take them TOGETHER with the other snapshot files (spectrum, universe, contracts, system) from the same point. On load the node cross-checks the colony snapshot's rootSeed and initial tick against the restored node state, plus the record and ANN sizes the build lays out; a colony snapshot from a different moment or a different build is refused and the node will not start from it. The error threshold is logged when it differs but not enforced, so a snapshot still loads after a mid-epoch threshold change.
 
 **Price series**: each file is 393304 bytes. The node writes `btcPriceSeries.{epoch}` for the new epoch at every epoch switch, and `btcPriceSeries.000` on F6. A start at the first tick of an epoch takes the epoch-switch file; if there is none, it takes `btc_price_bootstrap.bin`, which must match `BTC_PRICE_BOOTSTRAP_HASH` and be built for that epoch. A mid-epoch restart with a new initial tick takes the F6 file, renamed to the epoch like the other F6 files. Without a usable series the node does not start. A snapshot whose `snapshotBtcPriceSeries.{epoch}` is missing or unusable is not used.
+
+**Prediction state**: it has no file of its own. It is reset at the epoch start and saved with the node state in the snapshot, so a node that starts from a snapshot continues with the counts it had. A snapshot whose prediction state holds values no node writes is refused. A mid-epoch restart with a new initial tick starts without the prediction state unless the nodes start from a snapshot.
 
 **Replay cache**: a score memo, not consensus state, same behavior with standalone score. Without it a restart recomputes every stored solution, so keep it for fast restarts; losing it only costs time.
 
