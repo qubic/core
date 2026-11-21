@@ -415,36 +415,103 @@ TEST(TestPredictionPhase, NoAnswerIsNeverCorrect)
     EXPECT_EQ(phase->entries[0].correct, 0);
 }
 
-TEST(TestPredictionPhase, RankingKeyOrder)
+static PredictionEntry counted(unsigned int hours, unsigned int correct)
 {
-    PredictionEntry a;
-    setMem(&a, sizeof(a), 0);
-    PredictionEntry b = a;
+    PredictionEntry entry;
+    setMem(&entry, sizeof(entry), 0);
+    entry.hours = (unsigned short)hours;
+    entry.correct = (unsigned short)correct;
+    return entry;
+}
 
-    // More correct hours first.
-    a.correct = 10;
-    a.best = rating(4000, 0);
-    b.correct = 9;
-    b.best = rating(10, 100);
-    EXPECT_LT(PredictionPhase::rankingKey(a), PredictionPhase::rankingKey(b));
+TEST(TestPredictionPhase, RankedByAccuracyNeedsEnoughCountedHours)
+{
+    const unsigned int minAttempts = BPP9000_PREDICTION_MIN_ATTEMPTS;
+    const unsigned int minPerfect = BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS;
 
-    // Then the higher shift.
-    b.correct = 10;
-    a.best = rating(4000, 2);
-    b.best = rating(10, 1);
-    EXPECT_LT(PredictionPhase::rankingKey(a), PredictionPhase::rankingKey(b));
+    // The full minimum passes with any number of correct hours.
+    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minAttempts, 0)));
+    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minAttempts, minAttempts)));
+    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(PREDICTION_MAX_HOURS, 1)));
 
-    // Then fewer errors.
-    a.best = rating(3000, 2);
-    b.best = rating(3001, 2);
-    EXPECT_LT(PredictionPhase::rankingKey(a), PredictionPhase::rankingKey(b));
+    // Below it only a record without a wrong hour passes, from the lower minimum on.
+    EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(0, 0)));
+    EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(minPerfect - 1, minPerfect - 1)));
+    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minPerfect, minPerfect)));
+    EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(minPerfect, minPerfect - 1)));
+    for (unsigned int hours = minPerfect; hours < minAttempts; hours++)
+    {
+        EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(hours, hours)));
+        EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(hours, hours - 1)));
+    }
 
-    // The worst prediction key still sorts before the best training key.
-    PredictionEntry worst = a;
-    worst.correct = 0;
-    worst.best = rating((unsigned int)BPP9000_WINDOW_WIDTH, 0);
-    const score_engine::Rating bestTraining = rating(0, (unsigned int)BPP9000_SHIFT_CAP);
-    EXPECT_LT(PredictionPhase::rankingKey(worst), bestTraining.rankingKey());
+    // One wrong hour after a perfect start takes the identity out again until the full minimum.
+    EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(minPerfect + 1, minPerfect)));
+    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minAttempts, minAttempts - 1)));
+
+    EXPECT_EQ(PredictionPhase::rankingKey(counted(minPerfect + 1, minPerfect)), PREDICTION_NO_RANKING_KEY);
+    EXPECT_NE(PredictionPhase::rankingKey(counted(minAttempts, 0)), PREDICTION_NO_RANKING_KEY);
+}
+
+// Every pair of records that are ranked by accuracy: the keys must order them as the exact fractions do.
+TEST(TestPredictionPhase, RankingKeyOrdersByAccuracyThenCountedHours)
+{
+    std::vector<PredictionEntry> entries;
+    for (unsigned int hours = 1; hours <= PREDICTION_MAX_HOURS; hours++)
+    {
+        for (unsigned int correct = 0; correct <= hours; correct++)
+        {
+            const PredictionEntry entry = counted(hours, correct);
+            if (PredictionPhase::isRankedByAccuracy(entry))
+            {
+                entries.push_back(entry);
+            }
+        }
+    }
+    ASSERT_GT(entries.size(), 10000u);
+
+    unsigned long long wrong = 0;
+    for (const PredictionEntry& a : entries)
+    {
+        const unsigned int keyA = PredictionPhase::rankingKey(a);
+        for (const PredictionEntry& b : entries)
+        {
+            const unsigned int keyB = PredictionPhase::rankingKey(b);
+            const unsigned int left = (unsigned int)a.correct * (unsigned int)b.hours;
+            const unsigned int right = (unsigned int)b.correct * (unsigned int)a.hours;
+            bool aFirst = false;
+            bool bFirst = false;
+            if (left != right)
+            {
+                aFirst = left > right;
+                bFirst = !aFirst;
+            }
+            else if (a.hours != b.hours)
+            {
+                aFirst = a.hours > b.hours;
+                bFirst = !aFirst;
+            }
+            if ((keyA < keyB) != aFirst || (keyB < keyA) != bFirst)
+            {
+                wrong++;
+            }
+        }
+    }
+    EXPECT_EQ(wrong, 0u);
+}
+
+TEST(TestPredictionPhase, RankingKeyValues)
+{
+    // 18 of 24 before 20 of 30; at the same accuracy 27 of 36 before 18 of 24.
+    EXPECT_LT(PredictionPhase::rankingKey(counted(24, 18)), PredictionPhase::rankingKey(counted(30, 20)));
+    EXPECT_LT(PredictionPhase::rankingKey(counted(36, 27)), PredictionPhase::rankingKey(counted(24, 18)));
+    // A perfect record of the lower minimum is before every record with a wrong hour.
+    EXPECT_LT(PredictionPhase::rankingKey(counted(BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS, BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS)),
+        PredictionPhase::rankingKey(counted(PREDICTION_MAX_HOURS, PREDICTION_MAX_HOURS - 1)));
+    // Every key is below the key of an identity that is not ranked by accuracy.
+    EXPECT_LT(PredictionPhase::rankingKey(counted(PREDICTION_MAX_HOURS, 0)), PREDICTION_NO_RANKING_KEY);
+    // The best possible key: every hour of the epoch right.
+    EXPECT_EQ(PredictionPhase::rankingKey(counted(PREDICTION_MAX_HOURS, PREDICTION_MAX_HOURS)), 0xFFU - PREDICTION_MAX_HOURS);
 }
 
 TEST(TestPredictionPhase, ClosesEachHourOnceAfterItsDeadline)

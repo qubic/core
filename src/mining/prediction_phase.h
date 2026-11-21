@@ -1,8 +1,9 @@
 #pragma once
 
 // Prediction phase of a bpp9000 epoch. An identity qualifies with a solution that clears
-// BPP9000_PREDICTION_THRESHOLD. Once BPP9000_PREDICTION_SWITCH_COMPUTORS computors have qualified, every
-// qualified identity is ranked by the hours its network answered right.
+// BPP9000_PREDICTION_THRESHOLD. Once BPP9000_PREDICTION_SWITCH_COMPUTORS computors have qualified, the hours
+// a qualified identity's network answers right are counted, and with enough counted hours the identity is
+// ranked by its accuracy.
 // A solution executed at least BPP9000_PREDICTION_DEADLINE_SEC before an hour answers that hour and the later ones.
 
 #include "platform/m256.h"
@@ -20,10 +21,16 @@ static constexpr unsigned int PREDICTION_HOURS_PER_EPOCH = 24 * 7;
 // What a network without an output for the hour answers; never equal to a target.
 static constexpr unsigned char PREDICTION_NO_ANSWER = 2;
 
-static_assert(PREDICTION_MAX_HOURS <= 0xFF && BPP9000_WINDOW_WIDTH <= 0x3FFF,
-    "the prediction ranking key holds correct hours, shift and error in 8 + 8 + 14 bits");
-static_assert(0x3FFFFFFFULL < ((0xFFFFULL - BPP9000_SHIFT_CAP) << 16),
-    "every prediction ranking key must sort before every training ranking key");
+// Ranking key of an identity that is not ranked by its accuracy; sorts after every key of one that is.
+static constexpr unsigned int PREDICTION_NO_RANKING_KEY = 0xFFFFFFFFU;
+// The ranking key holds the accuracy as correct * PREDICTION_ACCURACY_ONE / hours.
+static constexpr unsigned int PREDICTION_ACCURACY_ONE = 0x10000;
+
+static_assert(PREDICTION_MAX_HOURS <= 0xFF, "the prediction ranking key holds the counted hours in 8 bits");
+static_assert(PREDICTION_MAX_HOURS * PREDICTION_MAX_HOURS < PREDICTION_ACCURACY_ONE,
+    "two different accuracies must give two different ranking keys");
+static_assert(BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS >= 1 && BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS <= BPP9000_PREDICTION_MIN_ATTEMPTS,
+    "an identity ranked by its accuracy has at least one counted hour");
 static_assert(BPP9000_PREDICTION_DEADLINE_SEC <= BTC_FEED_PERIOD_SEC, "the deadline of an hour must not lie before the hour it is compared with");
 static_assert(BPP9000_PREDICTION_SWITCH_CLOSE_HOURS < PREDICTION_HOURS_PER_EPOCH, "the switch must be possible in some hour of the epoch");
 
@@ -68,7 +75,8 @@ struct PredictionPhase
         return switchTick != 0;
     }
 
-    // False for a state no node writes. The loops over the entries rely on count, the ranking key on correct.
+    // False for a state no node writes. The loops over the entries rely on count, the ranking key on
+    // correct <= hours <= PREDICTION_MAX_HOURS.
     bool isValid() const
     {
         if (count > MAX_NUMBER_OF_MINERS || computorsQualified > count || firstOpenHour < switchFirstHour)
@@ -207,13 +215,30 @@ struct PredictionPhase
         return isSwitched() && hour >= switchFirstHour && hour >= entry.firstHour;
     }
 
-    // Ranking key of an identity ranked by prediction, lower is better: more correct hours, then higher shift,
-    // then fewer errors. Sorts before every Rating::rankingKey().
+    // True once enough hours are counted for the identity: BPP9000_PREDICTION_MIN_ATTEMPTS of them, or
+    // BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS with none answered wrong.
+    static bool isRankedByAccuracy(const PredictionEntry& entry)
+    {
+        const unsigned int hours = entry.hours;
+        if (hours >= BPP9000_PREDICTION_MIN_ATTEMPTS)
+        {
+            return true;
+        }
+        return hours >= BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS && entry.correct == entry.hours;
+    }
+
+    // Ranking key of an identity, lower is better: higher accuracy (correct hours / counted hours), then more
+    // counted hours. PREDICTION_NO_RANKING_KEY while the identity is not ranked by its accuracy.
     static unsigned int rankingKey(const PredictionEntry& entry)
     {
-        return ((0xFFU - (unsigned int)entry.correct) << 22)
-            | ((0xFFU - (entry.best.shift & 0xFFU)) << 14)
-            | (entry.best.error & 0x3FFFU);
+        if (!isRankedByAccuracy(entry))
+        {
+            return PREDICTION_NO_RANKING_KEY;
+        }
+        const unsigned int hours = entry.hours;
+        const unsigned int correct = entry.correct;
+        const unsigned int accuracy = correct * PREDICTION_ACCURACY_ONE / hours;
+        return ((PREDICTION_ACCURACY_ONE - accuracy) << 8) | (0xFFU - hours);
     }
 
     // Counts an hour whose target is known. Returns how many identities it was counted for.

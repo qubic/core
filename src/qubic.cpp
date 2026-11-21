@@ -243,11 +243,14 @@ static unsigned long long* minerSolutionFlags = NULL;
 static unsigned long long* gAntSolutionFlags = NULL;
 static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS + 1];
 static volatile unsigned int minerScores[MAX_NUMBER_OF_MINERS + 1];
+// PredictionPhase::rankingKey() of each miner; PREDICTION_NO_RANKING_KEY while it is ranked by its score
+static volatile unsigned int minerPredictionKeys[MAX_NUMBER_OF_MINERS + 1];
 // Tick in which each miner reached its currently recorded best score, used as ranking tie-breaker
 static volatile unsigned int minerBestScoreTicks[MAX_NUMBER_OF_MINERS + 1];
 static volatile unsigned int numberOfMiners = NUMBER_OF_COMPUTORS;
 static m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
+static unsigned int competitorPredictionKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int competitorTicks[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static constexpr unsigned int NO_MINER_SCORE = 0xFFFFFFFFU;
@@ -709,6 +712,8 @@ struct
     unsigned int numberOfTransactions;
     unsigned char dogeMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
     PredictionPhase predictionPhase;
+    unsigned int minerPredictionKeys[MAX_NUMBER_OF_MINERS + 1];
+    unsigned int competitorPredictionKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 } nodeStateBuffer;
 #endif
 static bool saveContractStateFiles(CHAR16* directory = NULL);
@@ -3351,11 +3356,17 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     return transaction->amount > 0;
 }
 
-// Ranking order of miners and competitors, the score is an error count, so the smaller score ranks
-// first, and on equal score the entry that reached it in the earlier tick ranks first. Returns true
-// if entry A ranks below entry B.
-static bool ranksBelow(unsigned int scoreA, unsigned int tickA, unsigned int scoreB, unsigned int tickB)
+// Ranking order of miners and competitors. An entry ranked by its prediction accuracy comes before every
+// entry that is not, and of two such entries the smaller prediction key ranks first. On equal prediction
+// key the score decides: it is an error count, so the smaller score ranks first, and on equal score the
+// entry that reached it in the earlier tick ranks first. Returns true if entry A ranks below entry B.
+static bool ranksBelow(unsigned int predictionKeyA, unsigned int scoreA, unsigned int tickA,
+    unsigned int predictionKeyB, unsigned int scoreB, unsigned int tickB)
 {
+    if (predictionKeyA != predictionKeyB)
+    {
+        return predictionKeyA > predictionKeyB;
+    }
     if (scoreA != scoreB)
     {
         return scoreA > scoreB;
@@ -3363,12 +3374,16 @@ static bool ranksBelow(unsigned int scoreA, unsigned int tickA, unsigned int sco
     return tickA > tickB;
 }
 
-// Tick-processor only
+// Tick-processor only. The score of an entry only ever improves. With setPredictionKey the entry's
+// prediction key becomes newPredictionKey, better or worse; without it the key stays as it is.
 static void updateMinerRankingAndFutureComputors(
     const m256i& sourcePublicKey,
     unsigned int newScore,
-    unsigned int newTick)
+    unsigned int newTick,
+    bool setPredictionKey = false,
+    unsigned int newPredictionKey = PREDICTION_NO_RANKING_KEY)
 {
+    const unsigned int entryPredictionKey = setPredictionKey ? newPredictionKey : PREDICTION_NO_RANKING_KEY;
     ACQUIRE(minerScoreArrayLock);
     bool minerEntryChanged = false;
     unsigned int minerIndex;
@@ -3382,6 +3397,11 @@ static void updateMinerRankingAndFutureComputors(
                 minerBestScoreTicks[minerIndex] = newTick;
                 minerEntryChanged = true;
             }
+            if (setPredictionKey && minerPredictionKeys[minerIndex] != newPredictionKey)
+            {
+                minerPredictionKeys[minerIndex] = newPredictionKey;
+                minerEntryChanged = true;
+            }
 
             break;
         }
@@ -3392,6 +3412,7 @@ static void updateMinerRankingAndFutureComputors(
         {
             minerPublicKeys[numberOfMiners] = sourcePublicKey;
             minerBestScoreTicks[numberOfMiners] = newTick;
+            minerPredictionKeys[numberOfMiners] = entryPredictionKey;
             minerScores[numberOfMiners++] = newScore;
             minerEntryChanged = true;
         }
@@ -3400,9 +3421,11 @@ static void updateMinerRankingAndFutureComputors(
             // The table is full. Entries beyond the computor block are kept sorted, so the
             // worst-ranked one sits at the end and is replaced only if the newcomer outranks it.
             const unsigned int worstIndex = numberOfMiners - 1;
-            if (ranksBelow(minerScores[worstIndex], minerBestScoreTicks[worstIndex], newScore, newTick))
+            if (ranksBelow(minerPredictionKeys[worstIndex], minerScores[worstIndex], minerBestScoreTicks[worstIndex],
+                entryPredictionKey, newScore, newTick))
             {
                 minerPublicKeys[worstIndex] = sourcePublicKey;
+                minerPredictionKeys[worstIndex] = entryPredictionKey;
                 minerScores[worstIndex] = newScore;
                 minerBestScoreTicks[worstIndex] = newTick;
                 minerIndex = worstIndex;
@@ -3415,15 +3438,35 @@ static void updateMinerRankingAndFutureComputors(
     {
         const m256i tmpPublicKey = minerPublicKeys[minerIndex];
         const unsigned int tmpScore = minerScores[minerIndex];
+        const unsigned int tmpPredictionKey = minerPredictionKeys[minerIndex];
         const unsigned int tmpTick = minerBestScoreTicks[minerIndex];
         while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
-            && ranksBelow(minerScores[minerIndex - 1], minerBestScoreTicks[minerIndex - 1], minerScores[minerIndex], minerBestScoreTicks[minerIndex]))
+            && ranksBelow(minerPredictionKeys[minerIndex - 1], minerScores[minerIndex - 1], minerBestScoreTicks[minerIndex - 1],
+                minerPredictionKeys[minerIndex], minerScores[minerIndex], minerBestScoreTicks[minerIndex]))
         {
             minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
             minerScores[minerIndex] = minerScores[minerIndex - 1];
+            minerPredictionKeys[minerIndex] = minerPredictionKeys[minerIndex - 1];
             minerBestScoreTicks[minerIndex] = minerBestScoreTicks[minerIndex - 1];
             minerPublicKeys[--minerIndex] = tmpPublicKey;
             minerScores[minerIndex] = tmpScore;
+            minerPredictionKeys[minerIndex] = tmpPredictionKey;
+            minerBestScoreTicks[minerIndex] = tmpTick;
+        }
+        // A prediction key can get worse, so the entry may also have to move towards the end of its block.
+        const unsigned int lastIndexOfBlock = (minerIndex < NUMBER_OF_COMPUTORS ? NUMBER_OF_COMPUTORS : numberOfMiners) - 1;
+        while (minerIndex < lastIndexOfBlock
+            && ranksBelow(minerPredictionKeys[minerIndex], minerScores[minerIndex], minerBestScoreTicks[minerIndex],
+                minerPredictionKeys[minerIndex + 1], minerScores[minerIndex + 1], minerBestScoreTicks[minerIndex + 1]))
+        {
+            minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex + 1];
+            minerScores[minerIndex] = minerScores[minerIndex + 1];
+            minerPredictionKeys[minerIndex] = minerPredictionKeys[minerIndex + 1];
+            minerBestScoreTicks[minerIndex] = minerBestScoreTicks[minerIndex + 1];
+            minerIndex++;
+            minerPublicKeys[minerIndex] = tmpPublicKey;
+            minerScores[minerIndex] = tmpScore;
+            minerPredictionKeys[minerIndex] = tmpPredictionKey;
             minerBestScoreTicks[minerIndex] = tmpTick;
         }
     }
@@ -3433,6 +3476,7 @@ static void updateMinerRankingAndFutureComputors(
     {
         competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
         competitorScores[i] = minerScores[QUORUM + i];
+        competitorPredictionKeys[i] = minerPredictionKeys[QUORUM + i];
         competitorTicks[i] = minerBestScoreTicks[QUORUM + i];
         competitorComputorStatuses[i] = true;
 
@@ -3440,11 +3484,13 @@ static void updateMinerRankingAndFutureComputors(
         {
             competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
             competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
+            competitorPredictionKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPredictionKeys[NUMBER_OF_COMPUTORS + i];
             competitorTicks[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerBestScoreTicks[NUMBER_OF_COMPUTORS + i];
         }
         else
         {
             competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = NO_MINER_SCORE;
+            competitorPredictionKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = PREDICTION_NO_RANKING_KEY;
             competitorTicks[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
         }
         competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
@@ -3457,17 +3503,21 @@ static void updateMinerRankingAndFutureComputors(
         int j = i;
         const m256i tmpPublicKey = competitorPublicKeys[j];
         const unsigned int tmpScore = competitorScores[j];
+        const unsigned int tmpPredictionKey = competitorPredictionKeys[j];
         const unsigned int tmpTick = competitorTicks[j];
         const bool tmpComputorStatus = false;
         while (j
-            && ranksBelow(competitorScores[j - 1], competitorTicks[j - 1], competitorScores[j], competitorTicks[j]))
+            && ranksBelow(competitorPredictionKeys[j - 1], competitorScores[j - 1], competitorTicks[j - 1],
+                competitorPredictionKeys[j], competitorScores[j], competitorTicks[j]))
         {
             competitorPublicKeys[j] = competitorPublicKeys[j - 1];
             competitorScores[j] = competitorScores[j - 1];
+            competitorPredictionKeys[j] = competitorPredictionKeys[j - 1];
             competitorTicks[j] = competitorTicks[j - 1];
             competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
             competitorPublicKeys[--j] = tmpPublicKey;
             competitorScores[j] = tmpScore;
+            competitorPredictionKeys[j] = tmpPredictionKey;
             competitorTicks[j] = tmpTick;
             competitorComputorStatuses[j] = tmpComputorStatus;
         }
@@ -3509,15 +3559,10 @@ static void foldPredictionDigest()
     KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
 }
 
-// Tick processor only. The epoch has switched: every qualified identity moves to its prediction ranking key
-// and the switch enters the mining digest. 
+// Tick processor only. The epoch has switched and the switch enters the mining digest. No ranking entry
+// changes here: no hour is counted yet.
 static void applyPredictionSwitch()
 {
-    for (unsigned int i = 0; i < gPredictionPhase.count; i++)
-    {
-        const PredictionEntry& entry = gPredictionPhase.entries[i];
-        updateMinerRankingAndFutureComputors(entry.publicKey, PredictionPhase::rankingKey(entry), entry.bestTick);
-    }
     foldPredictionDigest();
 
     PredictionSwitchLogMessage logMsg;
@@ -3622,7 +3667,8 @@ static void applyPredictionTarget()
                 const PredictionEntry& entry = gPredictionPhase.entries[i];
                 if (gPredictionPhase.participatesIn(entry, hour))
                 {
-                    updateMinerRankingAndFutureComputors(entry.publicKey, PredictionPhase::rankingKey(entry), entry.bestTick);
+                    updateMinerRankingAndFutureComputors(entry.publicKey, entry.best.rankingKey(), entry.bestTick,
+                        true, PredictionPhase::rankingKey(entry));
                 }
             }
             foldPredictionDigest();
@@ -3931,8 +3977,8 @@ static void processTickTransactionAntColonySolution(
         logger.logQuTransfer(quTransfer);
 
         // A miner is ranked by its single best rating of the epoch: reach first, then errors.
-        // After the switch an identity that qualified is ranked by its correct hours first.
-        unsigned int newScore = childRating.rankingKey();
+        // An identity ranked by its prediction accuracy keeps that rank; a solution changes no counted hour.
+        const unsigned int newScore = childRating.rankingKey();
         bool switchedNow = false;
         long long nowMs = 0;
         if (getPredictionTickTimeMs(nextTickData, nowMs)
@@ -3940,7 +3986,7 @@ static void processTickTransactionAntColonySolution(
         {
             score->computeAntAnswers(processorNumber, *childAnn, gPredictionAnswers);
             ACQUIRE(gPredictionPhaseLock);
-            const PredictionEntry& entry = gPredictionPhase.recordSolution(
+            gPredictionPhase.recordSolution(
                 transaction->sourcePublicKey, childRating, system.tick, transactionIndex, nowMs,
                 gBtcPriceFeed.image.baseHour, computorIndex(transaction->sourcePublicKey) >= 0, gPredictionAnswers);
             switchedNow = gPredictionPhase.trySwitch(system.tick, nowMs, PredictionPhase::epochEndHour(system.epoch));
@@ -3949,10 +3995,6 @@ static void processTickTransactionAntColonySolution(
                 gPredictionPhase.updateFoldedDigest();
             }
             RELEASE(gPredictionPhaseLock);
-            if (gPredictionPhase.isSwitched())
-            {
-                newScore = PredictionPhase::rankingKey(entry);
-            }
         }
         updateMinerRankingAndFutureComputors(transaction->sourcePublicKey, newScore, system.tick);
         if (switchedNow)
@@ -5684,10 +5726,12 @@ static void beginEpoch()
     setMem(gAntSolutionFlags, NUMBER_OF_ANT_SOLUTION_FLAGS / 8, 0);
     setMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
     setMem((void*)minerScores, sizeof(minerScores), 0xFF);
+    setMem((void*)minerPredictionKeys, sizeof(minerPredictionKeys), 0xFF);
     setMem((void*)minerBestScoreTicks, sizeof(minerBestScoreTicks), 0);
     numberOfMiners = NUMBER_OF_COMPUTORS;
     setMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
     setMem(competitorScores, sizeof(competitorScores), 0xFF);
+    setMem(competitorPredictionKeys, sizeof(competitorPredictionKeys), 0xFF);
     setMem(competitorTicks, sizeof(competitorTicks), 0);
     setMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
     ACQUIRE(gPredictionPhaseLock);
@@ -6088,6 +6132,8 @@ static bool saveAllNodeStates()
     copyMem(nodeStateBuffer.competitorPublicKeys, (void*)competitorPublicKeys, sizeof(competitorPublicKeys));
     copyMem(nodeStateBuffer.competitorScores, (void*)competitorScores, sizeof(competitorScores));
     copyMem(&nodeStateBuffer.predictionPhase, &gPredictionPhase, sizeof(gPredictionPhase));
+    copyMem(nodeStateBuffer.minerPredictionKeys, (void*)minerPredictionKeys, sizeof(minerPredictionKeys));
+    copyMem(nodeStateBuffer.competitorPredictionKeys, (void*)competitorPredictionKeys, sizeof(competitorPredictionKeys));
     copyMem(nodeStateBuffer.competitorTicks, (void*)competitorTicks, sizeof(competitorTicks));
     copyMem(nodeStateBuffer.competitorComputorStatuses, (void*)competitorComputorStatuses, sizeof(competitorComputorStatuses));
     copyMem(nodeStateBuffer.solutionPublicationTicks, (void*)solutionPublicationTicks, sizeof(solutionPublicationTicks));
@@ -6344,6 +6390,8 @@ static bool loadAllNodeStates()
     copyMem((void*)competitorPublicKeys, nodeStateBuffer.competitorPublicKeys, sizeof(competitorPublicKeys));
     copyMem((void*)competitorScores, nodeStateBuffer.competitorScores, sizeof(competitorScores));
     copyMem(&gPredictionPhase, &nodeStateBuffer.predictionPhase, sizeof(gPredictionPhase));
+    copyMem((void*)minerPredictionKeys, nodeStateBuffer.minerPredictionKeys, sizeof(minerPredictionKeys));
+    copyMem((void*)competitorPredictionKeys, nodeStateBuffer.competitorPredictionKeys, sizeof(competitorPredictionKeys));
     copyMem((void*)competitorTicks, nodeStateBuffer.competitorTicks, sizeof(competitorTicks));
     copyMem((void*)competitorComputorStatuses, nodeStateBuffer.competitorComputorStatuses, sizeof(competitorComputorStatuses));
     copyMem((void*)solutionPublicationTicks, nodeStateBuffer.solutionPublicationTicks, sizeof(solutionPublicationTicks));
@@ -7616,6 +7664,7 @@ static void tickProcessor(void*)
                                     ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
                                     ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
                                     ASSERT(minerScores[0] == NO_MINER_SCORE && minerScores[MAX_NUMBER_OF_MINERS] == NO_MINER_SCORE);
+                                    ASSERT(minerPredictionKeys[0] == PREDICTION_NO_RANKING_KEY && competitorPredictionKeys[0] == PREDICTION_NO_RANKING_KEY);
                                     ASSERT(isZero((void*)minerBestScoreTicks, sizeof(minerBestScoreTicks)));
                                     ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
                                     ASSERT(competitorScores[0] == NO_MINER_SCORE);
