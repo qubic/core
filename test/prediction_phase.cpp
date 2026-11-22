@@ -427,30 +427,47 @@ static PredictionEntry counted(unsigned int hours, unsigned int correct)
 TEST(TestPredictionPhase, RankedByAccuracyNeedsEnoughCountedHours)
 {
     const unsigned int minAttempts = BPP9000_PREDICTION_MIN_ATTEMPTS;
-    const unsigned int minPerfect = BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS;
+    const unsigned int minCorrect = BPP9000_PREDICTION_MIN_CORRECT;
 
     // The full minimum passes with any number of correct hours.
     EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minAttempts, 0)));
     EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minAttempts, minAttempts)));
     EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(PREDICTION_MAX_HOURS, 1)));
 
-    // Below it only a record without a wrong hour passes, from the lower minimum on.
+    // Below it a record passes exactly when it has the minimum of correct hours.
     EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(0, 0)));
-    EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(minPerfect - 1, minPerfect - 1)));
-    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minPerfect, minPerfect)));
-    EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(minPerfect, minPerfect - 1)));
-    for (unsigned int hours = minPerfect; hours < minAttempts; hours++)
+    EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(minCorrect - 1, minCorrect - 1)));
+    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minCorrect, minCorrect)));
+    for (unsigned int hours = minCorrect; hours < minAttempts; hours++)
     {
         EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(hours, hours)));
-        EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(hours, hours - 1)));
+        EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(hours, minCorrect)));
+        EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(hours, minCorrect - 1)));
     }
 
-    // One wrong hour after a perfect start takes the identity out again until the full minimum.
-    EXPECT_FALSE(PredictionPhase::isRankedByAccuracy(counted(minPerfect + 1, minPerfect)));
-    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minAttempts, minAttempts - 1)));
+    // A wrong hour after the minimum of correct hours leaves the identity ranked, with a worse key.
+    EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(minCorrect + 1, minCorrect)));
+    EXPECT_NE(PredictionPhase::rankingKey(counted(minCorrect + 1, minCorrect)), PREDICTION_NO_RANKING_KEY);
+    EXPECT_LT(PredictionPhase::rankingKey(counted(minCorrect, minCorrect)), PredictionPhase::rankingKey(counted(minCorrect + 1, minCorrect)));
 
-    EXPECT_EQ(PredictionPhase::rankingKey(counted(minPerfect + 1, minPerfect)), PREDICTION_NO_RANKING_KEY);
+    EXPECT_EQ(PredictionPhase::rankingKey(counted(minAttempts - 1, minCorrect - 1)), PREDICTION_NO_RANKING_KEY);
     EXPECT_NE(PredictionPhase::rankingKey(counted(minAttempts, 0)), PREDICTION_NO_RANKING_KEY);
+}
+
+// Counted and correct hours only grow, so no record that is ranked by accuracy can lose that with another hour.
+TEST(TestPredictionPhase, RankedByAccuracyIsKeptByEveryFurtherHour)
+{
+    for (unsigned int hours = 1; hours < PREDICTION_MAX_HOURS; hours++)
+    {
+        for (unsigned int correct = 0; correct <= hours; correct++)
+        {
+            if (PredictionPhase::isRankedByAccuracy(counted(hours, correct)))
+            {
+                EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(hours + 1, correct)));
+                EXPECT_TRUE(PredictionPhase::isRankedByAccuracy(counted(hours + 1, correct + 1)));
+            }
+        }
+    }
 }
 
 // Every pair of records that are ranked by accuracy: the keys must order them as the exact fractions do.
@@ -505,8 +522,8 @@ TEST(TestPredictionPhase, RankingKeyValues)
     // 18 of 24 before 20 of 30; at the same accuracy 27 of 36 before 18 of 24.
     EXPECT_LT(PredictionPhase::rankingKey(counted(24, 18)), PredictionPhase::rankingKey(counted(30, 20)));
     EXPECT_LT(PredictionPhase::rankingKey(counted(36, 27)), PredictionPhase::rankingKey(counted(24, 18)));
-    // A perfect record of the lower minimum is before every record with a wrong hour.
-    EXPECT_LT(PredictionPhase::rankingKey(counted(BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS, BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS)),
+    // A record of the minimum of correct hours with none wrong is before every record with a wrong hour.
+    EXPECT_LT(PredictionPhase::rankingKey(counted(BPP9000_PREDICTION_MIN_CORRECT, BPP9000_PREDICTION_MIN_CORRECT)),
         PredictionPhase::rankingKey(counted(PREDICTION_MAX_HOURS, PREDICTION_MAX_HOURS - 1)));
     // Every key is below the key of an identity that is not ranked by accuracy.
     EXPECT_LT(PredictionPhase::rankingKey(counted(PREDICTION_MAX_HOURS, 0)), PREDICTION_NO_RANKING_KEY);

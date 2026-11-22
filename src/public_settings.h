@@ -143,8 +143,8 @@ static constexpr unsigned int BPP9000_PREDICTION_SWITCH_CLOSE_HOURS = 24;
 static constexpr unsigned int BPP9000_PREDICTION_DEADLINE_SEC = 50 * 60;
 // An identity is ranked by its prediction accuracy once this many hours were counted for it ...
 static constexpr unsigned int BPP9000_PREDICTION_MIN_ATTEMPTS = 24;
-// ... or this many, if it answered none of them wrong.
-static constexpr unsigned int BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS = 12;
+// ... or once it answered this many of them correctly.
+static constexpr unsigned int BPP9000_PREDICTION_MIN_CORRECT = 12;
 
 // BTC price feed: the hourly Binance BTC/USDT price, captured through the Price oracle.
 static unsigned short BTC_PRICE_SERIES_FILE_NAME[] = L"btcPriceSeries.???";
