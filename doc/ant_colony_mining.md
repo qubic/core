@@ -30,7 +30,7 @@ enough counted hours the identity is ranked by its **accuracy**.
 | The epoch **switches** when `BPP9000_PREDICTION_SWITCH_COMPUTORS` (226) computors have qualified, unless 24 hours or less of the epoch are left. | without a switch the epoch stays in training | 2.4a |
 | After the switch the **last accepted** solution of an identity gives its answers, also when it is weaker than an earlier one. | the answers of every hour that is still open are replaced | 2.4a |
 | A solution answers hour `H` only if it is executed at least `BPP9000_PREDICTION_DEADLINE_SEC` (3000 s, 50 minutes) before `H`. | a later solution is valid but answers only the hours after `H` | 2.4a |
-| An identity with `BPP9000_PREDICTION_MIN_ATTEMPTS` (24) counted hours, or with `BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS` (12) counted hours and none of them wrong, is ranked by its **accuracy**: correct hours / counted hours. | it ranks above every identity that is not ranked by accuracy; those stay ranked as in training | 2.4a |
+| An identity with `BPP9000_PREDICTION_MIN_ATTEMPTS` (24) counted hours, or with `BPP9000_PREDICTION_MIN_CORRECT` (12) correct hours, is ranked by its **accuracy**: correct hours / counted hours. | it ranks above every identity that is not ranked by accuracy; those stay ranked as in training | 2.4a |
 
 **What a miner or pool has to change**
 
@@ -428,8 +428,9 @@ takes part gets one more counted hour, and one more correct hour if its answer e
 `H`. A filled hour (no price of its own) is counted for nobody.
 
 **Ranking.** An identity is **ranked by accuracy** once it has `BPP9000_PREDICTION_MIN_ATTEMPTS` (24)
-counted hours, or `BPP9000_PREDICTION_MIN_PERFECT_ATTEMPTS` (12) counted hours with none of them wrong.
-Its accuracy is its correct hours divided by its counted hours. The order of the ranking is:
+counted hours, or `BPP9000_PREDICTION_MIN_CORRECT` (12) correct hours. Once ranked by accuracy it stays so
+for the rest of the epoch. Its accuracy is its correct hours divided by its counted hours. The order of the
+ranking is:
 
 1. Identities ranked by accuracy: the higher accuracy first. At equal accuracy the one with more counted
    hours first, then the higher shift, the lower error and the earlier tick of its best solution.
