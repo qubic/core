@@ -801,6 +801,32 @@ unsigned char answers[168];         // 0 = down, 1 = up, 2 = none
 The reply holds the answers for every hour of the epoch, the open ones included. For an identity that
 has not qualified all answers are `2`.
 
+**(h) Prediction ranking** - special command `SPECIAL_COMMAND_GET_PREDICTION_RANKING` (21). **Operator.**
+
+The request is a `SpecialCommand` (message type 255) signed by the operator, like the mining score ranking
+(special command 14); the command number 21 is the highest byte of `everIncreasingNonceAndCommandType`. The
+reply `SpecialCommandGetPredictionRanking` holds one entry for every identity that has qualified, in the
+order they qualified:
+
+```
+unsigned long long everIncreasingNonceAndCommandType;
+unsigned int  switchTick;           // 0 = training; else the tick the epoch switched in
+unsigned int  numberOfEntries;
+// numberOfEntries times (48 bytes each):
+m256i         publicKey;
+unsigned int  firstHour;            // first counted hour of the identity
+unsigned int  hours;                // attempts: hours counted for the identity
+unsigned int  correct;              // how many of them were correct
+unsigned int  predictionKey;        // 0xFFFFFFFF = ranked by its training score; else its prediction key
+```
+
+The mining score ranking gives the order of the identities and their training scores; this reply gives the
+prediction part of the identities that have qualified, to be matched by `publicKey`. An identity of the
+mining score ranking without an entry here has not qualified. `predictionKey` is computed from the entry's
+attempts and correct hours, as the ranking does each time an hour is counted. Within its group of the
+mining score ranking (the computors, then the candidates) an identity with a `predictionKey` other than
+`0xFFFFFFFF` is ranked before every identity without one.
+
 ### 2.8 Network message + transaction types
 
 | Type | Value | Signed | Direction |
@@ -814,6 +840,7 @@ has not qualified all answers are `2`.
 | `REQUEST_BPP9000_TASK_DATA` / `RESPOND_BPP9000_TASK_DATA` | `80` / `81` | public | read the task data of an anchor tick |
 | `REQUEST_PREDICTION_PHASE` / `RESPOND_PREDICTION_PHASE` | `82` / `83` | public | read the phase of the epoch |
 | `REQUEST_PREDICTION_IDENTITY` / `RESPOND_PREDICTION_IDENTITY` | `84` / `85` | public | read the prediction state of one identity |
+| `SPECIAL_COMMAND` with command `SPECIAL_COMMAND_GET_PREDICTION_RANKING` | `255`, command `21` | operator | read the prediction state of every qualified identity |
 
 ## Part 3 - Node files
 

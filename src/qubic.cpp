@@ -243,7 +243,7 @@ static unsigned long long* minerSolutionFlags = NULL;
 static unsigned long long* gAntSolutionFlags = NULL;
 static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS + 1];
 static volatile unsigned int minerScores[MAX_NUMBER_OF_MINERS + 1];
-// PredictionPhase::rankingKey() of each miner; PREDICTION_NO_RANKING_KEY while it is ranked by its score
+// PredictionPhase::rankingKey() of each miner; PREDICTION_NO_RANKING_KEY while it is ranked by its training score
 static volatile unsigned int minerPredictionKeys[MAX_NUMBER_OF_MINERS + 1];
 // Tick in which each miner reached its currently recorded best score, used as ranking tie-breaker
 static volatile unsigned int minerBestScoreTicks[MAX_NUMBER_OF_MINERS + 1];
@@ -262,6 +262,7 @@ static unsigned long long K12MeasurementsCount = 0;
 static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
+static SpecialCommandGetPredictionRanking<MAX_NUMBER_OF_MINERS> requestPredictionRanking;
 static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCount] =
 {
     NEURAXON_SOLUTION_MULTIPLER,   // Neuraxon (reserved)
@@ -2529,6 +2530,35 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                     SpecialCommand::type(),
                     header->dejavu(),
                     &requestMiningScoreRanking);
+            }
+            break;
+
+            case SPECIAL_COMMAND_GET_PREDICTION_RANKING:
+            {
+                requestPredictionRanking.everIncreasingNonceAndCommandType =
+                    (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_GET_PREDICTION_RANKING << 56);
+
+                ACQUIRE(gPredictionPhaseLock);
+                requestPredictionRanking.switchTick = gPredictionPhase.switchTick;
+                requestPredictionRanking.numberOfEntries = gPredictionPhase.count;
+                for (unsigned int i = 0; i < requestPredictionRanking.numberOfEntries; ++i)
+                {
+                    const PredictionEntry& entry = gPredictionPhase.entries[i];
+                    requestPredictionRanking.entries[i].publicKey = entry.publicKey;
+                    requestPredictionRanking.entries[i].firstHour = entry.firstHour;
+                    requestPredictionRanking.entries[i].hours = entry.hours;
+                    requestPredictionRanking.entries[i].correct = entry.correct;
+                    requestPredictionRanking.entries[i].predictionKey = PredictionPhase::rankingKey(entry);
+                }
+                RELEASE(gPredictionPhaseLock);
+                enqueueResponse(peer,
+                    sizeof(requestPredictionRanking.everIncreasingNonceAndCommandType)
+                    + sizeof(requestPredictionRanking.switchTick)
+                    + sizeof(requestPredictionRanking.numberOfEntries)
+                    + sizeof(requestPredictionRanking.entries[0]) * requestPredictionRanking.numberOfEntries,
+                    SpecialCommand::type(),
+                    header->dejavu(),
+                    &requestPredictionRanking);
             }
             break;
 
