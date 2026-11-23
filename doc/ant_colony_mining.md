@@ -29,8 +29,8 @@ enough counted hours the identity is ranked by its **accuracy**.
 | An identity **qualifies** with an accepted solution at `shift >= 1`, or at shift 0 with `error <= BPP9000_PREDICTION_THRESHOLD` (3504). | only a qualified identity takes part in the prediction | 2.4a |
 | The epoch **switches** when `BPP9000_PREDICTION_SWITCH_COMPUTORS` (226) computors have qualified, unless 24 hours or less of the epoch are left. | without a switch the epoch stays in training | 2.4a |
 | After the switch the **last accepted** solution of an identity gives its answers, also when it is weaker than an earlier one. | the answers of every hour that is still open are replaced | 2.4a |
-| A solution answers hour `H` only if it is executed at least `BPP9000_PREDICTION_DEADLINE_SEC` (3000 s, 50 minutes) before `H`. | a later solution is valid but answers only the hours after `H` | 2.4a |
-| An identity with `BPP9000_PREDICTION_MIN_ATTEMPTS` (24) counted hours, or with `BPP9000_PREDICTION_MIN_CORRECT` (12) correct hours, is ranked by its **accuracy**: correct hours / counted hours. | it ranks above every identity that is not ranked by accuracy; those stay ranked as in training | 2.4a |
+| A solution answers hour `H` only if it is executed at least `BPP9000_PREDICTION_DEADLINE_SEC` (1800 s, 30 minutes) before `H`. | a later solution is valid but answers only the hours after `H` | 2.4a |
+| An identity with `BPP9000_PREDICTION_MIN_CORRECT` (12) correct hours is ranked by its **accuracy**: correct hours / counted hours. | it ranks above every identity that is not ranked by accuracy; those stay ranked as in training | 2.4a |
 
 **What a miner or pool has to change**
 
@@ -46,6 +46,8 @@ enough counted hours the identity is ranked by its **accuracy**.
 
 - New public messages: `REQUEST_PREDICTION_PHASE` / `RESPOND_PREDICTION_PHASE` (82 / 83) and
   `REQUEST_PREDICTION_IDENTITY` / `RESPOND_PREDICTION_IDENTITY` (84 / 85) (sections 2.7f, 2.7g, 2.8).
+- New operator command `SPECIAL_COMMAND_GET_PREDICTION_RANKING` (21): the prediction state of every
+  qualified identity in one reply (sections 2.7h, 2.8).
 - Three event log messages for the switch, the answers and the result of each hour (section 2.4a).
 - No new node file: the prediction state is saved with the node state in the snapshot (Part 3).
 
@@ -427,10 +429,9 @@ and the identity has qualified. When the price of `H` is stored (section 2.3a), 
 takes part gets one more counted hour, and one more correct hour if its answer equals the target of
 `H`. A filled hour (no price of its own) is counted for nobody.
 
-**Ranking.** An identity is **ranked by accuracy** once it has `BPP9000_PREDICTION_MIN_ATTEMPTS` (24)
-counted hours, or `BPP9000_PREDICTION_MIN_CORRECT` (12) correct hours. Once ranked by accuracy it stays so
-for the rest of the epoch. Its accuracy is its correct hours divided by its counted hours. The order of the
-ranking is:
+**Ranking.** An identity is **ranked by accuracy** once it has `BPP9000_PREDICTION_MIN_CORRECT` (12)
+correct hours, however many hours were counted for it. Once ranked by accuracy it stays so for the rest of
+the epoch. Its accuracy is its correct hours divided by its counted hours. The order of the ranking is:
 
 1. Identities ranked by accuracy: the higher accuracy first. At equal accuracy the one with more counted
    hours first, then the higher shift, the lower error and the earlier tick of its best solution.
@@ -438,10 +439,10 @@ ranking is:
 
 ```
 counted hours   correct   ranked by accuracy
-     11           11      no    fewer than 12 counted hours
+     11           11      no    fewer than 12 correct hours
      12           12      yes   100%
-     13           12      no    one wrong hour and fewer than 24 counted hours
-     24           10      yes   41.7%
+     13           12      yes   92.3%
+     24           11      no    fewer than 12 correct hours
      24           18      yes   75%, behind 27 of 36 (same accuracy, more counted hours)
 ```
 
@@ -450,10 +451,10 @@ of its identity; it only changes the answers for the hours that are still open. 
 the ranking as before.
 
 ```
-example with the deadline at 50 minutes, predicted hour 16:00 UTC
+example with the deadline at 30 minutes, predicted hour 16:00 UTC
 
 15:00      price that the target of 16:00 is compared with
-15:10:00   deadline: last time a solution can still answer 16:00
+15:30:00   deadline: last time a solution can still answer 16:00
 16:00      the predicted price
 ~16:05     the 16:00 price is stored; every identity that takes part gets the hour as correct or wrong
 ```

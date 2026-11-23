@@ -140,10 +140,8 @@ static constexpr unsigned int BPP9000_PREDICTION_SWITCH_COMPUTORS = 226;
 // ... unless fewer than this many hours of the epoch are left.
 static constexpr unsigned int BPP9000_PREDICTION_SWITCH_CLOSE_HOURS = 24;
 // A solution answers an hour if it is executed at least this long before the hour.
-static constexpr unsigned int BPP9000_PREDICTION_DEADLINE_SEC = 50 * 60;
-// An identity is ranked by its prediction accuracy once this many hours were counted for it ...
-static constexpr unsigned int BPP9000_PREDICTION_MIN_ATTEMPTS = 24;
-// ... or once it answered this many of them correctly.
+static constexpr unsigned int BPP9000_PREDICTION_DEADLINE_SEC = 30 * 60;
+// An identity is ranked by its prediction accuracy once it answered this many hours correctly.
 static constexpr unsigned int BPP9000_PREDICTION_MIN_CORRECT = 12;
 
 // BTC price feed: the hourly Binance BTC/USDT price, captured through the Price oracle.

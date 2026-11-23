@@ -29,8 +29,7 @@ static constexpr unsigned int PREDICTION_ACCURACY_ONE = 0x10000;
 static_assert(PREDICTION_MAX_HOURS <= 0xFF, "the prediction ranking key holds the counted hours in 8 bits");
 static_assert(PREDICTION_MAX_HOURS * PREDICTION_MAX_HOURS < PREDICTION_ACCURACY_ONE,
     "two different accuracies must give two different ranking keys");
-static_assert(BPP9000_PREDICTION_MIN_CORRECT >= 1 && BPP9000_PREDICTION_MIN_CORRECT <= BPP9000_PREDICTION_MIN_ATTEMPTS,
-    "an identity ranked by its accuracy has at least one counted hour");
+static_assert(BPP9000_PREDICTION_MIN_CORRECT >= 1, "an identity ranked by its accuracy has at least one counted hour");
 static_assert(BPP9000_PREDICTION_DEADLINE_SEC <= BTC_FEED_PERIOD_SEC, "the deadline of an hour must not lie before the hour it is compared with");
 static_assert(BPP9000_PREDICTION_SWITCH_CLOSE_HOURS < PREDICTION_HOURS_PER_EPOCH, "the switch must be possible in some hour of the epoch");
 
@@ -215,15 +214,10 @@ struct PredictionPhase
         return isSwitched() && hour >= switchFirstHour && hour >= entry.firstHour;
     }
 
-    // True once enough hours are counted for the identity: BPP9000_PREDICTION_MIN_ATTEMPTS of them, or
-    // BPP9000_PREDICTION_MIN_CORRECT of them answered correctly. An identity that is ranked stays ranked.
+    // True once the identity answered BPP9000_PREDICTION_MIN_CORRECT hours correctly, however many hours were
+    // counted for it. An identity that is ranked stays ranked.
     static bool isRankedByAccuracy(const PredictionEntry& entry)
     {
-        const unsigned int hours = entry.hours;
-        if (hours >= BPP9000_PREDICTION_MIN_ATTEMPTS)
-        {
-            return true;
-        }
         return entry.correct >= BPP9000_PREDICTION_MIN_CORRECT;
     }
 
