@@ -116,3 +116,32 @@ struct SpecialCommandExecutionFeeMultiplierRequestAndResponse
     unsigned long long multiplierNumerator;
     unsigned long long multiplierDenominator;
 };
+
+#define SPECIAL_COMMAND_GET_PREDICTION_RANKING 21ULL
+#pragma pack(push, 1)
+// Prediction state of every identity that has qualified, in the order they qualified.
+template<unsigned int maxNumberOfIdentities>
+struct SpecialCommandGetPredictionRanking
+{
+    struct Entry
+    {
+        m256i publicKey;
+        // First hour counted for the identity
+        unsigned int firstHour;
+        // Attempts (hours counted for the identity) and how many of them were correct
+        unsigned int hours;
+        unsigned int correct;
+        // 0xFFFFFFFF while the identity is ranked by its training score
+        unsigned int predictionKey;
+    };
+
+    unsigned long long everIncreasingNonceAndCommandType;
+    // 0: training. Else the tick the epoch switched in
+    unsigned int switchTick;
+    unsigned int numberOfEntries;
+    Entry entries[maxNumberOfIdentities];
+};
+#pragma pack(pop)
+
+static_assert(sizeof(SpecialCommandGetPredictionRanking<1>::Entry) == 48, "SpecialCommandGetPredictionRanking::Entry unexpected size");
+static_assert(sizeof(SpecialCommandGetPredictionRanking<1>) == 16 + 48, "SpecialCommandGetPredictionRanking unexpected size");

@@ -57,6 +57,9 @@
     <ClInclude Include="network_messages\price_feed.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="network_messages\prediction_phase.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
     <ClInclude Include="network_messages\header.h">
       <Filter>network_messages</Filter>
     </ClInclude>
@@ -374,6 +377,9 @@
       <Filter>mining</Filter>
     </ClInclude>
     <ClInclude Include="mining\price_feed.h">
+      <Filter>mining</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\prediction_phase.h">
       <Filter>mining</Filter>
     </ClInclude>
     <ClInclude Include="platform\virtual_memory.h">
