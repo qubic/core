@@ -2858,9 +2858,9 @@ public:
                 appendText(message, L", ");
                 appendNumber(message, oracleStats[i].extraData[2], TRUE);
             }
-#endif
             logToConsole(message);
         }
+#endif
     }
 
     void processRequestOracleData(Peer* peer, RequestResponseHeader* header) const;
