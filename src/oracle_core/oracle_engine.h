@@ -1439,32 +1439,25 @@ public:
         {
             const void* queryData = getOracleQueryPointerFromMetadata(oqm, (uint16_t)OI::oracleInterfaces[ifaceIdx].querySize);
 
-            bool valid = false;
+            if (OI::replyIsValidFunc[ifaceIdx](queryData, replyData))
+            {
+                oracleStats[ifaceIdx].validCount++;
+            }
+
+            // extra data shown in the log
             switch (ifaceIdx)
             {
-            case 0:  // Price
-                valid = OI::Price::replyIsValid(*(const OI::Price::OracleReply*)replyData);
+            case OI::Price::oracleInterfaceIndex:
                 oracleStats[ifaceIdx].extraData[0] = ((const OI::Price::OracleReply*)replyData)->denominator;
                 oracleStats[ifaceIdx].extraData[1] = ((const OI::Price::OracleReply*)replyData)->numerator;
                 break;
-            case 1:  // Mock
-                valid = OI::Mock::replyIsValid(
-                    *(const OI::Mock::OracleQuery*)queryData,
-                    *(const OI::Mock::OracleReply*)replyData);
-                // Get some extra data
+            case OI::Mock::oracleInterfaceIndex:
                 oracleStats[ifaceIdx].extraData[0] = ((const OI::Mock::OracleQuery*)queryData)->value;
                 oracleStats[ifaceIdx].extraData[1] = ((const OI::Mock::OracleReply*)replyData)->echoedValue;
                 oracleStats[ifaceIdx].extraData[2] = ((const OI::Mock::OracleReply*)replyData)->doubledValue;
                 break;
-            case 2: // DogeShareValidation
-                valid = ((const OI::DogeShareValidation::OracleReply*)replyData)->isValid;
+            default:
                 break;
-            default: // unknown
-                break;
-            }
-            if (valid)
-            {
-                oracleStats[ifaceIdx].validCount++;
             }
         }
 #endif

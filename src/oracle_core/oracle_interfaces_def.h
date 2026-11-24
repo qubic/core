@@ -49,8 +49,25 @@ namespace OI
 
 	static __GetQueryFeeFunc getOracleQueryFeeFunc[oracleInterfacesCount];
 
+	typedef bool(*__ReplyIsValidFunc)(const void* query, const void* reply);
+
+	static __ReplyIsValidFunc replyIsValidFunc[oracleInterfacesCount];
+
+	// Every interface must define replyIsValid(reply) or replyIsValid(query, reply).
+	template <typename Interface>
+	static bool replyIsValidErased(const void* query, const void* reply)
+	{
+		const auto& q = *(const typename Interface::OracleQuery*)query;
+		const auto& r = *(const typename Interface::OracleReply*)reply;
+		if constexpr (requires { Interface::replyIsValid(q, r); })
+			return Interface::replyIsValid(q, r);
+		else
+			return Interface::replyIsValid(r);
+	}
+
 #define REGISTER_ORACLE_INTERFACE(Interface) { \
 		getOracleQueryFeeFunc[Interface::oracleInterfaceIndex] = (__GetQueryFeeFunc)Interface::getQueryFee; \
+		replyIsValidFunc[Interface::oracleInterfaceIndex] = replyIsValidErased<Interface>; \
 		if (oracleInterfaces[Interface::oracleInterfaceIndex].querySize != sizeof(Interface::OracleQuery)) \
 			return false; \
 		if (oracleInterfaces[Interface::oracleInterfaceIndex].replySize != sizeof(Interface::OracleReply)) \
@@ -63,6 +80,7 @@ namespace OI
 		for (uint32_t idx = 0; idx < oracleInterfacesCount; ++idx)
 		{
 			getOracleQueryFeeFunc[idx] = nullptr;
+			replyIsValidFunc[idx] = nullptr;
 		}
 
 		REGISTER_ORACLE_INTERFACE(Price);
@@ -74,7 +92,7 @@ namespace OI
 
 		for (uint32_t idx = 0; idx < oracleInterfacesCount; ++idx)
 		{
-			if (!getOracleQueryFeeFunc[idx])
+			if (!getOracleQueryFeeFunc[idx] || !replyIsValidFunc[idx])
 				return false;
 		}
 		return true;
