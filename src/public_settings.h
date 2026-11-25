@@ -73,12 +73,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 313
+#define VERSION_B 314
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 240
-#define TICK 91910000
+#define EPOCH 241
+#define TICK 92260000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -133,6 +133,17 @@ static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
 static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 3504;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4350;
 
+// Prediction phase. An identity qualifies with a solution at shift >= 1, or at shift 0 with at most this many errors.
+static constexpr unsigned int BPP9000_PREDICTION_THRESHOLD = 3504;
+// The epoch switches to the prediction ranking when this many computors have qualified ...
+static constexpr unsigned int BPP9000_PREDICTION_SWITCH_COMPUTORS = 226;
+// ... unless fewer than this many hours of the epoch are left.
+static constexpr unsigned int BPP9000_PREDICTION_SWITCH_CLOSE_HOURS = 24;
+// A solution answers an hour if it is executed at least this long before the hour.
+static constexpr unsigned int BPP9000_PREDICTION_DEADLINE_SEC = 30 * 60;
+// An identity is ranked by its prediction accuracy once it answered this many hours correctly.
+static constexpr unsigned int BPP9000_PREDICTION_MIN_CORRECT = 12;
+
 // BTC price feed: the hourly Binance BTC/USDT price, captured through the Price oracle.
 static unsigned short BTC_PRICE_SERIES_FILE_NAME[] = L"btcPriceSeries.???";
 static unsigned short BTC_PRICE_SERIES_SNAPSHOT_FILE_NAME[] = L"snapshotBtcPriceSeries.???";
@@ -163,7 +174,7 @@ static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;
 static constexpr unsigned int ANT_MAX_CHILDREN_PER_PARENT = 0;
 
 // Ant colony: tree nodes recorded per epoch; one per accepted solution.
-static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
+static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = (1u << 23) * 3 / 2;
 
 // Ant colony: replay-cache entries, scores this node already computed so a restart does not
 // recompute them. Node-local, not consensus; a miss only costs time.

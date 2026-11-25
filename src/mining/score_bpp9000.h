@@ -651,6 +651,23 @@ struct ScoreBpp9000
         copyMem(plane1, planeOut1, PBYTES);
     }
 
+    void startTicks()
+    {
+        buildGatherControls();
+        buildTableArea();
+        packPlanesFromCurInitial();
+    }
+
+    void tick()
+    {
+        tickBitslice();
+    }
+
+    unsigned int tritOf(unsigned int n) const
+    {
+        return getTrit(n);
+    }
+
     // Grades the frame at the current shift, leaving shift alone.
     unsigned int score()
     {
@@ -3030,6 +3047,37 @@ struct ScoreBpp9000
         return rollingStepsFrom(0, L, K, mode, cur, best);
     }
 #endif
+
+    // Output trit of emits [first, first + count) of a network, replayed from tick 0.
+    // An emit the network does not reach within maxNumberOfTicks stays TRIT_UNKNOWN.
+    void collectOutputs(const ANN& ann, unsigned long long first, unsigned long long count, unsigned char* outputs)
+    {
+        setMem(outputs, count, TRIT_UNKNOWN);
+        expand(ann);
+        startTicks();
+
+        unsigned long long counter = 0;
+        unsigned long long ticks = 0;
+        while (counter < first + count)
+        {
+            ++ticks;
+            if (ticks >= maxNumberOfTicks)
+            {
+                return;
+            }
+
+            tick();
+
+            if (tritOf(controlIndex) != TRIT_UNKNOWN)
+            {
+                if (counter >= first)
+                {
+                    outputs[counter - first] = (unsigned char)tritOf(outputIndex);
+                }
+                counter++;
+            }
+        }
+    }
 
     // Standalone: root from the pubkey, walk with K = 0. Control/output must be set; the caller checks the nonce.
     Rating computeScore(

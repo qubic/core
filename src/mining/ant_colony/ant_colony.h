@@ -16,10 +16,12 @@
 #include "mining/mining.h"
 #include "mining/trit_pack.h"
 
-// The keyed structures are twice the population they index.
-static constexpr unsigned long long ANT_DEDUP_SIZE = 2ULL * ANT_MAX_NODES_PER_EPOCH;
+// Both tables are rounded up to the power of two the hash containers require. Dedup load stays at or below 80%.
+static constexpr unsigned long long ANT_DEDUP_SIZE =
+    math_lib::findNextPowerOf2(ANT_MAX_NODES_PER_EPOCH + ANT_MAX_NODES_PER_EPOCH / 4);
 // At most one key per record, and records are capped, so load stays at or below 50% and set() cannot fail.
-static constexpr unsigned long long ANT_CHILD_HEAD_BY_PARENT_SIZE = 2ULL * ANT_MAX_NODES_PER_EPOCH;
+static constexpr unsigned long long ANT_CHILD_HEAD_BY_PARENT_SIZE =
+    math_lib::findNextPowerOf2(2ULL * ANT_MAX_NODES_PER_EPOCH);
 static_assert(ANT_CHILD_HEAD_BY_PARENT_SIZE >= 2ULL * ANT_MAX_NODES_PER_EPOCH,
     "child-head-by-parent map must stay at or below 50% load so its set() cannot fail");
 // One entry per identity holding a tree. Unlike the map above, nothing caps how many identities
@@ -1185,7 +1187,7 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
         return ValidityResult::RejectTickOutOfRange;
     }
     // never commit a solution without recording its replay key. Cannot fire under the
-    // cap (population <= ANT_MAX_NODES_PER_EPOCH = 50% of ANT_DEDUP_SIZE), kept as a defensive check
+    // cap (population <= ANT_MAX_NODES_PER_EPOCH, at most 80% of ANT_DEDUP_SIZE), kept as a defensive check
     if (_dedup->add(dedupKey) == QPI::NULL_INDEX)
     {
         recordReject(ValidityResult::RejectDedupFull);

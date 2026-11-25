@@ -257,6 +257,18 @@ public:
         engine.getAntBestANN(outChildAnn);
         return childRating;
     }
+
+    // A network's answer for each hour after the epoch's first frame, BPP9000_SHIFT_CAP trits.
+    void computeAntAnswers(
+        const unsigned long long processor_Number,
+        const score_engine::ScoreBpp9000T::ANN& ann,
+        unsigned char* answers)
+    {
+        const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
+        LockGuard guard(solutionEngineLock[solutionBufIdx]);
+        _computeBuffer[solutionBufIdx].collectAntOutputs(
+            ann, score_engine::ScoreBpp9000T::windowWidth, score_engine::ScoreBpp9000T::shiftCap, answers);
+    }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
     {

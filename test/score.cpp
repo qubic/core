@@ -864,6 +864,52 @@ TEST(TestQubicScoreAntColony, BestAnnReproducesScoreFromParent)
     EXPECT_EQ(f.engine->score(), childScore);
 }
 
+// The outputs collectOutputs() reports for the graded frame miss the targets exactly as often as the rating
+// says, and reading a later range of emits gives the same trits as reading them in one call.
+TEST(TestQubicScoreAntColony, EmitOutputsAreTheGradedOutputs)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(2);
+    const m256i nonce = makeAntNonce(4, 2, 23);
+    const m256i anchor = makePubkey(9);
+
+    AntEngine::ANN root;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), root);
+    const score_engine::Rating rating = f.engine->computeScoreFromParent(
+        root, 0, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+    ASSERT_TRUE(rating.isValid());
+    AntEngine::ANN bestAnn;
+    f.engine->getBestANN(bestAnn);
+
+    std::vector<unsigned char> all(AntEngine::sequenceLength);
+    f.engine->collectOutputs(bestAnn, 0, AntEngine::sequenceLength, all.data());
+    unsigned int misses = 0;
+    for (unsigned long long i = 0; i < AntEngine::windowWidth; ++i)
+    {
+        ASSERT_LE(all[rating.shift + i], AntEngine::TRIT_UNKNOWN);
+        if (all[rating.shift + i] != f.engine->targetOutputs[rating.shift + i])
+        {
+            misses++;
+        }
+    }
+    EXPECT_EQ(misses, rating.error);
+
+    std::vector<unsigned char> tail(AntEngine::shiftCap);
+    f.engine->collectOutputs(bestAnn, AntEngine::windowWidth, AntEngine::shiftCap, tail.data());
+    for (unsigned long long i = 0; i < AntEngine::shiftCap; ++i)
+    {
+        ASSERT_EQ(tail[i], all[AntEngine::windowWidth + i]) << "emit " << (AntEngine::windowWidth + i);
+    }
+
+    // The walk still scores the same after the engine was used for the outputs.
+    const score_engine::Rating again = f.engine->computeScoreFromParent(
+        root, 0, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+    EXPECT_EQ(again.error, rating.error);
+    EXPECT_EQ(again.shift, rating.shift);
+}
+
 // The ANN is exactly wiring + start + LUTs (no padding); a derived root's values are all in range.
 TEST(TestQubicScoreAntColony, RootAnnIsTritValuedAndInRange)
 {
