@@ -1944,7 +1944,10 @@ TEST(EvmLogReadOracle, DataContract)
 
 	// pinned sizes (no padding holes -> canonical bytes for the reply digest)
 	EXPECT_EQ(sizeof(EvmLogRead::OracleQuery), 48u);
-	EXPECT_EQ(sizeof(EvmLogRead::OracleReply), 440u);
+	EXPECT_EQ(sizeof(EvmLogRead::OracleReply), 456u);
+	EXPECT_EQ(offsetof(EvmLogRead::OracleReply, data), 184u);
+	EXPECT_EQ(offsetof(EvmLogRead::OracleReply, blockNumber), 440u);
+	EXPECT_EQ(offsetof(EvmLogRead::OracleReply, blockTimestamp), 448u);
 
 	// registry size table matches the actual structs
 	EXPECT_EQ(OI::oracleInterfaces[EvmLogRead::oracleInterfaceIndex].querySize, sizeof(EvmLogRead::OracleQuery));
@@ -2027,6 +2030,41 @@ TEST(EvmLogReadOracle, ResultCodes)
 	EXPECT_TRUE(E::replyIsValid(reply));
 	reply.code = E::RESULT_TX_NOT_FINALIZED;
 	EXPECT_FALSE(E::replyIsValid(reply));
+}
+
+// The block time converts to a QPI DateAndTime that compares with qpi.now()-style values, e.g. to accept
+// a transfer only if it was made after an order was opened.
+TEST(EvmLogReadOracle, BlockTimeAsDateAndTime)
+{
+	using E = OI::EvmLogRead;
+
+	E::OracleReply reply{};
+	reply.code = E::RESULT_SUCCESS;
+	QPI::DateAndTime t;
+
+	reply.blockTimestamp = 1700000000;              // 2023-11-14 22:13:20 UTC
+	ASSERT_TRUE(E::getBlockDateAndTime(reply, t));
+	EXPECT_EQ(t.getYear(), 2023);
+	EXPECT_EQ(t.getMonth(), 11);
+	EXPECT_EQ(t.getDay(), 14);
+	EXPECT_EQ(t.getHour(), 22);
+	EXPECT_EQ(t.getMinute(), 13);
+	EXPECT_EQ(t.getSecond(), 20);
+	EXPECT_TRUE(t == QPI::DateAndTime(2023, 11, 14, 22, 13, 20));
+
+	reply.blockTimestamp = 1709251199;              // 2024-02-29 23:59:59 UTC (leap day)
+	ASSERT_TRUE(E::getBlockDateAndTime(reply, t));
+	EXPECT_TRUE(t == QPI::DateAndTime(2024, 2, 29, 23, 59, 59));
+	QPI::DateAndTime opened(2024, 3, 1, 0, 0, 0);
+	EXPECT_TRUE(t < opened);                        // a transfer one second before an order opened
+
+	reply.blockTimestamp = 0;
+	ASSERT_TRUE(E::getBlockDateAndTime(reply, t));
+	EXPECT_TRUE(t == QPI::DateAndTime(1970, 1, 1, 0, 0, 0));
+
+	reply.blockTimestamp = 1700000000;
+	reply.code = E::RESULT_TX_NOT_FINALIZED;        // no time from a failed reply
+	EXPECT_FALSE(E::getBlockDateAndTime(reply, t));
 }
 
 // Two queries built with identical logical values must serialize to identical bytes. This guards the

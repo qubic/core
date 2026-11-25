@@ -5,16 +5,23 @@ using namespace QPI;
 *
 * Generic cross-chain read of a SINGLE event log from a FINALIZED EVM receipt. Given
 * (chainId, txHash, logIndex) the oracle machine returns that one log verbatim: the emitter
-* address, its topics and its data, as RAW bytes. No event/ABI semantics are baked in here -
+* address, its topics and its data, as RAW bytes, plus the number and timestamp of the block
+* that includes the transaction. No event/ABI semantics are baked in here -
 * this interface knows nothing about tokens, amounts or any specific event; the querying smart
 * contract decodes the raw log itself.
 *
 * Determinism requirement (see Price.h): the oracle machine MUST only answer from receipts at or
 * below the chain's finalized block (RESULT_TX_NOT_FINALIZED otherwise) and MUST zero all reply
 * value fields except code on failure, so replies are byte-identical across computors.
+* blockTimestamp MUST be read from the block the receipt names (fetched by its hash), so every
+* machine reports the same block's time.
+*
+* Why the block time: a log alone shows that a transfer happened, not when. A contract that accepts
+* a token transfer as payment for an order needs to know the transfer was made after the order was
+* opened, otherwise an older, unrelated transfer between the same addresses could be claimed.
 *
 * This is the generic read_evm_log service contract. Byte layout mirrors oracle-machine
-* oracles/read_evm_log (48-byte query, 440-byte reply).
+* oracles/read_evm_log (48-byte query, 456-byte reply).
 */
 struct EvmLogRead
 {
@@ -80,7 +87,7 @@ struct EvmLogRead
         uint64 logIndex;         // [40..48)
     };
 
-    /// Oracle reply data / output of the oracle machine. Fixed 440 bytes.
+    /// Oracle reply data / output of the oracle machine. Fixed 456 bytes.
     /// On failure (code != RESULT_SUCCESS) all other fields MUST be all-zero so the reply is
     /// canonical across computors.
     struct OracleReply
@@ -102,6 +109,12 @@ struct EvmLogRead
 
         /// The log data, raw bytes, zero-padded beyond dataLen.
         Array<uint8, 256> data;         // [184..440)
+
+        /// Number of the block that includes the transaction.
+        uint64 blockNumber;             // [440..448)
+
+        /// That block's timestamp, in seconds since 1970-01-01 UTC (see getBlockDateAndTime).
+        uint64 blockTimestamp;          // [448..456)
     };
 
     /// Return query fee. Cross-chain EVM reads are comparatively expensive.
@@ -117,5 +130,13 @@ struct EvmLogRead
     static bool replyIsValid(const OracleReply& reply)
     {
         return reply.code == RESULT_SUCCESS;
+    }
+
+    /// Block time as a QPI DateAndTime (UTC), to compare with qpi.now() or a stored DateAndTime.
+    /// Returns false if the reply is not a success or the time is out of DateAndTime's range.
+    static bool getBlockDateAndTime(const OracleReply& reply, DateAndTime& out)
+    {
+        out = DateAndTime(1970, 1, 1, 0, 0, 0);
+        return reply.code == RESULT_SUCCESS && out.add(0, 0, 0, 0, 0, (sint64)reply.blockTimestamp);
     }
 };
