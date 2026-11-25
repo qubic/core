@@ -174,7 +174,7 @@ static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;
 static constexpr unsigned int ANT_MAX_CHILDREN_PER_PARENT = 0;
 
 // Ant colony: tree nodes recorded per epoch; one per accepted solution.
-static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
+static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = (1u << 23) * 3 / 2;
 
 // Ant colony: replay-cache entries, scores this node already computed so a restart does not
 // recompute them. Node-local, not consensus; a miss only costs time.
