@@ -634,14 +634,27 @@ public:
         return output;
     }
 
-    QBAY::mintOfDrop_output mintOfDrop(const id& user, uint32 collectionId, uint64 mintOfDropFee)
+    QBAY::mintOfDrop_output mintOfDrop(const id& user, uint32 collectionId, uint64 mintOfDropFee, const id& expectedRoot = NULL_ID)
     {
         QBAY::mintOfDrop_input input;
         QBAY::mintOfDrop_output output;
 
+        setMemory(input, 0);
         input.collectionId = collectionId;
+        input.expectedRoot = expectedRoot;
 
         invokeUserProcedure(QBAY_CONTRACT_INDEX, 4, input, output, user, mintOfDropFee);
+
+        return output;
+    }
+
+    // 4-byte input (collectionId only), as sent by clients that do not use expectedRoot.
+    QBAY::mintOfDrop_output mintOfDropShortInput(const id& user, uint32 collectionId, uint64 mintOfDropFee)
+    {
+        uint32 input = collectionId;
+        QBAY::mintOfDrop_output output;
+
+        invokeUserProcedure(QBAY_CONTRACT_INDEX, 4, input, output, user, mintOfDropFee, /*checkInputSize=*/false);
 
         return output;
     }
@@ -1690,7 +1703,7 @@ TEST(TestContractQBAY, RandomDrop_ConfigureDropValidation)
 
     increaseEnergy(stranger, 1);
     EXPECT_EQ(pfp.configureDrop(stranger, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::notCollectionCreator);
-    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize - 1).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), 0).returnCode, QBAY::LogInfo::invalidInput);
     EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize + 1).returnCode, QBAY::LogInfo::invalidInput);
     EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, NULL_ID, kDropCollectionSize).returnCode, QBAY::LogInfo::invalidInput);
     EXPECT_EQ(pfp.configureDrop(creator, 7, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::invalidInput);
@@ -1701,17 +1714,27 @@ TEST(TestContractQBAY, RandomDrop_ConfigureDropValidation)
     EXPECT_EQ(pfp.createCollection(creator, 0, 0, 10, 100, 1, uri).returnCode, QBAY::LogInfo::success);
     EXPECT_EQ(pfp.configureDrop(creator, 1, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::notCollectionForDrop);
 
-    // marketplace owner may configure (needed for drops that were running before the upgrade), only once
+    // marketplace owner may configure (needed for drops that were running before the upgrade); the creator may
+    // replace the list as long as nothing has been minted
     EXPECT_EQ(pfp.configureDrop(MARKETPLACE_OWNER, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::success);
-    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::dropAlreadyConfigured);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::success);
 
     auto cfg = pfp.getDropConfig(kDropCollectionId);
     EXPECT_EQ(cfg.status, QBAY_DROP_STATUS_CONFIGURED);
     EXPECT_EQ(cfg.merkleRoot, dropList.root());
     EXPECT_EQ(cfg.numberOfItems, kDropCollectionSize);
     EXPECT_EQ(cfg.remainingItems, kDropCollectionSize);
+    EXPECT_EQ(cfg.reservedItems, kDropCollectionSize);
     EXPECT_EQ(cfg.merkleDepth, 8u);
+    // pool slots are only assigned when the first mint locks the list
+    EXPECT_EQ(pfp.getState()->dropPoolUsed, 0u);
+
+    increaseEnergy(stranger, 1);
+    ASSERT_EQ(pfp.mintOfDrop(stranger, kDropCollectionId, 0).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).status, QBAY_DROP_STATUS_LOCKED);
     EXPECT_EQ(pfp.getState()->dropPoolUsed, kDropCollectionSize);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize - 1).returnCode, QBAY::LogInfo::dropAlreadyConfigured);
+    EXPECT_EQ(pfp.configureDrop(MARKETPLACE_OWNER, kDropCollectionId, dropList.root(), kDropCollectionSize - 1).returnCode, QBAY::LogInfo::dropAlreadyConfigured);
 }
 
 TEST(TestContractQBAY, RandomDrop_EachCommittedItemIsDrawnExactlyOnceAndCallerCannotChooseIt)
@@ -1727,8 +1750,16 @@ TEST(TestContractQBAY, RandomDrop_EachCommittedItemIsDrawnExactlyOnceAndCallerCa
     std::vector<uint32> drawn;
     std::vector<bool> seen(kDropCollectionSize, false);
 
-    // First mint uses the old input layout and passes the URI of item 0: it must be ignored.
-    auto first = pfp.mintOfDropLegacyInput(minter, kDropCollectionId, dropList.uris[0], 0);
+    // The old input layout passing the URI of item 0 does not choose anything: it is refunded (URI bytes land in
+    // expectedRoot, which does not match the committed list).
+    increaseEnergy(minter, 1000);
+    auto legacy = pfp.mintOfDropLegacyInput(minter, kDropCollectionId, dropList.uris[0], 1000);
+    EXPECT_EQ(legacy.returnCode, QBAY::LogInfo::dropRootMismatch);
+    EXPECT_EQ(getBalance(minter), 1001ULL);
+    EXPECT_EQ(pfp.getState()->numberOfNFT, 0u);
+
+    // 4-byte input (no expectedRoot) works
+    auto first = pfp.mintOfDropShortInput(minter, kDropCollectionId, 0);
     EXPECT_EQ(first.returnCode, QBAY::LogInfo::success);
     EXPECT_TRUE(isUriEmpty(pfp.getState()->NFTs.get(first.NFTid).URI));
     drawn.push_back(first.dropIndex);
@@ -1852,4 +1883,215 @@ TEST(TestContractQBAY, RandomDrop_PaymentGoesToCreatorAndOverpaymentIsRefunded)
     EXPECT_EQ(getBalance(minter), 500ULL);
     EXPECT_EQ(getBalance(creator), creatorBefore + price);
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), 0ULL);
+}
+
+TEST(TestContractQBAY, RandomDrop_ShorterListReducesSupplyAndReleasesUnusedSlots)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(661);
+    const id minter = getUser(662);
+    initQbayWithDropCollection(pfp, creator, 0, kDropCollectionSize);
+    constexpr uint32 realItems = 4;
+    QbayDropList dropList(kDropCollectionId, realItems);
+    EXPECT_EQ(pfp.getState()->numberOfNFTIncoming, (uint64)kDropCollectionSize);
+
+    // 200 free slots, only 4 real items
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), realItems).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getState()->Collections.get(kDropCollectionId).currentSize, (sint16)realItems);
+    EXPECT_EQ(pfp.getInfoOfCollectionById(kDropCollectionId).currentSize, (sint32)realItems);
+    auto cfg = pfp.getDropConfig(kDropCollectionId);
+    EXPECT_EQ(cfg.numberOfItems, realItems);
+    EXPECT_EQ(cfg.remainingItems, realItems);
+    EXPECT_EQ(cfg.reservedItems, kDropCollectionSize);
+    EXPECT_EQ(cfg.merkleDepth, 2u);
+    // still reserved while the list can be replaced
+    EXPECT_EQ(pfp.getState()->numberOfNFTIncoming, (uint64)kDropCollectionSize);
+
+    increaseEnergy(minter, 1);
+    std::vector<bool> seen(realItems, false);
+    for (uint32 i = 0; i < realItems; i++)
+    {
+        auto out = pfp.mintOfDrop(minter, kDropCollectionId, 0, dropList.root());
+        ASSERT_EQ(out.returnCode, QBAY::LogInfo::success);
+        ASSERT_LT(out.dropIndex, realItems);
+        EXPECT_FALSE(seen[out.dropIndex]);
+        seen[out.dropIndex] = true;
+        EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, dropList.uris[out.dropIndex], dropList.proof(out.dropIndex)).returnCode, QBAY::LogInfo::success);
+        if (i == 0)
+        {
+            // first mint locks the list and releases the 196 unused slots for other collections
+            EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).status, QBAY_DROP_STATUS_LOCKED);
+            EXPECT_EQ(pfp.getState()->numberOfNFTIncoming, (uint64)realItems);
+            EXPECT_EQ(pfp.getState()->dropPoolUsed, realItems);
+        }
+    }
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, 0).returnCode, QBAY::LogInfo::limitCollectionVolume);
+    EXPECT_EQ(pfp.getState()->numberOfNFT, realItems);
+    EXPECT_EQ(pfp.getState()->numberOfNFTIncoming, (uint64)realItems);
+    EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).remainingItems, 0u);
+}
+
+TEST(TestContractQBAY, RandomDrop_LegacyPartiallyMintedCollectionWithShorterList)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(665);
+    const id minter = getUser(666);
+    initQbayWithDropCollection(pfp, creator, 0, kDropCollectionSize);
+
+    // like mainnet collection 1: a partially minted legacy drop with more free slots than real items left
+    constexpr uint32 freeSlots = 150;
+    constexpr uint32 realItems = 4;
+    QBAY::InfoOfCollection c = pfp.getState()->Collections.get(kDropCollectionId);
+    c.currentSize = (sint16)freeSlots;
+    pfp.getState()->Collections.set(kDropCollectionId, c);
+    const uint64 incomingBefore = pfp.getState()->numberOfNFTIncoming;
+
+    QbayDropList dropList(kDropCollectionId, realItems);
+    EXPECT_EQ(pfp.configureDrop(MARKETPLACE_OWNER, kDropCollectionId, dropList.root(), freeSlots + 1).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.configureDrop(MARKETPLACE_OWNER, kDropCollectionId, dropList.root(), realItems).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).reservedItems, freeSlots);
+
+    increaseEnergy(minter, 1);
+    for (uint32 i = 0; i < realItems; i++)
+    {
+        ASSERT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, 0).returnCode, QBAY::LogInfo::success);
+    }
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, 0).returnCode, QBAY::LogInfo::limitCollectionVolume);
+    EXPECT_EQ(pfp.getState()->numberOfNFTIncoming, incomingBefore - (freeSlots - realItems));
+}
+
+TEST(TestContractQBAY, RandomDrop_ListCanBeReplacedUntilFirstMint)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(671);
+    const id minter = getUser(672);
+    initQbayWithDropCollection(pfp, creator, 0, kDropCollectionSize);
+
+    // a wrong list is committed first ...
+    QbayDropList wrongList(kDropCollectionId, 4);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, wrongList.root(), 4).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getState()->Collections.get(kDropCollectionId).currentSize, (sint16)4);
+
+    // ... and replaced by a longer one (bounded by the free slots at the first configuration, not by currentSize)
+    QbayDropList rightList(kDropCollectionId, 10);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, rightList.root(), kDropCollectionSize + 1).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, rightList.root(), 10).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getState()->Collections.get(kDropCollectionId).currentSize, (sint16)10);
+    auto cfg = pfp.getDropConfig(kDropCollectionId);
+    EXPECT_EQ(cfg.merkleRoot, rightList.root());
+    EXPECT_EQ(cfg.numberOfItems, 10u);
+    EXPECT_EQ(cfg.reservedItems, kDropCollectionSize);
+    EXPECT_EQ(cfg.status, QBAY_DROP_STATUS_CONFIGURED);
+    EXPECT_EQ(pfp.getState()->dropPoolUsed, 0u);
+
+    // the full list could still be restored before the first mint
+    QbayDropList fullList(kDropCollectionId, kDropCollectionSize);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, fullList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, rightList.root(), 10).returnCode, QBAY::LogInfo::success);
+
+    increaseEnergy(minter, 1);
+    auto out = pfp.mintOfDrop(minter, kDropCollectionId, 0);
+    ASSERT_EQ(out.returnCode, QBAY::LogInfo::success);
+    ASSERT_LT(out.dropIndex, 10u);
+    EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).status, QBAY_DROP_STATUS_LOCKED);
+    EXPECT_EQ(pfp.getState()->numberOfNFTIncoming, 10ULL);
+
+    // locked: no replacement any more, by nobody
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, wrongList.root(), 4).returnCode, QBAY::LogInfo::dropAlreadyConfigured);
+    EXPECT_EQ(pfp.configureDrop(MARKETPLACE_OWNER, kDropCollectionId, wrongList.root(), 4).returnCode, QBAY::LogInfo::dropAlreadyConfigured);
+    EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).merkleRoot, rightList.root());
+    EXPECT_EQ(pfp.getState()->Collections.get(kDropCollectionId).currentSize, (sint16)9);
+
+    // only the final list reveals
+    if (out.dropIndex < 4)
+    {
+        EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, wrongList.uris[out.dropIndex], wrongList.proof(out.dropIndex)).returnCode, QBAY::LogInfo::invalidMerkleProof);
+    }
+    EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, rightList.uris[out.dropIndex], rightList.proof(out.dropIndex)).returnCode, QBAY::LogInfo::success);
+}
+
+TEST(TestContractQBAY, RandomDrop_ExpectedRootRefundsMintIfListWasReplaced)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(681);
+    const id minter = getUser(682);
+    constexpr uint64 price = 1000;
+    initQbayWithDropCollection(pfp, creator, price, kDropCollectionSize);
+
+    QbayDropList shownList(kDropCollectionId, 10);
+    QbayDropList swappedList(kDropCollectionId, 5);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, shownList.root(), 10).returnCode, QBAY::LogInfo::success);
+    // creator swaps the list right before the minter's transaction is executed
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, swappedList.root(), 5).returnCode, QBAY::LogInfo::success);
+
+    const uint64 creatorBefore = getBalance(creator);
+    increaseEnergy(minter, price);
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, price, shownList.root()).returnCode, QBAY::LogInfo::dropRootMismatch);
+    EXPECT_EQ(getBalance(minter), price);
+    EXPECT_EQ(getBalance(creator), creatorBefore);
+    EXPECT_EQ(pfp.getState()->numberOfNFT, 0u);
+    EXPECT_EQ(pfp.getDropConfig(kDropCollectionId).status, QBAY_DROP_STATUS_CONFIGURED);
+
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, price, swappedList.root()).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(getBalance(minter), 0ULL);
+    EXPECT_EQ(getBalance(creator), creatorBefore + price);
+}
+
+TEST(TestContractQBAY, RandomDrop_MintOfDropIsPausedWithMarketplaceStatus)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(691);
+    const id minter = getUser(692);
+    constexpr uint64 price = 1000;
+    initQbayWithDropCollection(pfp, creator, price, kDropCollectionSize);
+    QbayDropList dropList(kDropCollectionId, kDropCollectionSize);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, dropList.root(), kDropCollectionSize).returnCode, QBAY::LogInfo::success);
+
+    increaseEnergy(minter, 2 * price);
+    auto first = pfp.mintOfDrop(minter, kDropCollectionId, price);
+    ASSERT_EQ(first.returnCode, QBAY::LogInfo::success);
+
+    // only the marketplace owner can pause
+    EXPECT_EQ(pfp.changeStatusOfMarketPlace(creator, 0).returnCode, QBAY::LogInfo::notOwner);
+    EXPECT_EQ(pfp.changeStatusOfMarketPlace(MARKETPLACE_OWNER, 0).returnCode, QBAY::LogInfo::success);
+
+    // paused: refunded, for everybody (including creator and owner), nothing changes
+    const uint64 creatorBefore = getBalance(creator);
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, price).returnCode, QBAY::LogInfo::notAvailableCreateAndMint);
+    EXPECT_EQ(getBalance(minter), price);
+    EXPECT_EQ(getBalance(creator), creatorBefore);
+    increaseEnergy(creator, price);
+    EXPECT_EQ(pfp.mintOfDrop(creator, kDropCollectionId, price).returnCode, QBAY::LogInfo::notAvailableCreateAndMint);
+    EXPECT_EQ(pfp.mintOfDrop(MARKETPLACE_OWNER, kDropCollectionId, 0).returnCode, QBAY::LogInfo::notAvailableCreateAndMint);
+    EXPECT_EQ(pfp.getState()->numberOfNFT, 1u);
+    EXPECT_EQ(pfp.getState()->Collections.get(kDropCollectionId).currentSize, (sint16)(kDropCollectionSize - 1));
+    EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), 0ULL);
+
+    // reveal still works while paused
+    EXPECT_EQ(pfp.revealDropNFT(minter, first.NFTid, dropList.uris[first.dropIndex], dropList.proof(first.dropIndex)).returnCode, QBAY::LogInfo::success);
+
+    // resume
+    EXPECT_EQ(pfp.changeStatusOfMarketPlace(MARKETPLACE_OWNER, 1).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.mintOfDrop(minter, kDropCollectionId, price).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getState()->numberOfNFT, 2u);
+}
+
+TEST(TestContractQBAY, RandomDrop_ListCanBeFixedWhilePaused)
+{
+    ContractTestingQBAY pfp;
+    const id creator = getUser(695);
+    const id minter = getUser(696);
+    initQbayWithDropCollection(pfp, creator, 0, kDropCollectionSize);
+
+    QbayDropList wrongList(kDropCollectionId, 7);
+    QbayDropList rightList(kDropCollectionId, 4);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, wrongList.root(), 7).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.changeStatusOfMarketPlace(MARKETPLACE_OWNER, 0).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.configureDrop(creator, kDropCollectionId, rightList.root(), 4).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.changeStatusOfMarketPlace(MARKETPLACE_OWNER, 1).returnCode, QBAY::LogInfo::success);
+
+    increaseEnergy(minter, 1);
+    auto out = pfp.mintOfDrop(minter, kDropCollectionId, 0, rightList.root());
+    ASSERT_EQ(out.returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, rightList.uris[out.dropIndex], rightList.proof(out.dropIndex)).returnCode, QBAY::LogInfo::success);
 }
