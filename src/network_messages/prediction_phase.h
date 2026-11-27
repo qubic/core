@@ -23,7 +23,7 @@ struct RespondPredictionPhase
     // First hour that counts, 0 in training
     unsigned int switchFirstHour;
     unsigned int computorsQualified;
-    // An identity qualifies with a solution at shift >= 1, or at shift 0 with at most this many errors
+    // Only a solution with at most this many errors in its frame answers; the first one qualifies the identity
     unsigned int threshold;
     // A solution answers an hour if it is executed at least this long before the hour
     unsigned int deadlineSeconds;

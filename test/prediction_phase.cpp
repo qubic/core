@@ -73,8 +73,10 @@ TEST(TestPredictionPhase, QualifyingNeedsTheThreshold)
     auto phase = makePhase();
     EXPECT_FALSE(phase->needsAnswers(key(1), rating(BPP9000_PREDICTION_THRESHOLD + 1, 0)));
     EXPECT_TRUE(phase->needsAnswers(key(1), rating(BPP9000_PREDICTION_THRESHOLD, 0)));
-    // A solution past the first frame has mastered it.
-    EXPECT_TRUE(phase->needsAnswers(key(1), rating(BPP9000_PREDICTION_THRESHOLD + 500, 1)));
+    // The threshold holds in every frame: a later frame does not qualify by itself.
+    EXPECT_FALSE(phase->needsAnswers(key(1), rating(BPP9000_PREDICTION_THRESHOLD + 1, 1)));
+    EXPECT_FALSE(phase->needsAnswers(key(1), rating(BPP9000_PREDICTION_THRESHOLD + 500, 7)));
+    EXPECT_TRUE(phase->needsAnswers(key(1), rating(BPP9000_PREDICTION_THRESHOLD, 7)));
     EXPECT_EQ(phase->count, 0u);
 }
 
@@ -168,8 +170,8 @@ TEST(TestPredictionPhase, BestNetworkAnswersUntilTheSwitchThenTheLastAccepted)
     ASSERT_TRUE(phase->trySwitch(2000, nowMs, END_HOUR));
 
     // After the switch a weaker solution answers too; the best rating stays.
-    ASSERT_TRUE(phase->needsAnswers(id, rating(4000, 0)));
-    const PredictionEntry& after = phase->recordSolution(id, rating(4000, 0), 2001, 5, nowMs, BASE_HOUR, true, up.data());
+    ASSERT_TRUE(phase->needsAnswers(id, rating(BPP9000_PREDICTION_THRESHOLD, 0)));
+    const PredictionEntry& after = phase->recordSolution(id, rating(BPP9000_PREDICTION_THRESHOLD, 0), 2001, 5, nowMs, BASE_HOUR, true, up.data());
     EXPECT_EQ(after.best.error, 2900u);
     EXPECT_EQ(after.bestTick, 1001u);
     EXPECT_EQ(after.solutionTick, 2001u);
@@ -178,12 +180,45 @@ TEST(TestPredictionPhase, BestNetworkAnswersUntilTheSwitchThenTheLastAccepted)
     EXPECT_EQ(phase->count, BPP9000_PREDICTION_SWITCH_COMPUTORS);
 }
 
+TEST(TestPredictionPhase, ASolutionAboveTheThresholdNeverAnswers)
+{
+    auto phase = makePhase();
+    const long long nowMs = msAt(EPOCH_HOUR + 5);
+    const m256i id = key(0);
+    const std::vector<unsigned char> up = answersOf(1);
+
+    ASSERT_TRUE(phase->needsAnswers(id, rating(3000, 0)));
+    phase->recordSolution(id, rating(3000, 0), 1000, 0, nowMs, BASE_HOUR, true, up.data());
+
+    // Before the switch: a later frame is the better rating, but not with too many errors in that frame.
+    EXPECT_FALSE(phase->needsAnswers(id, rating(BPP9000_PREDICTION_THRESHOLD + 1, 2)));
+    EXPECT_TRUE(phase->needsAnswers(id, rating(BPP9000_PREDICTION_THRESHOLD, 2)));
+
+    qualifyComputors(*phase, 1, BPP9000_PREDICTION_SWITCH_COMPUTORS - 1, nowMs, 1);
+    ASSERT_TRUE(phase->trySwitch(2000, nowMs, END_HOUR));
+
+    // After the switch: neither a first-frame solution nor a later-frame one above the threshold answers.
+    EXPECT_FALSE(phase->needsAnswers(id, rating(BPP9000_PREDICTION_THRESHOLD + 1, 0)));
+    EXPECT_FALSE(phase->needsAnswers(id, rating(BPP9000_SOLUTION_THRESHOLD_DEFAULT, 0)));
+    EXPECT_FALSE(phase->needsAnswers(id, rating(BPP9000_PREDICTION_THRESHOLD + 1, 9)));
+    EXPECT_FALSE(phase->needsAnswers(id, rating(score_engine::Rating::INVALID_ERROR, 0)));
+    EXPECT_TRUE(phase->needsAnswers(id, rating(BPP9000_PREDICTION_THRESHOLD, 0)));
+
+    // The refused solutions left the entry as it was.
+    const int index = phase->find(id);
+    ASSERT_GE(index, 0);
+    EXPECT_EQ(phase->entries[index].best.error, 3000u);
+    EXPECT_EQ(phase->entries[index].solutionTick, 1000u);
+    EXPECT_EQ(phase->entries[index].answers[PREDICTION_MAX_HOURS - 1], 1);
+}
+
 TEST(TestPredictionPhase, SolutionAfterTheDeadlineAnswersTheNextHour)
 {
     auto phase = makePhase();
     const unsigned int hour = EPOCH_HOUR + 6;
     const long long earlyMs = PredictionPhase::deadlineMs(hour);
-    qualifyComputors(*phase, 0, BPP9000_PREDICTION_SWITCH_COMPUTORS, earlyMs, 1);
+    const unsigned int identities = BPP9000_PREDICTION_SWITCH_COMPUTORS + 3;
+    qualifyComputors(*phase, 0, identities, earlyMs, 1);
     ASSERT_TRUE(phase->trySwitch(2000, earlyMs, END_HOUR));
     EXPECT_EQ(phase->switchFirstHour, hour);
 
@@ -193,10 +228,10 @@ TEST(TestPredictionPhase, SolutionAfterTheDeadlineAnswersTheNextHour)
     EXPECT_EQ(entry.answers[hour - BASE_HOUR - 1], 1);
     EXPECT_EQ(entry.answers[hour - BASE_HOUR], 0);
 
-    EXPECT_EQ(phase->countHour(hour, BASE_HOUR, 1), BPP9000_PREDICTION_SWITCH_COMPUTORS);
+    EXPECT_EQ(phase->countHour(hour, BASE_HOUR, 1), identities);
     EXPECT_EQ(entry.hours, 1);
     EXPECT_EQ(entry.correct, 1);
-    EXPECT_EQ(phase->countHour(hour + 1, BASE_HOUR, 1), BPP9000_PREDICTION_SWITCH_COMPUTORS);
+    EXPECT_EQ(phase->countHour(hour + 1, BASE_HOUR, 1), identities);
     EXPECT_EQ(entry.hours, 2);
     EXPECT_EQ(entry.correct, 1);
     EXPECT_EQ(phase->entries[1].correct, 2);
@@ -314,7 +349,7 @@ TEST(TestPredictionPhase, ALoadedStateWithCountersNoNodeWritesIsNotValid)
     auto phase = makePhase();
     const unsigned int hour = EPOCH_HOUR + 6;
     const long long nowMs = PredictionPhase::deadlineMs(hour);
-    qualifyComputors(*phase, 0, BPP9000_PREDICTION_SWITCH_COMPUTORS, nowMs, 1);
+    qualifyComputors(*phase, 0, BPP9000_PREDICTION_SWITCH_COMPUTORS + 3, nowMs, 1);
     ASSERT_TRUE(phase->trySwitch(2000, nowMs, END_HOUR));
     phase->countHour(hour, BASE_HOUR, 1);
     unsigned int closed = 0;
