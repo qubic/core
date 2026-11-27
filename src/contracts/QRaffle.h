@@ -2156,9 +2156,9 @@ protected:
 	{
 		state.mut().qREAmount = QRAFFLE_DEFAULT_QRAFFLE_AMOUNT;
 		state.mut().charityAddress = ID(_D, _P, _Q, _R, _L, _S, _Z, _S, _S, _C, _X, _I, _Y, _F, _I, _Q, _G, _B, _F, _B, _X, _X, _I, _S, _D, _D, _E, _B, _E, _G, _Q, _N, _W, _N, _T, _Q, _U, _E, _I, _F, _S, _C, _U, _W, _G, _H, _V, _X, _J, _P, _L, _F, _G, _M, _Y, _D);
-		state.mut().initialRegister1 = ID(_I, _L, _N, _J, _X, _V, _H, _A, _U, _X, _D, _G, _G, _B, _T, _T, _U, _O, _I, _T, _O, _Q, _G, _P, _A, _Y, _U, _C, _F, _T, _N, _C, _P, _X, _D, _K, _O, _C, _P, _U, _O, _C, _D, _O, _T, _P, _U, _W, _X, _B, _I, _G, _R, _V, _Q, _D);
-		state.mut().initialRegister2 = ID(_L, _S, _D, _A, _A, _C, _L, _X, _X, _G, _I, _P, _G, _G, _L, _S, _O, _C, _L, _M, _V, _A, _Y, _L, _N, _T, _G, _D, _V, _B, _N, _O, _S, _S, _Y, _E, _Q, _D, _R, _K, _X, _D, _Y, _W, _B, _C, _G, _J, _I, _K, _C, _M, _Z, _K, _M, _F);
-		state.mut().initialRegister3 = ID(_G, _H, _G, _R, _L, _W, _S, _X, _Z, _X, _W, _D, _A, _A, _O, _M, _T, _X, _Q, _Y, _U, _P, _R, _L, _P, _N, _K, _C, _W, _G, _H, _A, _E, _F, _I, _R, _J, _I, _Z, _A, _K, _C, _A, _U, _D, _G, _N, _M, _C, _D, _E, _Q, _R, _O, _Q, _B);
+		state.mut().initialRegister1 = ID(_B, _O, _Y, _W, _O, _Y, _X, _A, _D, _Z, _O, _T, _E, _E, _S, _X, _C, _M, _V, _S, _O, _Z, _Q, _F, _Z, _O, _U, _B, _J, _S, _D, _I, _I, _R, _K, _H, _I, _T, _T, _F, _I, _D, _L, _T, _K, _A, _G, _I, _O, _M, _K, _I, _X, _Q, _F, _E);
+		state.mut().initialRegister2 = ID(_F, _I, _H, _O, _T, _E, _X, _I, _O, _K, _E, _M, _W, _A, _W, _Q, _J, _T, _O, _P, _Z, _E, _B, _A, _J, _T, _G, _A, _A, _Y, _O, _H, _B, _Q, _F, _W, _M, _X, _V, _B, _A, _D, _Q, _H, _H, _N, _G, _G, _U, _J, _H, _L, _S, _D, _Y, _G);
+		state.mut().initialRegister3 = ID(_U, _Z, _S, _T, _A, _D, _S, _M, _J, _D, _W, _K, _Y, _C, _A, _Y, _I, _G, _X, _L, _G, _N, _U, _X, _P, _N, _O, _C, _I, _X, _M, _G, _Q, _I, _U, _L, _G, _Z, _Q, _R, _J, _G, _I, _M, _N, _D, _B, _G, _K, _A, _E, _L, _V, _T, _T, _E);
 		state.mut().initialRegister4 = ID(_E, _U, _O, _N, _A, _Z, _J, _U, _A, _G, _V, _D, _C, _E, _I, _B, _A, _H, _J, _E, _T, _G, _U, _U, _H, _M, _N, _D, _J, _C, _S, _E, _T, _T, _Q, _V, _G, _Y, _F, _H, _M, _D, _P, _X, _T, _A, _L, _D, _Y, _U, _V, _E, _P, _F, _C, _A);
 		state.mut().initialRegister5 = ID(_S, _L, _C, _J, _C, _C, _U, _X, _G, _K, _N, _V, _A, _D, _F, _B, _E, _A, _Y, _V, _L, _S, _O, _B, _Z, _P, _A, _B, _H, _K, _S, _G, _M, _H, _W, _H, _S, _H, _G, _G, _B, _A, _P, _J, _W, _F, _V, _O, _K, _Z, _J, _P, _F, _L, _X, _D);
 		state.mut().QXMRIssuer = ID(_Q, _X, _M, _R, _T, _K, _A, _I, _I, _G, _L, _U, _R, _E, _P, _I, _Q, _P, _C, _M, _H, _C, _K, _W, _S, _I, _P, _D, _T, _U, _Y, _F, _C, _F, _N, _Y, _X, _Q, _L, _T, _E, _C, _S, _U, _J, _V, _Y, _E, _M, _M, _D, _E, _L, _B, _M, _D);
@@ -2170,6 +2170,60 @@ protected:
 		state.mut().registers.set(state.get().initialRegister4, 0);
 		state.mut().registers.set(state.get().initialRegister5, 0);
 		state.mut().numberOfRegisters = 5;
+	}
+
+	// Replace one bootstrap register in the live registers map: drop the old ID, add the new ID as an initial register (tokenType 0).
+	struct replaceInitialRegister_input
+	{
+		id oldRegister;
+		id newRegister;
+	};
+	struct replaceInitialRegister_output
+	{
+	};
+
+	PRIVATE_PROCEDURE(replaceInitialRegister)
+	{
+		if (state.get().registers.contains(input.oldRegister))
+		{
+			state.mut().registers.removeByKey(input.oldRegister);
+			state.mut().numberOfRegisters--;
+		}
+		if (!state.get().registers.contains(input.newRegister))
+		{
+			state.mut().registers.set(input.newRegister, 0);
+			state.mut().numberOfRegisters++;
+		}
+	}
+
+	struct BEGIN_EPOCH_locals
+	{
+		replaceInitialRegister_input replaceInput;
+		replaceInitialRegister_output replaceOutput;
+	};
+
+	BEGIN_EPOCH_WITH_LOCALS()
+	{
+		// One-time swap of initial register wallets 1-3 on the already-deployed contract.
+		if (qpi.epoch() == 240)
+		{
+			locals.replaceInput.oldRegister = state.get().initialRegister1;
+			locals.replaceInput.newRegister = ID(_B, _O, _Y, _W, _O, _Y, _X, _A, _D, _Z, _O, _T, _E, _E, _S, _X, _C, _M, _V, _S, _O, _Z, _Q, _F, _Z, _O, _U, _B, _J, _S, _D, _I, _I, _R, _K, _H, _I, _T, _T, _F, _I, _D, _L, _T, _K, _A, _G, _I, _O, _M, _K, _I, _X, _Q, _F, _E);
+			CALL(replaceInitialRegister, locals.replaceInput, locals.replaceOutput);
+			state.mut().initialRegister1 = locals.replaceInput.newRegister;
+
+			locals.replaceInput.oldRegister = state.get().initialRegister2;
+			locals.replaceInput.newRegister = ID(_F, _I, _H, _O, _T, _E, _X, _I, _O, _K, _E, _M, _W, _A, _W, _Q, _J, _T, _O, _P, _Z, _E, _B, _A, _J, _T, _G, _A, _A, _Y, _O, _H, _B, _Q, _F, _W, _M, _X, _V, _B, _A, _D, _Q, _H, _H, _N, _G, _G, _U, _J, _H, _L, _S, _D, _Y, _G);
+			CALL(replaceInitialRegister, locals.replaceInput, locals.replaceOutput);
+			state.mut().initialRegister2 = locals.replaceInput.newRegister;
+
+			locals.replaceInput.oldRegister = state.get().initialRegister3;
+			locals.replaceInput.newRegister = ID(_U, _Z, _S, _T, _A, _D, _S, _M, _J, _D, _W, _K, _Y, _C, _A, _Y, _I, _G, _X, _L, _G, _N, _U, _X, _P, _N, _O, _C, _I, _X, _M, _G, _Q, _I, _U, _L, _G, _Z, _Q, _R, _J, _G, _I, _M, _N, _D, _B, _G, _K, _A, _E, _L, _V, _T, _T, _E);
+			CALL(replaceInitialRegister, locals.replaceInput, locals.replaceOutput);
+			state.mut().initialRegister3 = locals.replaceInput.newRegister;
+
+			if (state.get().registers.needsCleanup()) { state.mut().registers.cleanup(); }
+		}
 	}
 
 	struct END_EPOCH_locals
