@@ -2147,3 +2147,45 @@ TEST(QubicLogReadOracle, DeterministicQueryBytes)
 	build(b);
 	EXPECT_EQ(compareMem(&a, &b, sizeof(Q::OracleQuery)), 0);
 }
+
+// The per-interface "valid" log counter dispatches through replyIsValidFunc, so every interface must be registered.
+TEST(OracleInterfaces, ReplyIsValidRegistry)
+{
+	static unsigned char anyQuery[MAX_ORACLE_QUERY_SIZE] = {};
+	EXPECT_TRUE(OI::initOracleInterfaces());
+	for (uint32_t i = 0; i < OI::oracleInterfacesCount; ++i)
+		EXPECT_NE(OI::replyIsValidFunc[i], nullptr);
+
+	OI::Price::OracleQuery priceQuery{};
+	OI::Price::OracleReply priceReply{};
+	EXPECT_FALSE(OI::replyIsValidFunc[OI::Price::oracleInterfaceIndex](&priceQuery, &priceReply));
+	priceReply.numerator = 1;
+	priceReply.denominator = 1;
+	EXPECT_TRUE(OI::replyIsValidFunc[OI::Price::oracleInterfaceIndex](&priceQuery, &priceReply));
+
+	OI::Mock::OracleQuery mockQuery{};
+	mockQuery.value = 3;
+	OI::Mock::OracleReply mockReply{};
+	mockReply.echoedValue = 3;
+	mockReply.doubledValue = 6;
+	EXPECT_TRUE(OI::replyIsValidFunc[OI::Mock::oracleInterfaceIndex](&mockQuery, &mockReply));
+	mockReply.doubledValue = 7;
+	EXPECT_FALSE(OI::replyIsValidFunc[OI::Mock::oracleInterfaceIndex](&mockQuery, &mockReply));
+
+	OI::DogeShareValidation::OracleReply dogeReply{};
+	EXPECT_FALSE(OI::replyIsValidFunc[OI::DogeShareValidation::oracleInterfaceIndex](anyQuery, &dogeReply));
+	dogeReply.isValid = true;
+	EXPECT_TRUE(OI::replyIsValidFunc[OI::DogeShareValidation::oracleInterfaceIndex](anyQuery, &dogeReply));
+
+	OI::EvmLogRead::OracleReply evmReply{};
+	evmReply.code = OI::EvmLogRead::RESULT_SUCCESS;
+	EXPECT_TRUE(OI::replyIsValidFunc[OI::EvmLogRead::oracleInterfaceIndex](anyQuery, &evmReply));
+	evmReply.code = OI::EvmLogRead::RESULT_TX_NOT_FOUND;
+	EXPECT_FALSE(OI::replyIsValidFunc[OI::EvmLogRead::oracleInterfaceIndex](anyQuery, &evmReply));
+
+	OI::QubicLogRead::OracleReply qubicReply{};
+	qubicReply.code = OI::QubicLogRead::RESULT_SUCCESS;
+	EXPECT_TRUE(OI::replyIsValidFunc[OI::QubicLogRead::oracleInterfaceIndex](anyQuery, &qubicReply));
+	qubicReply.code = OI::QubicLogRead::RESULT_TX_NOT_FOUND;
+	EXPECT_FALSE(OI::replyIsValidFunc[OI::QubicLogRead::oracleInterfaceIndex](anyQuery, &qubicReply));
+}

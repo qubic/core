@@ -56,4 +56,10 @@ struct DogeShareValidation
     {
         return 1000;
     }
+
+    /// True if the oracle machine confirmed the share.
+    static bool replyIsValid(const OracleReply& reply)
+    {
+        return reply.isValid;
+    }
 };
