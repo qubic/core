@@ -133,10 +133,10 @@ static constexpr unsigned long long BPP9000_SHIFT_CAP = 24 * 7;
 static constexpr unsigned int BPP9000_ADVANCE_THRESHOLD = 3504;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4350;
 
-// Prediction phase. An identity qualifies with a solution at shift >= 1, or at shift 0 with at most this many errors.
+// Prediction phase. Only a solution with at most this many errors in its frame answers; the first one qualifies the identity.
 static constexpr unsigned int BPP9000_PREDICTION_THRESHOLD = 3504;
 // The epoch switches to the prediction ranking when this many computors have qualified ...
-static constexpr unsigned int BPP9000_PREDICTION_SWITCH_COMPUTORS = 226;
+static constexpr unsigned int BPP9000_PREDICTION_SWITCH_COMPUTORS = 1;
 // ... unless fewer than this many hours of the epoch are left.
 static constexpr unsigned int BPP9000_PREDICTION_SWITCH_CLOSE_HOURS = 24;
 // A solution answers an hour if it is executed at least this long before the hour.

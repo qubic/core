@@ -17,8 +17,8 @@ This document has two parts:
 ## Summary of changes - prediction phase
 
 Every epoch still starts as before (**training**): an identity is ranked by its best `(shift, error)`.
-Once enough computors have mastered the first frame, the epoch **switches**. From then on the network
-of an identity that has mastered the first frame itself **predicts**: for every coming hour it answers
+Once the first computor has qualified, the epoch **switches**. From then on the network
+of an identity that has qualified itself **predicts**: for every coming hour it answers
 "up" or "down" before the price of that hour exists, and the node counts the hours it got right. With
 enough counted hours the identity is ranked by its **accuracy**.
 
@@ -26,9 +26,9 @@ enough counted hours the identity is ranked by its **accuracy**.
 
 | Rule | Result | Section |
 |------|--------|---------|
-| An identity **qualifies** with an accepted solution at `shift >= 1`, or at shift 0 with `error <= BPP9000_PREDICTION_THRESHOLD` (3504). | only a qualified identity takes part in the prediction | 2.4a |
-| The epoch **switches** when `BPP9000_PREDICTION_SWITCH_COMPUTORS` (226) computors have qualified, unless 24 hours or less of the epoch are left. | without a switch the epoch stays in training | 2.4a |
-| After the switch the **last accepted** solution of an identity gives its answers, also when it is weaker than an earlier one. | the answers of every hour that is still open are replaced | 2.4a |
+| Only an accepted solution with `error <= BPP9000_PREDICTION_THRESHOLD` (3504) in its frame, at any shift, **answers**. An identity **qualifies** with its first one. | only a qualified identity takes part in the prediction; a root child or any other solution above the threshold changes no answer | 2.4a |
+| The epoch **switches** when `BPP9000_PREDICTION_SWITCH_COMPUTORS` (1) computor has qualified, unless 24 hours or less of the epoch are left. | without a switch the epoch stays in training | 2.4a |
+| After the switch the **last accepted** solution of an identity that is within the threshold gives its answers, also when it is weaker than an earlier one. | the answers of every hour that is still open are replaced | 2.4a |
 | A solution answers hour `H` only if it is executed at least `BPP9000_PREDICTION_DEADLINE_SEC` (1800 s, 30 minutes) before `H`. | a later solution is valid but answers only the hours after `H` | 2.4a |
 | An identity with `BPP9000_PREDICTION_MIN_CORRECT` (12) correct hours is ranked by its **accuracy**: correct hours / counted hours. | it ranks above every identity that is not ranked by accuracy; those stay ranked as in training | 2.4a |
 
@@ -37,8 +37,8 @@ enough counted hours the identity is ranked by its **accuracy**.
 - Nothing in the solution, the scoring, the transaction or the deposit.
 - Read the phase with `REQUEST_PREDICTION_PHASE` (82 / 83) and the state of an identity with
   `REQUEST_PREDICTION_IDENTITY` (84 / 85) (sections 2.7f, 2.7g).
-- After the switch, publish a solution only if its network is the one meant to predict: every accepted
-  solution of the identity replaces its answers for the open hours.
+- After the switch, every accepted solution within the prediction threshold replaces the identity's
+  answers for the open hours. Publish such a solution only if its network is the one meant to predict.
 - A network's answers are fixed when the network is created. Compute them before publishing
   (section 2.4a).
 
@@ -182,8 +182,8 @@ parent that cleared it.
 At epoch end the node ranks every identity by its **single best** `(shift, error)` and **harvests the top 676**
 (the number of computors).
 
-**Prediction phase (bpp9000).** That ranking holds while the epoch is in training. When 226 computors
-have mastered the first frame, the epoch switches and the networks start to predict the coming hours.
+**Prediction phase (bpp9000).** That ranking holds while the epoch is in training. When the first computor
+has qualified, the epoch switches and the networks start to predict the coming hours.
 An identity with enough counted hours is then ranked first by its accuracy (correct hours / counted
 hours), and its best `(shift, error)` only breaks ties. All other identities stay ranked as in training,
 below those. Section 2.4a has the rules.
@@ -393,11 +393,13 @@ An epoch has two phases. It starts in **training**, where an identity is ranked 
 rules of section 2.4 are the same in both phases.
 
 **Qualifying.** An identity qualifies with a solution that is accepted, has a matching claimed score,
-and has `shift >= 1`, or `error <= BPP9000_PREDICTION_THRESHOLD` at shift 0. Computors and candidates
-can qualify.
+and has `error <= BPP9000_PREDICTION_THRESHOLD` in its own frame. The shift does not matter: a solution
+at `shift >= 1` with more errors than the threshold does not qualify. Computors and candidates can
+qualify.
 
-**The switch.** The epoch switches in the tick in which the 226th current computor qualifies
-(`BPP9000_PREDICTION_SWITCH_COMPUTORS`); candidates do not count for this number. It does not switch
+**The switch.** The epoch switches in the tick in which the first current computor qualifies
+(`BPP9000_PREDICTION_SWITCH_COMPUTORS` = 1); a candidate that qualifies earlier does not switch it. Every
+identity is counted from its own qualification on, so there is no waiting for other identities. It does not switch
 when 24 hours or less of the epoch are left (`BPP9000_PREDICTION_SWITCH_CLOSE_HOURS`); the epoch then
 ends in training. There is one switch per epoch, and the next epoch starts in training again.
 
@@ -415,7 +417,9 @@ frame.
 
 **Which network answers.** Before the switch the node keeps the answers of the identity's best-rated
 network. After the switch every accepted solution of the identity with a matching claimed score
-replaces them, also a weaker one, and also a `ValidNotStored` one. An identity that publishes nothing
+replaces them, also a weaker one, and also a `ValidNotStored` one. In both phases a solution with
+`error > BPP9000_PREDICTION_THRESHOLD` in its frame never answers: it is ranked and refunded like any
+other accepted solution, and the identity keeps the answers it has. An identity that publishes nothing
 keeps the answers it has.
 
 **The deadline.** A solution answers hour `H` only if the tick that executes it has a time not later
@@ -472,7 +476,7 @@ vote of that tick.
 | `PRED_RES` | the tick the price of an hour is stored | `hour`, `target` (0 down, 1 up, 2 = no price, the hour counts for nobody) |
 
 **For a miner.** Read the phase (section 2.7f). Before the switch nothing changes. After the switch
-and once the identity has qualified, every accepted solution becomes the identity's predictor, so
+and once the identity has qualified, every accepted solution within the threshold becomes the identity's predictor, so
 publish only a network whose answers you want, and publish it well before the deadline of the next
 hour. `threshold` and `deadlineSeconds` in the phase reply are the values the node uses. `hours` and
 `correct` in the identity reply (section 2.7g) are the two numbers the accuracy is made of.

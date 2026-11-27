@@ -1,9 +1,9 @@
 #pragma once
 
-// Prediction phase of a bpp9000 epoch. An identity qualifies with a solution that clears
-// BPP9000_PREDICTION_THRESHOLD. Once BPP9000_PREDICTION_SWITCH_COMPUTORS computors have qualified, the hours
-// a qualified identity's network answers right are counted, and with enough counted hours the identity is
-// ranked by its accuracy.
+// Prediction phase of a bpp9000 epoch. Only a solution with at most BPP9000_PREDICTION_THRESHOLD errors
+// answers; an identity qualifies with its first one. Once BPP9000_PREDICTION_SWITCH_COMPUTORS computors have
+// qualified, the hours a qualified identity's network answers right are counted, and with enough counted hours
+// the identity is ranked by its accuracy.
 // A solution executed at least BPP9000_PREDICTION_DEADLINE_SEC before an hour answers that hour and the later ones.
 
 #include "platform/m256.h"
@@ -36,7 +36,7 @@ static_assert(BPP9000_PREDICTION_SWITCH_CLOSE_HOURS < PREDICTION_HOURS_PER_EPOCH
 struct PredictionEntry
 {
     m256i publicKey;
-    // Best rating of the identity and the tick it was reached in.
+    // Best rating among the identity's answering solutions and the tick it was reached in.
     score_engine::Rating best;
     unsigned int bestTick;
     // First hour that is counted for the identity.
@@ -127,12 +127,17 @@ struct PredictionPhase
     }
 
     // True if an accepted solution with this rating changes the identity's state; its answers are needed then.
+    // A solution with more than BPP9000_PREDICTION_THRESHOLD errors in its frame never answers, at any shift.
     bool needsAnswers(const m256i& publicKey, const score_engine::Rating& rating) const
     {
+        if (rating.error > BPP9000_PREDICTION_THRESHOLD)
+        {
+            return false;
+        }
         const int index = find(publicKey);
         if (index < 0)
         {
-            return count < MAX_NUMBER_OF_MINERS && rating.clearsFloor(BPP9000_PREDICTION_THRESHOLD);
+            return count < MAX_NUMBER_OF_MINERS;
         }
         return isSwitched() || rating.isBetterThan(entries[index].best);
     }
