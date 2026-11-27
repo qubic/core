@@ -2317,6 +2317,10 @@ TEST(TestContractQBAY, DuplicateCleanup_AppliesMainnetListOnceAtFirstBeginEpoch)
     b2318.statusOfExchange = 1;
     pfp.getState()->NFTs.set(2318, b2318);
     const QBAY::InfoOfNFT untouchedBefore = pfp.getState()->NFTs.get(5000);
+    std::map<uint32, QBAY::InfoOfNFT> setUriBefore;
+    for (const auto& e : kQbayCleanupList)
+        if (!e.burn)
+            setUriBefore[e.NFTid] = pfp.getState()->NFTs.get(e.NFTid);
 
     pfp.beginEpoch();
     EXPECT_EQ(pfp.getState()->duplicateCleanupDone, 1u);
@@ -2340,10 +2344,24 @@ TEST(TestContractQBAY, DuplicateCleanup_AppliesMainnetListOnceAtFirstBeginEpoch)
             EXPECT_TRUE(isUriEqual(n.URI, uriFromString(e.newURI))) << e.NFTid;
             EXPECT_EQ(n.creator, setUriCreator(e.NFTid)) << e.NFTid;
             EXPECT_EQ(n.possessor, setUriHolder(e.NFTid)) << e.NFTid;
-            // fixed-price listings of the old item are cancelled (1814's auction is over, so it is one of them)
-            EXPECT_EQ(n.statusOfSale, 0) << e.NFTid;
-            if (isListed(e.NFTid))
-                EXPECT_EQ(n.salePrice, QBAY_SALE_PRICE) << e.NFTid;
+            // only the URI changes: the 11 listings (incl. 1814) stay listed at their price
+            EXPECT_EQ(n.statusOfSale, isListed(e.NFTid) ? 1 : 0) << e.NFTid;
+            EXPECT_EQ(n.salePrice, isListed(e.NFTid) ? 222222222ULL : QBAY_SALE_PRICE) << e.NFTid;
+            // every other field is exactly as before (compared field by field; memcmp would include padding bytes)
+            const QBAY::InfoOfNFT& b = setUriBefore[e.NFTid];
+            EXPECT_EQ(n.askUser, b.askUser) << e.NFTid;
+            EXPECT_EQ(n.creatorOfAuction, b.creatorOfAuction) << e.NFTid;
+            EXPECT_EQ(n.askMaxPrice, b.askMaxPrice) << e.NFTid;
+            EXPECT_EQ(n.currentPriceOfAuction, b.currentPriceOfAuction) << e.NFTid;
+            EXPECT_EQ(n.startTimeOfAuction, b.startTimeOfAuction) << e.NFTid;
+            EXPECT_EQ(n.endTimeOfAuction, b.endTimeOfAuction) << e.NFTid;
+            EXPECT_EQ(n.royalty, b.royalty) << e.NFTid;
+            EXPECT_EQ(n.NFTidForExchange, b.NFTidForExchange) << e.NFTid;
+            EXPECT_EQ(n.statusOfAuction, b.statusOfAuction) << e.NFTid;
+            EXPECT_EQ(n.statusOfAsk, b.statusOfAsk) << e.NFTid;
+            EXPECT_EQ(n.paymentMethodOfAsk, b.paymentMethodOfAsk) << e.NFTid;
+            EXPECT_EQ(n.statusOfExchange, b.statusOfExchange) << e.NFTid;
+            EXPECT_EQ(n.paymentMethodOfAuction, b.paymentMethodOfAuction) << e.NFTid;
             changed++;
         }
     }
@@ -2413,7 +2431,7 @@ TEST(TestContractQBAY, DuplicateCleanup_SkipsEntriesWhoseStateChanged)
     EXPECT_EQ(pfp.getState()->NFTs.get(2318).possessor, kBurnCreator);
     EXPECT_EQ(pfp.getState()->NFTs.get(2459).possessor, NULL_ID);    // unaffected entries still applied
     EXPECT_TRUE(isUriEqual(pfp.getState()->NFTs.get(1093).URI, uriFromString("bafkreisomethingelse")));
-    // URI is applied, but the listing of an NFT with a running auction is not touched
+    // URI is applied, the listing (here with a running auction) is not touched
     EXPECT_TRUE(isUriEqual(pfp.getState()->NFTs.get(1351).URI, uriFromString("bafkreiftenmweonnuyuujw6evic3ftqxlwyihci6azawmg53oost66c6zm")));
     EXPECT_EQ(pfp.getState()->NFTs.get(1351).statusOfSale, 1);
     EXPECT_EQ(pfp.getState()->NFTs.get(1351).salePrice, 222222222ULL);

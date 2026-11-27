@@ -60,19 +60,17 @@ STATIC_ASSERT(QBAY_MAX_DROP_COLLECTION_SIZE < 65535U, QbayDropPoolEntriesMustFit
 //   - burn (42 NFTs, all held by their creator): possessor := NULL_ID. Skipped if the NFT is no longer held by its
 //     creator, is listed for sale, has a running auction or an open offer. Open exchange proposals that target or
 //     offer a burned NFT are cancelled, so a burned NFT can never be swapped out of NULL_ID again.
-//   - set URI (52 NFTs): URI := new URI. Skipped if the current URI is not the expected one. A fixed-price listing
-//     (no running auction) is cancelled so that nobody buys an item different from the one that was listed.
-//     Nothing else is changed.
+//   - set URI (52 NFTs): URI := new URI. Skipped if the current URI is not the expected one. Nothing else is
+//     changed: listings, auctions, offers and exchange proposals stay as they are.
 // Every entry is logged with its result (applied / skipped and why).
 // ---------------------------------------------------------------------------------------------------------------
 constexpr uint32 QBAY_CLEANUP_APPLIED = 0;
-constexpr uint32 QBAY_CLEANUP_APPLIED_SALE_CANCELLED = 1;                 // set URI applied and fixed-price listing cancelled
-constexpr uint32 QBAY_CLEANUP_SKIPPED_NO_NFT = 2;
-constexpr uint32 QBAY_CLEANUP_SKIPPED_POSSESSOR_CHANGED = 3;
-constexpr uint32 QBAY_CLEANUP_SKIPPED_FOR_SALE = 4;
-constexpr uint32 QBAY_CLEANUP_SKIPPED_AUCTION_RUNNING = 5;
-constexpr uint32 QBAY_CLEANUP_SKIPPED_OPEN_OFFER = 6;
-constexpr uint32 QBAY_CLEANUP_SKIPPED_URI_CHANGED = 7;
+constexpr uint32 QBAY_CLEANUP_SKIPPED_NO_NFT = 1;
+constexpr uint32 QBAY_CLEANUP_SKIPPED_POSSESSOR_CHANGED = 2;
+constexpr uint32 QBAY_CLEANUP_SKIPPED_FOR_SALE = 3;
+constexpr uint32 QBAY_CLEANUP_SKIPPED_AUCTION_RUNNING = 4;
+constexpr uint32 QBAY_CLEANUP_SKIPPED_OPEN_OFFER = 5;
+constexpr uint32 QBAY_CLEANUP_SKIPPED_URI_CHANGED = 6;
 
 struct QBAY2
 {
@@ -3462,7 +3460,6 @@ struct QBAY : public ContractBase
 		Array<uint64, 8> expectedWords;
 		Array<uint64, 8> newWords;
 		CleanupLogger log;
-		uint32 curDate;
 		uint32 _t;
 	};
 
@@ -3507,16 +3504,7 @@ struct QBAY : public ContractBase
 			{
 				locals.nft.URI.set(locals._t, (uint8)((locals.newWords.get(locals._t >> 3) >> ((locals._t & 7) << 3)) & 0xFF));
 			}
-
-			// A fixed-price listing was made for the old item: cancel it (like cancelSale). Running auctions and
-			// exchange proposals are left untouched.
-			packQbayDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-			if (locals.nft.statusOfSale == 1 && locals.curDate > locals.nft.endTimeOfAuction)
-			{
-				locals.nft.salePrice = QBAY_SALE_PRICE;
-				locals.nft.statusOfSale = 0;
-				output.result = QBAY_CLEANUP_APPLIED_SALE_CANCELLED;
-			}
+			// only the URI changes: listings, auctions, offers and exchange proposals stay as they are
 			state.mut().NFTs.set(input.NFTid, locals.nft);
 		}
 
