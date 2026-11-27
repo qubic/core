@@ -54,8 +54,10 @@ STATIC_ASSERT(QBAY_MAX_DROP_COLLECTION_SIZE < 65535U, QbayDropPoolEntriesMustFit
 // One-time cleanup of duplicate NFTs (runs once, in the first BEGIN_EPOCH executed by this code)
 //
 // Before the on-chain random drop, mintOfDrop minted any caller-supplied URI, so some drop items exist more than
-// once on mainnet. QubicBay compiled the list in BEGIN_EPOCH (93 NFTs, checked against mainnet state in epoch 241):
-//   - burn (41 NFTs, all held by their creator): possessor := NULL_ID. Skipped if the NFT is no longer held by its
+// once on mainnet. The list in BEGIN_EPOCH has 94 NFTs: QubicBay's list of 93 plus NFT 4287, found by a scan of all
+// 7683 NFTs (mainnet state of epoch 241). After the cleanup the only URI still used twice is the one of 4218 and 4641,
+// which are both held by buyers and are left as they are.
+//   - burn (42 NFTs, all held by their creator): possessor := NULL_ID. Skipped if the NFT is no longer held by its
 //     creator, is listed for sale, has a running auction or an open offer. Open exchange proposals that target or
 //     offer a burned NFT are cancelled, so a burned NFT can never be swapped out of NULL_ID again.
 //   - set URI (52 NFTs): URI := new URI. Skipped if the current URI is not the expected one. A fixed-price listing
@@ -3550,7 +3552,7 @@ struct QBAY : public ContractBase
 		{
 			state.mut().duplicateCleanupDone = 1;
 
-			// burn (41): possessor := NULL_ID
+			// burn (42): possessor := NULL_ID
 			locals.burn.NFTid = 11; CALL(_cleanupBurn, locals.burn, locals.burnOutput);	// 0 Qbros, QmUwdk6TQRTAR91KJjQPUHhP8KRcMyFbvTQGQTJAsffYR7
 			locals.burn.NFTid = 12; CALL(_cleanupBurn, locals.burn, locals.burnOutput);	// 0 Qbros, QmPL2DyvsKFYK1pM6wftGw5nwHZpTDbiTsXUJFte82FEZB
 			locals.burn.NFTid = 32; CALL(_cleanupBurn, locals.burn, locals.burnOutput);	// 0 Qbros, QmZHi3GzSNUXhpcjxGMtr58YNdPzsd2fm7KTVMRgnsoyuC
@@ -3592,6 +3594,7 @@ struct QBAY : public ContractBase
 			locals.burn.NFTid = 2987; CALL(_cleanupBurn, locals.burn, locals.burnOutput);	// 5 COINS, bafkreicoye6lazruo53ux6agrsdzzv5gqdznbk2gcycly4gm4xawdsj4lq
 			locals.burn.NFTid = 2992; CALL(_cleanupBurn, locals.burn, locals.burnOutput);	// 5 COINS, bafkreihykkfmx2kuqooxjkstlfmfso45yff5uk6lsby335uqeto4tz5v5a
 			locals.burn.NFTid = 3033; CALL(_cleanupBurn, locals.burn, locals.burnOutput);	// 5 COINS, bafkreihgp6l6yj4ggnzsud3tvb5ezhlut5uqfu3jwp2ggh7itfzdidfn6q
+			locals.burn.NFTid = 4287; CALL(_cleanupBurn, locals.burn, locals.burnOutput);	// creator SLYTYG..., Qmdp4qrwB4rUbXnQCT9GK6y33U8UVCrnhz76mkVt4648v3 (5680 keeps it)
 			CALL(_cleanupCancelProposals, locals.cancelProposals, locals.cancelProposalsOutput);
 
 			// set URI (52): NFTid, 0, expected current URI (8 little-endian words), new URI (8 words)

@@ -2099,7 +2099,8 @@ TEST(TestContractQBAY, RandomDrop_ListCanBeFixedWhilePaused)
 // ---------------------------------------------------------------------------------------------------------------
 // One-time duplicate NFT cleanup (BEGIN_EPOCH)
 // ---------------------------------------------------------------------------------------------------------------
-// Generated from QubicBay's duplicate-NFT list (93 entries, checked against mainnet in epoch 241).
+// Generated from QubicBay's duplicate-NFT list (93 entries, checked against mainnet in epoch 241), plus NFT 4287
+// found by the full mainnet scan.
 struct QbayCleanupEntry { uint32 NFTid; bool burn; const char* collection; const char* currentURI; const char* newURI; };
 static const QbayCleanupEntry kQbayCleanupList[] = {
     { 11, true, "0 Qbros", "QmUwdk6TQRTAR91KJjQPUHhP8KRcMyFbvTQGQTJAsffYR7", "" },
@@ -2143,6 +2144,7 @@ static const QbayCleanupEntry kQbayCleanupList[] = {
     { 2987, true, "5 COINS", "bafkreicoye6lazruo53ux6agrsdzzv5gqdznbk2gcycly4gm4xawdsj4lq", "" },
     { 2992, true, "5 COINS", "bafkreihykkfmx2kuqooxjkstlfmfso45yff5uk6lsby335uqeto4tz5v5a", "" },
     { 3033, true, "5 COINS", "bafkreihgp6l6yj4ggnzsud3tvb5ezhlut5uqfu3jwp2ggh7itfzdidfn6q", "" },
+    { 4287, true, "creator SLYTYG", "Qmdp4qrwB4rUbXnQCT9GK6y33U8UVCrnhz76mkVt4648v3", "" },
     { 58, false, "0 Qbros", "QmZDWEAfu3idRbHMxKZ2tWkfjyq1wVh4ZeESDJAnjd2RQN", "QmVxrTgtgFJDbv2rhbY5gfexA8FhVmGzHQ7VSEPzTtoy7c" },
     { 1093, false, "1 Qub3s", "bafkreidl2466vup54msnmoqs2pj5cwxyl7kznwfeidnbu7izngffntfxte", "bafkreiai7kh5736g5ww5fgm5ozpcie744tc3z2snhzhkd56fxivi6ouf64" },
     { 1351, false, "1 Qub3s", "bafkreihprtknbui4eqmj3vmigg727guds3qvommtlmckb5wl5e4acfsyjq", "bafkreiftenmweonnuyuujw6evic3ftqxlwyihci6azawmg53oost66c6zm" },
@@ -2293,7 +2295,14 @@ TEST(TestContractQBAY, DuplicateCleanup_AppliesMainnetListOnceAtFirstBeginEpoch)
 {
     ContractTestingQBAY pfp;
     buildMainnetLikeState(pfp);
-    EXPECT_EQ(sizeof(kQbayCleanupList) / sizeof(kQbayCleanupList[0]), 93u);
+    EXPECT_EQ(sizeof(kQbayCleanupList) / sizeof(kQbayCleanupList[0]), 94u);
+
+    // 5680 is the buyer-held copy of 4287's item; it must keep it
+    QBAY::InfoOfNFT k5680 = pfp.getState()->NFTs.get(5680);
+    k5680.URI = uriFromString("Qmdp4qrwB4rUbXnQCT9GK6y33U8UVCrnhz76mkVt4648v3");
+    k5680.creator = kBurnCreator;
+    k5680.possessor = kOtherHolder;
+    pfp.getState()->NFTs.set(5680, k5680);
 
     // Burn targets 11 and 2318 carry open exchange proposals set up before the upgrade:
     //  - 100 (accomplice) holds a proposal that offers 11 -> accepting it after the burn would resurrect 11
@@ -2338,8 +2347,10 @@ TEST(TestContractQBAY, DuplicateCleanup_AppliesMainnetListOnceAtFirstBeginEpoch)
             changed++;
         }
     }
-    EXPECT_EQ(burned, 41u);
+    EXPECT_EQ(burned, 42u);
     EXPECT_EQ(changed, 52u);
+    EXPECT_EQ(pfp.getState()->NFTs.get(5680).possessor, kOtherHolder);
+    EXPECT_TRUE(isUriEqual(pfp.getState()->NFTs.get(5680).URI, uriFromString("Qmdp4qrwB4rUbXnQCT9GK6y33U8UVCrnhz76mkVt4648v3")));
 
     // 1814: auction fields untouched; 1872: incoming exchange proposal untouched
     EXPECT_EQ(pfp.getState()->NFTs.get(1814).statusOfAuction, 1);
