@@ -12,6 +12,44 @@ constexpr uint32 QBAY_FEE_NFT_SALE_SHAREHOLDERS = 10;
 // Max royalty percent leaving room for market (20/1000) and shareholder (10/1000) fees on QU sales.
 constexpr uint32 QBAY_MAX_ROYALTY_PERCENT = 100 - div(QBAY_FEE_NFT_SALE_MARKET + QBAY_FEE_NFT_SALE_SHAREHOLDERS, 10U);
 
+// ---------------------------------------------------------------------------------------------------------------
+// On-chain random drop (anti-reroll fix)
+//
+// Before this change, mintOfDrop() minted whatever URI the caller passed in. The drop item was therefore chosen
+// off-chain (by the QubicBay server) and the caller could look up the rarity of the offered item, re-roll the
+// server until a rare one was offered and then mint exactly that one (or simply pass any URI it liked).
+//
+// Now the drop item is chosen by the contract:
+//   1. configureDrop(): the collection creator (or marketplace owner) commits a Merkle root over the ordered list of
+//      the drop items (one leaf per item URI). The list may be shorter than the free slots of the collection; the
+//      collection supply (currentSize) is then reduced to the list length. The list can be replaced any number of
+//      times until the first mintOfDrop of the collection; from then on it is immutable (locked).
+//   2. mintOfDrop(): after payment, the contract draws a uniformly random item index among the not-yet-minted items
+//      (lazy Fisher-Yates shuffle, O(1) per mint). The entropy is derived from the digests of the previous tick,
+//      which do not exist yet when the minter signs the transaction (tick data of tick T is fixed while tick T-2 is
+//      processed), so the result cannot be predicted or chosen by the minter. The minted NFT is bound to that index.
+//      The minter can pass the root of the list it was shown (expectedRoot) so that a list replaced just before the
+//      mint is refunded instead of minted. mintOfDrop is paused while the marketplace status is off.
+//   3. revealDropNFT(): anyone can set the NFT URI by presenting the URI committed at that index together with its
+//      Merkle proof. The URI of a drop NFT can never be anything else than the committed one for its drawn index.
+// ---------------------------------------------------------------------------------------------------------------
+constexpr uint32 QBAY_MAX_DROP_COLLECTION_SIZE = 10000;                    // createCollection: volume <= 10 -> <= 10000 NFTs
+constexpr uint32 QBAY_DROP_MAX_MERKLE_DEPTH = 16;                          // 2^16 leaves >= QBAY_MAX_DROP_COLLECTION_SIZE
+constexpr uint8 QBAY_DROP_STATUS_NOT_CONFIGURED = 0;                       // mintOfDrop is disabled for the collection
+constexpr uint8 QBAY_DROP_STATUS_CONFIGURED = 1;                           // list committed, mintOfDrop enabled, list can still be replaced
+constexpr uint8 QBAY_DROP_STATUS_LOCKED = 2;                               // first item minted, list is immutable
+// Packed per-NFT drop record (state.dropNFTInfo): bits 0..13 drop index, bits 14..28 collection id, bit 30 minted by
+// random drop, bit 31 revealed. 0 means "not a random-drop NFT" (all NFTs minted before this upgrade).
+constexpr uint32 QBAY_DROP_NFT_INDEX_BITS = 14;
+constexpr uint32 QBAY_DROP_NFT_INDEX_MASK = (1U << QBAY_DROP_NFT_INDEX_BITS) - 1U;
+constexpr uint32 QBAY_DROP_NFT_COLLECTION_MASK = (1U << 15) - 1U;
+constexpr uint32 QBAY_DROP_NFT_FLAG_MINTED = 1U << 30;
+constexpr uint32 QBAY_DROP_NFT_FLAG_REVEALED = 1U << 31;
+STATIC_ASSERT(QBAY_MAX_DROP_COLLECTION_SIZE - 1U <= QBAY_DROP_NFT_INDEX_MASK, QbayDropIndexMustFitIntoPackedNFTInfo);
+STATIC_ASSERT(QBAY_MAX_COLLECTION - 1U <= QBAY_DROP_NFT_COLLECTION_MASK, QbayCollectionIdMustFitIntoPackedNFTInfo);
+STATIC_ASSERT(QBAY_MAX_DROP_COLLECTION_SIZE <= (1U << QBAY_DROP_MAX_MERKLE_DEPTH), QbayDropMerkleDepthTooSmall);
+STATIC_ASSERT(QBAY_MAX_DROP_COLLECTION_SIZE < 65535U, QbayDropPoolEntriesMustFitIntoUint16);
+
 struct QBAY2
 {
 };
@@ -57,6 +95,18 @@ struct QBAY : public ContractBase
 		saleStatus = 30,
 		creatorOfAuction = 31,
 		possessor = 32,
+		//		For on-chain random drop
+		dropNotConfigured = 33,
+		dropAlreadyConfigured = 34,				// the list is locked (an item has been minted already)
+		invalidMerkleProof = 35,
+		notDropNFT = 36,
+		alreadyRevealed = 37,
+		dropRootMismatch = 38,					// mintOfDrop: expectedRoot differs from the committed list
+		//		Event log types (not return codes)
+		dropConfiguredEvent = 40,
+		dropMintedEvent = 41,
+		dropRevealedEvent = 42,
+		dropLockedEvent = 43,
 	};
 
 	struct Logger
@@ -64,6 +114,59 @@ struct QBAY : public ContractBase
 		uint32 _contractIndex;
 		uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
 		sint8 _terminator; // Only data before "_terminator" are logged
+	};
+
+	struct DropLogger
+	{
+		uint32 _contractIndex;
+		uint32 _type;
+		uint32 collectionId;
+		uint32 NFTid;
+		uint32 dropIndex;
+		sint8 _terminator; // Only data before "_terminator" are logged
+	};
+
+	// Per-collection configuration of the on-chain random drop.
+	struct DropConfig
+	{
+		id merkleRoot;							// Merkle root over the committed item list (see DropMerkleLeaf / DropMerkleNode)
+		uint32 poolOffset;						// first slot of this collection inside state.dropPool (assigned when locked)
+		uint16 numberOfItems;					// number of committed items (== currentSize while not locked)
+		uint8 merkleDepth;						// ceil(log2(numberOfItems)), leaves beyond numberOfItems are NULL_ID
+		uint8 status;							// QBAY_DROP_STATUS_*
+		uint16 reservedItems;					// free slots of the collection at the first configureDrop (upper bound of numberOfItems)
+		uint16 _padding0;
+		uint32 _padding1;
+	};
+
+	// Leaf of the drop Merkle tree: K12 of this 72-byte struct (no padding). URI bytes >= QBAY_LENGTH_OF_URI are 0.
+	// Leaves (72 bytes) and inner nodes (64 bytes) have different input lengths, so they cannot be confused.
+	struct DropMerkleLeaf
+	{
+		uint32 collectionId;
+		uint32 dropIndex;
+		Array<uint8, 64> URI;
+	};
+
+	// Inner node of the drop Merkle tree: K12 of this 64-byte struct.
+	struct DropMerkleNode
+	{
+		id left;
+		id right;
+	};
+
+	// Input of the per-mint entropy hash (176 bytes, no padding).
+	struct DropEntropyInput
+	{
+		id prevSpectrumDigest;
+		id prevUniverseDigest;
+		id prevComputerDigest;
+		id previousDropEntropy;
+		id minter;
+		uint32 tick;
+		uint32 collectionId;
+		uint32 remaining;
+		uint32 NFTid;
 	};
 
 	struct InfoOfCollection
@@ -120,7 +223,37 @@ struct QBAY : public ContractBase
 
 		Array<InfoOfCollection, QBAY_MAX_COLLECTION> Collections;
 		Array<InfoOfNFT, QBAY_MAX_NUMBER_NFT> NFTs;
+
+		// ----- Added for the on-chain random drop. Appended at the end so the upgrade is a PADDING state change:
+		// ----- all fields above keep their layout and the new fields start zeroed (= no drop configured).
+		id dropEntropy;													// hash chain of all drop draws
+		uint32 dropPoolUsed;											// number of dropPool slots handed out to collections
+		uint32 dropReserved;											// keeps the layout free of implicit padding
+		Array<DropConfig, QBAY_MAX_COLLECTION> dropConfigs;				// indexed by collection id
+		Array<uint16, QBAY_MAX_NUMBER_NFT> dropPool;					// lazy Fisher-Yates pools (0 = identity, else index + 1)
+		Array<uint32, QBAY_MAX_NUMBER_NFT> dropNFTInfo;					// indexed by NFT id, packed (see QBAY_DROP_NFT_*)
 	};
+
+	inline static uint32 packDropNFTInfo(uint32 collectionId, uint32 dropIndex)
+	{
+		return QBAY_DROP_NFT_FLAG_MINTED | ((collectionId & QBAY_DROP_NFT_COLLECTION_MASK) << QBAY_DROP_NFT_INDEX_BITS) | (dropIndex & QBAY_DROP_NFT_INDEX_MASK);
+	}
+	inline static bit isDropNFTInfoMinted(uint32 info)
+	{
+		return (info & QBAY_DROP_NFT_FLAG_MINTED) != 0;
+	}
+	inline static bit isDropNFTInfoRevealed(uint32 info)
+	{
+		return (info & QBAY_DROP_NFT_FLAG_REVEALED) != 0;
+	}
+	inline static uint32 dropNFTInfoCollectionId(uint32 info)
+	{
+		return (info >> QBAY_DROP_NFT_INDEX_BITS) & QBAY_DROP_NFT_COLLECTION_MASK;
+	}
+	inline static uint32 dropNFTInfoIndex(uint32 info)
+	{
+		return info & QBAY_DROP_NFT_INDEX_MASK;
+	}
 
 	/****** PORTED TIMEUTILS FROM OLD QUOTTERY *****/
 	/**
@@ -309,15 +442,75 @@ struct QBAY : public ContractBase
 		uint32 returnCode;
 	};
 
-	struct mintOfDrop_input 
+	struct mintOfDrop_input
 	{
 		uint32 collectionId;
-		Array<uint8, 64> URI;
+		uint32 _padding0;
+		// Optional: Merkle root of the item list shown to the minter. NULL_ID (or a 4-byte input, which the core pads
+		// with zeros) skips the check; otherwise the mint is refunded if the committed list is a different one.
+		// The former "URI" field was removed on purpose: the drop item is drawn by the contract, never chosen by the
+		// caller. A client still sending the old 68-byte layout (collectionId + URI) puts URI bytes into expectedRoot
+		// and is therefore refunded with dropRootMismatch instead of being charged for an item it did not choose.
+		id expectedRoot;
 	};
 
-	struct mintOfDrop_output 
+	struct mintOfDrop_output
 	{
 		uint32 returnCode;
+		uint32 NFTid;							// id of the minted NFT (only valid if returnCode == success)
+		uint32 dropIndex;						// drawn index in the committed item list (only valid if returnCode == success)
+	};
+
+	struct configureDrop_input
+	{
+		id merkleRoot;							// root over the ordered list of the remaining drop items
+		uint32 collectionId;
+		uint32 numberOfItems;					// 1 .. free slots of the collection; currentSize is set to this value
+	};
+
+	struct configureDrop_output
+	{
+		uint32 returnCode;
+	};
+
+	struct revealDropNFT_input
+	{
+		Array<id, QBAY_DROP_MAX_MERKLE_DEPTH> proof;	// sibling hashes from leaf level upwards (only merkleDepth are used)
+		Array<uint8, 64> URI;					// URI committed at the NFT's drop index
+		uint32 NFTid;
+	};
+
+	struct revealDropNFT_output
+	{
+		uint32 returnCode;
+	};
+
+	struct getDropConfig_input
+	{
+		uint32 collectionId;
+	};
+
+	struct getDropConfig_output
+	{
+		id merkleRoot;
+		uint32 numberOfItems;
+		uint32 remainingItems;
+		uint32 merkleDepth;
+		uint32 status;							// QBAY_DROP_STATUS_*
+		uint32 reservedItems;					// max numberOfItems a replacement list may have (only while status == CONFIGURED)
+	};
+
+	struct getDropNFTInfo_input
+	{
+		uint32 NFTid;
+	};
+
+	struct getDropNFTInfo_output
+	{
+		uint32 collectionId;
+		uint32 dropIndex;
+		bit isRandomDrop;						// 1 if the NFT was minted through the on-chain random drop
+		bit isRevealed;							// 1 if its URI has been set by revealDropNFT
 	};
 
 	struct transfer_input 
@@ -943,19 +1136,163 @@ struct QBAY : public ContractBase
 
 	}
 
+	struct configureDrop_locals
+	{
+		InfoOfCollection collection;
+		DropConfig newConfig;
+		DropLogger dropLog;
+		uint32 capacity;
+		Logger log;
+	};
+
+	// Commits the ordered item list of a drop collection (Merkle root) and enables mintOfDrop for it.
+	// Callable by the collection creator or by the marketplace owner (needed for drops that were already running
+	// before this upgrade). The list covers the items that are still to be minted: for a new collection at most its
+	// full volume, for a partially minted legacy collection at most its free slots. A shorter list reduces the supply
+	// of the collection (currentSize = numberOfItems). The list can be replaced (also with a different length, up to
+	// the free slots at the first configuration) as long as no item has been minted; the first mint locks it.
+	PUBLIC_PROCEDURE_WITH_LOCALS(configureDrop)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (input.collectionId >= state.get().numberOfCollection || input.merkleRoot == NULL_ID)
+		{
+			output.returnCode = LogInfo::invalidInput;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		locals.collection = state.get().Collections.get(input.collectionId);
+
+		if (qpi.invocator() != locals.collection.creator && qpi.invocator() != state.get().marketPlaceOwner)
+		{
+			output.returnCode = LogInfo::notCollectionCreator;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::notCollectionCreator, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		if (locals.collection.typeOfCollection != 0)
+		{
+			output.returnCode = LogInfo::notCollectionForDrop;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::notCollectionForDrop, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		locals.newConfig = state.get().dropConfigs.get(input.collectionId);
+
+		// Once an item has been minted, the list is final (minted NFTs are bound to indices of this list).
+		if (locals.newConfig.status == QBAY_DROP_STATUS_LOCKED)
+		{
+			output.returnCode = LogInfo::dropAlreadyConfigured;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::dropAlreadyConfigured, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		if (locals.newConfig.status == QBAY_DROP_STATUS_NOT_CONFIGURED)
+		{
+			if (locals.collection.currentSize <= 0)
+			{
+				output.returnCode = LogInfo::limitCollectionVolume;
+				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::limitCollectionVolume, 0 };
+				LOG_INFO(locals.log);
+				return;
+			}
+			// First configuration: remember the free slots, they bound every (re)committed list of this collection.
+			locals.newConfig.reservedItems = (uint16)locals.collection.currentSize;
+		}
+
+		// The list may be shorter than the free slots (fewer real items), never longer.
+		if (input.numberOfItems == 0 || input.numberOfItems > locals.newConfig.reservedItems || input.numberOfItems > QBAY_MAX_DROP_COLLECTION_SIZE)
+		{
+			output.returnCode = LogInfo::invalidInput;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		// The dropPool slots are assigned when the list gets locked by the first mint (see mintOfDrop), so replacing
+		// the list does not consume pool space. Unused reserved slots are released to numberOfNFTIncoming at that point.
+		locals.newConfig.merkleRoot = input.merkleRoot;
+		locals.newConfig.poolOffset = 0;
+		locals.newConfig.numberOfItems = (uint16)input.numberOfItems;
+		locals.newConfig.merkleDepth = 0;
+		locals.capacity = 1;
+		while (locals.capacity < input.numberOfItems)
+		{
+			locals.capacity <<= 1;
+			locals.newConfig.merkleDepth++;
+		}
+		locals.newConfig.status = QBAY_DROP_STATUS_CONFIGURED;
+		state.mut().dropConfigs.set(input.collectionId, locals.newConfig);
+
+		// Supply of the drop == length of the committed list.
+		locals.collection.currentSize = (sint16)input.numberOfItems;
+		state.mut().Collections.set(input.collectionId, locals.collection);
+
+		output.returnCode = LogInfo::success;
+		locals.dropLog = DropLogger{ QBAY_CONTRACT_INDEX, LogInfo::dropConfiguredEvent, input.collectionId, 0, input.numberOfItems, 0 };
+		LOG_INFO(locals.dropLog);
+	}
+
 	struct mintOfDrop_locals 
 	{
-		InfoOfCollection updatedCollection;
+		InfoOfCollection collection;
+		DropConfig dropConfig;
 		InfoOfNFT newNFT;
-		id creator;
+		DropEntropyInput entropyInput;
+		id randomDigest;
+		DropLogger dropLog;
 		uint64 cntOfNFTHoldingPerOneId;
 		uint32 _t;
+		uint32 NFTid;
+		uint32 remaining;
+		uint32 slot;
+		uint32 lastSlot;
+		uint32 dropIndex;
+		uint32 lastItem;
+		uint32 poolValue;
 		Logger log;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(mintOfDrop)
 	{
-		if(state.get().Collections.get(input.collectionId).typeOfCollection == 1)
+		// Pause switch: like mint(), mintOfDrop is unavailable (for everybody) while the marketplace status is off.
+		if(state.get().statusOfMarketPlace == 0)
+		{
+			output.returnCode = LogInfo::notAvailableCreateAndMint;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::notAvailableCreateAndMint, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+
+		if(input.collectionId >= state.get().numberOfCollection)
+		{
+			output.returnCode = LogInfo::invalidInput;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0) 
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+
+		locals.collection = state.get().Collections.get(input.collectionId);
+
+		if(locals.collection.typeOfCollection == 1)
 		{
 			output.returnCode = LogInfo::notCollectionForDrop;
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::notCollectionForDrop, 0 };
@@ -969,7 +1306,7 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
-		if(state.get().Collections.get(input.collectionId).currentSize <= 0) 
+		if(locals.collection.currentSize <= 0) 
 		{
 			output.returnCode = LogInfo::limitCollectionVolume;
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::limitCollectionVolume, 0 };
@@ -982,18 +1319,62 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
+		// Drop minting is only possible after the item list has been committed on-chain (configureDrop).
+		locals.dropConfig = state.get().dropConfigs.get(input.collectionId);
+		if((locals.dropConfig.status != QBAY_DROP_STATUS_CONFIGURED && locals.dropConfig.status != QBAY_DROP_STATUS_LOCKED)
+			|| (uint32)locals.collection.currentSize > locals.dropConfig.numberOfItems)
+		{
+			output.returnCode = LogInfo::dropNotConfigured;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::dropNotConfigured, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+
+		// The list can be replaced until the first mint: let the minter pin the list it was shown.
+		if(input.expectedRoot != NULL_ID && input.expectedRoot != locals.dropConfig.merkleRoot)
+		{
+			output.returnCode = LogInfo::dropRootMismatch;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::dropRootMismatch, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+
+		// First mint locks the list and assigns its dropPool slots. Cannot fail while the sum of the locked lists
+		// <= numberOfNFTIncoming < QBAY_MAX_NUMBER_NFT, kept as a hard guard.
+		if(locals.dropConfig.status == QBAY_DROP_STATUS_CONFIGURED && (uint64)state.get().dropPoolUsed + locals.dropConfig.numberOfItems > QBAY_MAX_NUMBER_NFT)
+		{
+			output.returnCode = LogInfo::overflowNFT;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::overflowNFT, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return ;
+		}
+
 		locals.cntOfNFTHoldingPerOneId = 0;
-		locals.creator = state.get().Collections.get(input.collectionId).creator;
 
 		for(locals._t = 0; locals._t < state.get().numberOfNFT; locals._t++)
 		{
-			if(state.get().NFTs.get(locals._t).creator == locals.creator && state.get().NFTs.get(locals._t).possessor == qpi.invocator())
+			if(state.get().NFTs.get(locals._t).creator == locals.collection.creator && state.get().NFTs.get(locals._t).possessor == qpi.invocator())
 			{
 				locals.cntOfNFTHoldingPerOneId++;
 			}
 		}
 
-		if(locals.cntOfNFTHoldingPerOneId >= state.get().Collections.get(input.collectionId).maxSizeHoldingPerOneId)
+		if(locals.cntOfNFTHoldingPerOneId >= locals.collection.maxSizeHoldingPerOneId)
 		{
 			output.returnCode = LogInfo::overflowMaxSizePerOneId;
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::overflowMaxSizePerOneId, 0 };
@@ -1006,7 +1387,7 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
-		if((uint64)qpi.invocationReward() < state.get().Collections.get(input.collectionId).priceForDropMint)
+		if((uint64)qpi.invocationReward() < locals.collection.priceForDropMint)
 		{
 			output.returnCode = LogInfo::insufficientQubic;
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::insufficientQubic, 0 };
@@ -1019,21 +1400,80 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
-		if((uint64)qpi.invocationReward() > state.get().Collections.get(input.collectionId).priceForDropMint)
+		if((uint64)qpi.invocationReward() > locals.collection.priceForDropMint)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().Collections.get(input.collectionId).priceForDropMint);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)locals.collection.priceForDropMint);
 		}
 
-        qpi.transfer(state.get().Collections.get(input.collectionId).creator, state.get().Collections.get(input.collectionId).priceForDropMint);
+		qpi.transfer(locals.collection.creator, locals.collection.priceForDropMint);
 
-		locals.updatedCollection = state.get().Collections.get(input.collectionId);
-		locals.updatedCollection.currentSize--;
+		if(locals.dropConfig.status == QBAY_DROP_STATUS_CONFIGURED)
+		{
+			// Lock the list. Its pool region is fresh (never used), i.e. all zeros = identity permutation.
+			locals.dropConfig.status = QBAY_DROP_STATUS_LOCKED;
+			locals.dropConfig.poolOffset = state.get().dropPoolUsed;
+			state.mut().dropPoolUsed += locals.dropConfig.numberOfItems;
+			state.mut().dropConfigs.set(input.collectionId, locals.dropConfig);
+			// Release the reserved slots that the (shorter) list does not use. Before locking they stay reserved, so
+			// a replacement list can grow back up to reservedItems without competing with new collections.
+			state.mut().numberOfNFTIncoming -= (uint64)(locals.dropConfig.reservedItems - locals.dropConfig.numberOfItems);
 
-		state.mut().Collections.set(input.collectionId, locals.updatedCollection);
+			locals.dropLog = DropLogger{ QBAY_CONTRACT_INDEX, LogInfo::dropLockedEvent, input.collectionId, 0, locals.dropConfig.numberOfItems, 0 };
+			LOG_INFO(locals.dropLog);
+		}
 
-		locals.newNFT.creator = state.get().Collections.get(input.collectionId).creator;
+		// ---- Draw the item on-chain. Payment is final at this point, so every draw costs the full mint price. ----
+		// Entropy: digests of the previous tick (unknown when the transaction was signed and when the tick leader fixed
+		// the transaction set of this tick), chained with all previous draws and made unique per mint.
+		locals.NFTid = state.get().numberOfNFT;
+		locals.remaining = (uint32)locals.collection.currentSize;
+
+		locals.entropyInput.prevSpectrumDigest = qpi.getPrevSpectrumDigest();
+		locals.entropyInput.prevUniverseDigest = qpi.getPrevUniverseDigest();
+		locals.entropyInput.prevComputerDigest = qpi.getPrevComputerDigest();
+		locals.entropyInput.previousDropEntropy = state.get().dropEntropy;
+		locals.entropyInput.minter = qpi.invocator();
+		locals.entropyInput.tick = qpi.tick();
+		locals.entropyInput.collectionId = input.collectionId;
+		locals.entropyInput.remaining = locals.remaining;
+		locals.entropyInput.NFTid = locals.NFTid;
+		locals.randomDigest = qpi.K12(locals.entropyInput);
+		state.mut().dropEntropy = locals.randomDigest;
+
+		// Lazy Fisher-Yates: slots [0, remaining) of the collection's pool hold the not-yet-minted item indices.
+		// A pool value of 0 means "slot holds its own index", otherwise it holds (item index + 1).
+		// Modulo bias is < remaining / 2^64 (remaining <= 10000), i.e. negligible.
+		locals.slot = (uint32)mod<uint64>(locals.randomDigest.u64._0, (uint64)locals.remaining);
+		locals.lastSlot = locals.remaining - 1;
+
+		locals.poolValue = state.get().dropPool.get(locals.dropConfig.poolOffset + locals.slot);
+		if (locals.poolValue == 0)
+		{
+			locals.dropIndex = locals.slot;
+		}
+		else
+		{
+			locals.dropIndex = locals.poolValue - 1;
+		}
+
+		locals.poolValue = state.get().dropPool.get(locals.dropConfig.poolOffset + locals.lastSlot);
+		if (locals.poolValue == 0)
+		{
+			locals.lastItem = locals.lastSlot;
+		}
+		else
+		{
+			locals.lastItem = locals.poolValue - 1;
+		}
+		// Move the last remaining item into the drawn slot; the last slot falls out of range with currentSize--.
+		state.mut().dropPool.set(locals.dropConfig.poolOffset + locals.slot, (uint16)(locals.lastItem + 1));
+
+		locals.collection.currentSize--;
+		state.mut().Collections.set(input.collectionId, locals.collection);
+
+		locals.newNFT.creator = locals.collection.creator;
 		locals.newNFT.possessor = qpi.invocator();
-		locals.newNFT.royalty = state.get().Collections.get(input.collectionId).royalty;
+		locals.newNFT.royalty = locals.collection.royalty;
 		locals.newNFT.NFTidForExchange = QBAY_MAX_NUMBER_NFT;
 		locals.newNFT.salePrice = QBAY_SALE_PRICE;
 		locals.newNFT.statusOfAsk = 0;
@@ -1048,26 +1488,122 @@ struct QBAY : public ContractBase
 		locals.newNFT.endTimeOfAuction = 0;
 		locals.newNFT.statusOfAuction = 0;
 		locals.newNFT.paymentMethodOfAuction = 0;
+		// URI stays empty until revealDropNFT() proves the committed URI of the drawn index.
+		locals.newNFT.URI.setAll(0);
 
-		for(locals._t = 0 ; locals._t < 64; locals._t++) 
+		state.mut().NFTs.set(locals.NFTid, locals.newNFT);
+		state.mut().dropNFTInfo.set(locals.NFTid, packDropNFTInfo(input.collectionId, locals.dropIndex));
+		state.mut().numberOfNFT++;
+
+		output.returnCode = LogInfo::success;
+		output.NFTid = locals.NFTid;
+		output.dropIndex = locals.dropIndex;
+
+		locals.dropLog = DropLogger{ QBAY_CONTRACT_INDEX, LogInfo::dropMintedEvent, input.collectionId, locals.NFTid, locals.dropIndex, 0 };
+		LOG_INFO(locals.dropLog);
+	}
+
+	struct revealDropNFT_locals
+	{
+		DropConfig dropConfig;
+		DropMerkleLeaf leaf;
+		DropMerkleNode node;
+		InfoOfNFT updatedNFT;
+		DropLogger dropLog;
+		id hash;
+		uint32 info;
+		uint32 collectionId;
+		uint32 dropIndex;
+		uint32 level;
+		uint32 _t;
+		Logger log;
+	};
+
+	// Sets the URI of a random-drop NFT. Permissionless: anybody (minter, QubicBay server, creator) can submit the
+	// committed URI of the NFT's drawn index together with its Merkle proof; no other URI can pass verification.
+	PUBLIC_PROCEDURE_WITH_LOCALS(revealDropNFT)
+	{
+		if (qpi.invocationReward() > 0)
 		{
-			if(locals._t >= QBAY_LENGTH_OF_URI) 
-			{
-				locals.newNFT.URI.set(locals._t, 0);
-			}
-			else 
-			{
-				locals.newNFT.URI.set(locals._t, input.URI.get(locals._t));
-			}
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		state.mut().NFTs.set(state.get().numberOfNFT, locals.newNFT);
-		state.mut().numberOfNFT++;
+		if (input.NFTid >= state.get().numberOfNFT)
+		{
+			output.returnCode = LogInfo::wrongNFTId;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::wrongNFTId, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		locals.info = state.get().dropNFTInfo.get(input.NFTid);
+		if (!isDropNFTInfoMinted(locals.info))
+		{
+			output.returnCode = LogInfo::notDropNFT;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::notDropNFT, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		if (isDropNFTInfoRevealed(locals.info))
+		{
+			output.returnCode = LogInfo::alreadyRevealed;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::alreadyRevealed, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		locals.collectionId = dropNFTInfoCollectionId(locals.info);
+		locals.dropIndex = dropNFTInfoIndex(locals.info);
+		locals.dropConfig = state.get().dropConfigs.get(locals.collectionId);
+
+		// Leaf = K12(collectionId, dropIndex, URI normalized to QBAY_LENGTH_OF_URI bytes).
+		locals.leaf.collectionId = locals.collectionId;
+		locals.leaf.dropIndex = locals.dropIndex;
+		for (locals._t = 0; locals._t < 64; locals._t++)
+		{
+			if (locals._t >= QBAY_LENGTH_OF_URI)
+			{
+				locals.leaf.URI.set(locals._t, 0);
+			}
+			else
+			{
+				locals.leaf.URI.set(locals._t, input.URI.get(locals._t));
+			}
+		}
+		locals.hash = qpi.K12(locals.leaf);
+
+		for (locals.level = 0; locals.level < locals.dropConfig.merkleDepth; locals.level++)
+		{
+			if (((locals.dropIndex >> locals.level) & 1U) == 1U)
+			{
+				locals.node.left = input.proof.get(locals.level);
+				locals.node.right = locals.hash;
+			}
+			else
+			{
+				locals.node.left = locals.hash;
+				locals.node.right = input.proof.get(locals.level);
+			}
+			locals.hash = qpi.K12(locals.node);
+		}
+
+		if (locals.hash != locals.dropConfig.merkleRoot)
+		{
+			output.returnCode = LogInfo::invalidMerkleProof;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidMerkleProof, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
+		locals.updatedNFT = state.get().NFTs.get(input.NFTid);
+		locals.updatedNFT.URI = locals.leaf.URI;
+		state.mut().NFTs.set(input.NFTid, locals.updatedNFT);
+		state.mut().dropNFTInfo.set(input.NFTid, locals.info | QBAY_DROP_NFT_FLAG_REVEALED);
+
 		output.returnCode = LogInfo::success;
-
-		locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::success, 0 };
-		LOG_INFO(locals.log);
-
+		locals.dropLog = DropLogger{ QBAY_CONTRACT_INDEX, LogInfo::dropRevealedEvent, locals.collectionId, input.NFTid, locals.dropIndex, 0 };
+		LOG_INFO(locals.dropLog);
 	}
 
 	struct transfer_locals 
@@ -2693,6 +3229,35 @@ struct QBAY : public ContractBase
 	}
 	}
 
+	PUBLIC_FUNCTION(getDropConfig)
+	{
+		if (input.collectionId >= state.get().numberOfCollection)
+		{
+			return;
+		}
+		output.merkleRoot = state.get().dropConfigs.get(input.collectionId).merkleRoot;
+		output.numberOfItems = state.get().dropConfigs.get(input.collectionId).numberOfItems;
+		output.merkleDepth = state.get().dropConfigs.get(input.collectionId).merkleDepth;
+		output.status = state.get().dropConfigs.get(input.collectionId).status;
+		output.reservedItems = state.get().dropConfigs.get(input.collectionId).reservedItems;
+		if (output.status != QBAY_DROP_STATUS_NOT_CONFIGURED && state.get().Collections.get(input.collectionId).currentSize > 0)
+		{
+			output.remainingItems = (uint32)state.get().Collections.get(input.collectionId).currentSize;
+		}
+	}
+
+	PUBLIC_FUNCTION(getDropNFTInfo)
+	{
+		if (input.NFTid >= state.get().numberOfNFT || !isDropNFTInfoMinted(state.get().dropNFTInfo.get(input.NFTid)))
+		{
+			return;
+		}
+		output.isRandomDrop = 1;
+		output.isRevealed = isDropNFTInfoRevealed(state.get().dropNFTInfo.get(input.NFTid));
+		output.collectionId = dropNFTInfoCollectionId(state.get().dropNFTInfo.get(input.NFTid));
+		output.dropIndex = dropNFTInfoIndex(state.get().dropNFTInfo.get(input.NFTid));
+	}
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(getNumberOfNFTForUser, 1);
@@ -2704,6 +3269,8 @@ struct QBAY : public ContractBase
 		REGISTER_USER_FUNCTION(getInfoOfNFTById, 7);
 		REGISTER_USER_FUNCTION(getUserCreatedCollection, 8);
 		REGISTER_USER_FUNCTION(getUserCreatedNFT , 9);
+		REGISTER_USER_FUNCTION(getDropConfig, 10);
+		REGISTER_USER_FUNCTION(getDropNFTInfo, 11);
 
 		REGISTER_USER_PROCEDURE(settingCFBAndQubicPrice, 1);
 		REGISTER_USER_PROCEDURE(createCollection, 2);
@@ -2722,6 +3289,8 @@ struct QBAY : public ContractBase
 		REGISTER_USER_PROCEDURE(bidOnTraditionalAuction, 15);
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 16);
 		REGISTER_USER_PROCEDURE(changeStatusOfMarketPlace, 17);
+		REGISTER_USER_PROCEDURE(configureDrop, 18);
+		REGISTER_USER_PROCEDURE(revealDropNFT, 19);
 
     }
 
