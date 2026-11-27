@@ -2095,3 +2095,349 @@ TEST(TestContractQBAY, RandomDrop_ListCanBeFixedWhilePaused)
     ASSERT_EQ(out.returnCode, QBAY::LogInfo::success);
     EXPECT_EQ(pfp.revealDropNFT(minter, out.NFTid, rightList.uris[out.dropIndex], rightList.proof(out.dropIndex)).returnCode, QBAY::LogInfo::success);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// One-time duplicate NFT cleanup (BEGIN_EPOCH)
+// ---------------------------------------------------------------------------------------------------------------
+// Generated from QubicBay's duplicate-NFT list (93 entries, checked against mainnet in epoch 241).
+struct QbayCleanupEntry { uint32 NFTid; bool burn; const char* collection; const char* currentURI; const char* newURI; };
+static const QbayCleanupEntry kQbayCleanupList[] = {
+    { 11, true, "0 Qbros", "QmUwdk6TQRTAR91KJjQPUHhP8KRcMyFbvTQGQTJAsffYR7", "" },
+    { 12, true, "0 Qbros", "QmPL2DyvsKFYK1pM6wftGw5nwHZpTDbiTsXUJFte82FEZB", "" },
+    { 32, true, "0 Qbros", "QmZHi3GzSNUXhpcjxGMtr58YNdPzsd2fm7KTVMRgnsoyuC", "" },
+    { 2318, true, "5 COINS", "bafkreieghnd5ix2f2lh4c66sdeqtku3aodzxvdjbctqrmcywbiocr4jym4", "" },
+    { 2459, true, "5 COINS", "bafkreigt5rdo7n5xw5k6tmdlihyiqmqpbp657pkqii2cyo2ispkoj4z5ra", "" },
+    { 2500, true, "5 COINS", "bafkreibv3lqzih2szlzqmxter2lrkduc53c3x5mdj73gcqdmwc7zpjstei", "" },
+    { 2505, true, "5 COINS", "bafkreicd2tgc6273ojuz2h67okksxnqk3atxw5esxsdt4uhklgn7uzkigi", "" },
+    { 2507, true, "5 COINS", "bafkreicd2tgc6273ojuz2h67okksxnqk3atxw5esxsdt4uhklgn7uzkigi", "" },
+    { 2508, true, "5 COINS", "bafkreicd2tgc6273ojuz2h67okksxnqk3atxw5esxsdt4uhklgn7uzkigi", "" },
+    { 2510, true, "5 COINS", "bafkreicd2tgc6273ojuz2h67okksxnqk3atxw5esxsdt4uhklgn7uzkigi", "" },
+    { 2538, true, "5 COINS", "bafkreihwt6yyj2etcca4x553l57tdgk3mlzwqgatbk3wmdnuig4csfa2yq", "" },
+    { 2549, true, "5 COINS", "bafkreiarue7iiipmgpc7pebujredpt2bk7zrh4hqpq4fbvzaeczkhey57u", "" },
+    { 2592, true, "5 COINS", "bafkreie5ejjcnplkqpm4ucz6mfvpa36stumlweg5o5ildj76jwuxnuwcmq", "" },
+    { 2598, true, "5 COINS", "bafkreigvfriropaikxg3lar3xzhy2c5qzoeok3rup64air3jndk5axyvvm", "" },
+    { 2600, true, "5 COINS", "bafkreihcbfhbuk5lzdvawq2y3njg7gz4jrvtpo47e6eenqqzwx4euwegh4", "" },
+    { 2613, true, "5 COINS", "bafkreiab6mmrv3uw2hmplwzxcomoq3hlppdnzx3ffagbd2y3bin346enfu", "" },
+    { 2624, true, "5 COINS", "bafkreihtypgeqqbmev3tze77ws557i2qu4x5ovqq4zqw3zyyaewr6bzyba", "" },
+    { 2625, true, "5 COINS", "bafkreihtypgeqqbmev3tze77ws557i2qu4x5ovqq4zqw3zyyaewr6bzyba", "" },
+    { 2628, true, "5 COINS", "bafkreigvmro6iiob2eyoml5twazslbs2b6hlb66pudkd25lapd7d7bd6he", "" },
+    { 2629, true, "5 COINS", "bafkreigvmro6iiob2eyoml5twazslbs2b6hlb66pudkd25lapd7d7bd6he", "" },
+    { 2705, true, "5 COINS", "bafkreibalzshepmg72bs3hzvqecwillowowapjfcb5dvcvbvuvjb55d5yq", "" },
+    { 2706, true, "5 COINS", "bafkreibalzshepmg72bs3hzvqecwillowowapjfcb5dvcvbvuvjb55d5yq", "" },
+    { 2715, true, "5 COINS", "bafkreiaalw3yeqrcehbh26hd3ce5xqymwbukh2htph3c7tk7x6gey3kvza", "" },
+    { 2716, true, "5 COINS", "bafkreiaalw3yeqrcehbh26hd3ce5xqymwbukh2htph3c7tk7x6gey3kvza", "" },
+    { 2718, true, "5 COINS", "bafkreiclgb75afeoe3vtsoauptewgkpn3nfb2rsa7dcyi2hojdvofebiua", "" },
+    { 2729, true, "5 COINS", "bafkreifgpjtnoan4o7ya2tjcuuxkfbyvyyxjaybs5lm2fhisn3kdpslmca", "" },
+    { 2783, true, "5 COINS", "bafkreib72ksvgd4jfzilmbkyip5dzwqa47apuzuoezb5m2skqm4nhr6oma", "" },
+    { 2793, true, "5 COINS", "bafkreiarelizl6c4soxd7hzsxth3maknbke5qvnytceddcpdi3wbqwwroa", "" },
+    { 2801, true, "5 COINS", "bafkreihf77gwkiuj2yf7tis5lbxlsbg5tycitebtzm3mldm64p7d7ncco4", "" },
+    { 2831, true, "5 COINS", "bafkreievvwkhxcgxhnhybuelztnxtztec5ja5q7mttoz7plgbnxlrureru", "" },
+    { 2834, true, "5 COINS", "bafkreigv535tgz3uxwer34a226kg4npyrlb4enhlxopsskcsxypj3mvmi4", "" },
+    { 2863, true, "5 COINS", "bafkreibddkpu6i7atuw37owpjzrjlq4kwlarejhpyuiepc32ydw6qzxxnq", "" },
+    { 2878, true, "5 COINS", "bafkreiakmbdmk4cbaog4mcdfcla7qdl7kgx7q4z235kl7s732bwhc3zoii", "" },
+    { 2884, true, "5 COINS", "bafkreiebakukrkafzlnzv2sxhrap4h34llealfei3qquhwn6ueadurhdli", "" },
+    { 2892, true, "5 COINS", "bafkreib2lmhvgeersmsttmpzfm6q6cahr4wtmctsmn7i6mv2pje3qatunu", "" },
+    { 2951, true, "5 COINS", "bafkreic6d5eoxgkx65sxjegraqhocw5mchwstcj4ilaoz2sow26arbvjo4", "" },
+    { 2955, true, "5 COINS", "bafkreihf7ktg2cp375bkirx7xxvf5v37efi3rxcdta3w7ynzvj26hmzwqm", "" },
+    { 2957, true, "5 COINS", "bafkreihf7ktg2cp375bkirx7xxvf5v37efi3rxcdta3w7ynzvj26hmzwqm", "" },
+    { 2987, true, "5 COINS", "bafkreicoye6lazruo53ux6agrsdzzv5gqdznbk2gcycly4gm4xawdsj4lq", "" },
+    { 2992, true, "5 COINS", "bafkreihykkfmx2kuqooxjkstlfmfso45yff5uk6lsby335uqeto4tz5v5a", "" },
+    { 3033, true, "5 COINS", "bafkreihgp6l6yj4ggnzsud3tvb5ezhlut5uqfu3jwp2ggh7itfzdidfn6q", "" },
+    { 58, false, "0 Qbros", "QmZDWEAfu3idRbHMxKZ2tWkfjyq1wVh4ZeESDJAnjd2RQN", "QmVxrTgtgFJDbv2rhbY5gfexA8FhVmGzHQ7VSEPzTtoy7c" },
+    { 1093, false, "1 Qub3s", "bafkreidl2466vup54msnmoqs2pj5cwxyl7kznwfeidnbu7izngffntfxte", "bafkreiai7kh5736g5ww5fgm5ozpcie744tc3z2snhzhkd56fxivi6ouf64" },
+    { 1351, false, "1 Qub3s", "bafkreihprtknbui4eqmj3vmigg727guds3qvommtlmckb5wl5e4acfsyjq", "bafkreiftenmweonnuyuujw6evic3ftqxlwyihci6azawmg53oost66c6zm" },
+    { 1442, false, "2 Quties", "bafkreignpafvhrv2ijkxs3jaecwugd4hjd34fycyrzpixsmyqxcqgcxqsm", "bafkreihf4hgad76u4opv2vb3xlw32ec3yv3smiukbuwzuyytn63mbw2yuu" },
+    { 1613, false, "3 piQcells", "bafkreias46nxhambq5neinwo34ercrnrff5pp32xm7en33lemhqm5z3c4u", "bafkreicyxoh4xzgar6axbg2vffrkuychxtwtt4wnxu6pymrnk3feuzm2um" },
+    { 1662, false, "0 Qbros", "QmRM9bwhcQJXjCRqt4fR6zhVFN9k39vBb751A7p84Qt8Z2", "QmRS8RrhSH7LqME12UvfVkDg5ctqEoLuGcPJfFPwz7k5BD" },
+    { 1664, false, "2 Quties", "bafkreibzql7qzmv7wdidp75ivmuehefey3vzya2isnwx26crlxdu5pably", "bafkreickvks6wqe63j57ddhugg22nzihjgriorbrecchtfntxfjq7d6iq4" },
+    { 1678, false, "4 Garth: The Source Code", "bafkreicw433z4tzf6jdy5e5jrxydsiz5ak6rg4jf5y4eg4ss5ghtguwdqa", "bafkreibsglcwfko6ydmw6lqgiucyjvkfk7kwlhekkyal73qllldndpzgu4" },
+    { 1698, false, "4 Garth: The Source Code", "bafkreidkbrb5zbvhc2xogyzonf6g6dkx4x7lgeh2qqlqw665ytfhfusuee", "bafkreiexlq5tsrldo266oryoskw5xgstm62ietx4h7loiha3b7su2a7knu" },
+    { 1722, false, "4 Garth: The Source Code", "bafkreibjex3fuotpewn2pwmieqea3vpb3nfkongmrro4t5jr6gfilvtpni", "bafkreicgzjkvqkhffasxmozj2p63gkmds5biwlaqkoruiwzvnjdh3uz3oq" },
+    { 1725, false, "4 Garth: The Source Code", "bafkreibjex3fuotpewn2pwmieqea3vpb3nfkongmrro4t5jr6gfilvtpni", "bafkreigh7mslnx4foyt5geufw2jitechbo66xasmlmysl4gns6auoiv7we" },
+    { 1750, false, "4 Garth: The Source Code", "bafkreihe22y47bciyaaxbsvk4gkhqotljbfq53bxm5erllf345j7nahty4", "bafkreiech5g3karq2qrhkbg33yzqguk4wq3wyx65ugfu66kyjrau43qnye" },
+    { 1760, false, "4 Garth: The Source Code", "bafkreicxvfijqdch7qsvypgio2m33zjdlyrvtyciywd2cv3ck6mrrjnvte", "bafkreigsmr6po7guejskymu7v5ny4d2qsqqxam3tm3elhchpzjy5ns3ic4" },
+    { 1761, false, "4 Garth: The Source Code", "bafkreieiksukzptzv6j6fm6uwjrjs7bmb3g3wdveld2r2s7gyanx26pdre", "bafkreib3exkaycw2wtjufwddbgmnqwxlkisthta7yxlzj2zsaq5eapt7gu" },
+    { 1764, false, "4 Garth: The Source Code", "bafkreickli7gyv5saoamtqjroyfizcyzanfpfc6iaqr6seopa5ffp3glaq", "bafkreieopzuziloacqjr6op2mg6o3csjtynlizvjlzeq7o4pozhfpxuoku" },
+    { 1769, false, "4 Garth: The Source Code", "bafkreihbd4ri4xklu2no3x5jvqjugraqs5yb2hnkkiohdy53jkpe3hrspq", "bafkreia6llycqbc34rykmwfqj2ttugmnukyi6s4wwxw34wrzouoj5ba4n4" },
+    { 1770, false, "4 Garth: The Source Code", "bafkreih3ig6r4gr4mzcn7g27e4xe7kqid34mwcq546ik74anzsktiy57y4", "bafkreiff5g2pb2c6vpj7a2nimfsulrpb2iqcdtmmlvne7433mnuibgu5vu" },
+    { 1772, false, "4 Garth: The Source Code", "bafkreiaritvmtwwzfcadk72x7dh32stsfgbmnmq73aj5d7hyiwpijzekhm", "bafkreietxcafi6v6c4tnf27nvrwkbbceb3yfg6axb6sdsbt2ovrwif23k4" },
+    { 1775, false, "4 Garth: The Source Code", "bafkreia5pr6sf5mxgl2emmcsdvdvfcsmbfxbj6wjbphenvyswy6f7sktwm", "bafkreieqs5vlqc4m6hemrws6qanqg24tnivb5tp7tf3rv2uh4k5lnugt4e" },
+    { 1780, false, "4 Garth: The Source Code", "bafkreiewsds4v6gself2ofelecnvxczgn4l7atrkclinrwjaxkbxwo4kma", "bafkreiah7eadg4cuoz4b4jixrc2ljhxkif35k5to2isd37twvrxe2yqi7q" },
+    { 1781, false, "4 Garth: The Source Code", "bafkreidv5wtd64o5b6ns3zofwfekqdw5xv6nku6a4p4zrfkvhsqfzwxlcy", "bafkreie63525hr5rht23gukr4p76bat3nr5ebt7pbofkkufhaitxuh3zka" },
+    { 1785, false, "4 Garth: The Source Code", "bafkreicngz6u6jchxzvzocmcr52el2yrkbdypw5vvky6qi5uyozcoinsi4", "bafkreidvo2cpz5m5i6mhabkkhnprwldvhujdo4k3zy5htqtsgxljh5xfdy" },
+    { 1786, false, "4 Garth: The Source Code", "bafkreibbe37bwicydqdcml4mlcfd2l67eeigg7ycikwnm6v72fjn54vkaa", "bafkreigpe36xwtljsmsnnwjy4p7y5bbiyfnhpspyj4dhg3gql35ywgqr74" },
+    { 1788, false, "4 Garth: The Source Code", "bafkreiedeczj3vxa2y6xuvw3dwn6v24tbmr62lan237db5lzjeuf3ec4le", "bafkreifcd3blrsgyjd2f6np6kuonfy3qhsjnhvrcof75rfkayx22dt763y" },
+    { 1793, false, "4 Garth: The Source Code", "bafkreih3ig6r4gr4mzcn7g27e4xe7kqid34mwcq546ik74anzsktiy57y4", "bafkreibfg4lpailwg4xm7xaeqgrypvqqnssm7thz3b5noqhimwkdc22zfe" },
+    { 1794, false, "4 Garth: The Source Code", "bafkreib5syahs2bfj3h2zcnoo3nosd4cqddl3fkojtxvwmcetiwx4bwhc4", "bafkreidkugh447f52nlwvz257kvt5csu5lsyv472odibt4mkh4r34d2cde" },
+    { 1800, false, "4 Garth: The Source Code", "bafkreidugz3jlvzhvnpbkbmleeb2ye7bvl4msxr7fwvtptx3ga5qze4rxm", "bafkreiawm2bd6forf4btbcd5zjwmicjmi6fzmxqwxh7u5gbc7h6dgw3ytq" },
+    { 1802, false, "4 Garth: The Source Code", "bafkreianabzvvfgf5kwxvbtl2vogmz72kmfe3x6yeqioffkrtjago2vqk4", "bafkreic7nhfblmsrz6jvij55iqanvfi2nb52j5u2qr7ytgbl6nqg3tsney" },
+    { 1810, false, "4 Garth: The Source Code", "bafkreifgvmhmtxh5yzndu3qhooffzgakxtzs55e5rndvyw66xai5at2x6m", "bafkreifr7xrip7uhqabwc3tfvk7bloxzxtylrcgalamjokiuebyrjgd5me" },
+    { 1811, false, "4 Garth: The Source Code", "bafkreih2mvnqkwnitrk5ueaxp5h7sm6f7svla7pn5gozavnk2oollspmz4", "bafkreibn7tu24z6jvdhgfq5td37rtz4v5cv7jj2s5vrg46l6rdc4zuxzuu" },
+    { 1812, false, "4 Garth: The Source Code", "bafkreidugz3jlvzhvnpbkbmleeb2ye7bvl4msxr7fwvtptx3ga5qze4rxm", "bafkreiby35jizdcytbjg4rdw3u2xccbwryuoavkshtd3ijvieuiwqn4ome" },
+    { 1814, false, "4 Garth: The Source Code", "bafkreifn5uzs6rbkigrip36ba5d3ykgadlgorupcstvmqpaujm2y2dpgfq", "bafkreighxgvoys2sqxhjzmqu27ley57a2frufp7xyswhg25l3dmkqp554q" },
+    { 1815, false, "4 Garth: The Source Code", "bafkreigpjvmfsclylqx7lkhxqgrtufhkoyv53kanekb5cc6ztb7qusqjuu", "bafkreieh6ezx6nuqwsp7k5hhu4uhzfbekgwombmyb476bwta77dnzcjkne" },
+    { 1821, false, "4 Garth: The Source Code", "bafkreigbrnjtdceedgb6px2uhh7uqis7cejyynxxrtrpvjlxncfr7q4ude", "bafkreigqamnz5a4tlmqwskxbvgk3hgomb4zk6bucorgjp7tkxwpeffoko4" },
+    { 1822, false, "4 Garth: The Source Code", "bafkreicxvfijqdch7qsvypgio2m33zjdlyrvtyciywd2cv3ck6mrrjnvte", "bafkreic4an4vdjydjdwnquoag4ayk6ddjcswrewquofjhjkahbevslspjy" },
+    { 1823, false, "4 Garth: The Source Code", "bafkreihe22y47bciyaaxbsvk4gkhqotljbfq53bxm5erllf345j7nahty4", "bafkreih5zgh7vxsfgjyxyfs3pcndcyjali22ekkwrhhfypkjw2fdsocplm" },
+    { 1825, false, "4 Garth: The Source Code", "bafkreiauonh4sdgolgw4mizrh4fnmqvaa7ztgxzmgdkwuwlyz6m3hhvo7a", "bafkreie6gwo5dbv35aj7stmvtcjtx5cl7px4jyc3iw3onpenuanzff5f5e" },
+    { 1832, false, "4 Garth: The Source Code", "bafkreibg4wwza3f4kfqpvr4maojx66memfy4bp5pjfm3aqlyhk35g6q3hq", "bafkreicawsdkjnpd4pdvzfcgpytonbqybf7meikmxlwybkr7npowuey2ui" },
+    { 1840, false, "4 Garth: The Source Code", "bafkreienrqaobbzr4uo3wezfeyi6ul36qmlh6fb5ibinc56d5223eoxq6y", "bafkreihb3dyp2gauim5nlolhcgavsqceugzcqpsmzos23udfljsvytjm4i" },
+    { 1843, false, "4 Garth: The Source Code", "bafkreif7dfzwa7ludjctgujt5dmlvhgjronbgdgfqiuo37owtswtaoqybu", "bafkreiccwnwr2robkkzqr6vqikuc7psg5ky4qg4wjr4uknbqerr6smvbne" },
+    { 1864, false, "4 Garth: The Source Code", "bafkreigto7kk4qftzb2i3magubj42bpnzrvygo3sdptojafdvd4fmnqwbu", "bafkreifbqgouhpwor2kkb6ovg5qcbjmf3bj2j4i7qxyqrzub3xusobs2ee" },
+    { 1872, false, "4 Garth: The Source Code", "bafkreiewsds4v6gself2ofelecnvxczgn4l7atrkclinrwjaxkbxwo4kma", "bafkreifz6bo44fattmt5psewcn5lf7j32fwwm4c2pgebkxc33zrc6wltxu" },
+    { 1878, false, "4 Garth: The Source Code", "bafkreidbuoddcb35uifmvgkdkxz3jclyx47y3p2wy4jhp3knbubln6gf2a", "bafkreifpss746fvjj5wp422hbu35yuyaehtveze27dwwtgtfn67577grwq" },
+    { 1880, false, "4 Garth: The Source Code", "bafkreicaactn33hnyuhyb6ur6qt3zyep7tgsvc2zn6ppgvlwdhzjro3ax4", "bafkreihesr3qxne24rdexgpinwvanbwxxqch5uk7om6nmyv6grditphkn4" },
+    { 1884, false, "4 Garth: The Source Code", "bafkreif3uoumb5wykywvjwywcd4tpw3sysmupsldobyu4sfn2qdwbcoug4", "bafkreic2mlej432ewmvexu3yg3ogbpuyfsit6fagu5zwqjkdvzkamshcvu" },
+    { 1887, false, "4 Garth: The Source Code", "bafkreiewsds4v6gself2ofelecnvxczgn4l7atrkclinrwjaxkbxwo4kma", "bafkreifwud4va6qquqyjwklqfxh4ulydsjix5yepargxcpulj6pahxrt4a" },
+    { 1904, false, "1 Qub3s", "bafkreibvpuaysuy4ppfikzudb6pmj7gz2h4qo5d73dg35vfeclh2hejyh4", "bafkreigbzkmkajw43bl4yo2w5mxz5sm3tng33p3hwpuzw7lxe4pvumf63m" },
+    { 1915, false, "3 piQcells", "bafkreifxnzluqkbmuc43gf2x2gjvb4kyrc3fj4d5yvuu6u2e4mq4huagky", "bafkreicua4h2nyzsl7gayioskna76hhv7lrl4iavge5cymu5fvpf3xmoqy" },
+    { 4991, false, "15 QDoge NFTs 1.0", "bafkreias4fpguix2mgqbvw43zcijtbtertxa2kk5s5ntlpptozucafct2m", "bafkreihnyikvrkatpvioa34bdakgpoqd2k5ostmdpr6icj23l5mmxeazna" },
+    { 5077, false, "15 QDoge NFTs 1.0", "bafkreibvlxngjmzcx52v3fcdj2ytnjhdhafywwajlbh72likcl2t3r7qti", "bafkreiaryhdum64ch6fdsa6vnadqwb7w3p7e7yenlomn4i7pvu4lmxhqji" },
+    { 5085, false, "15 QDoge NFTs 1.0", "bafkreichjhxh2hkemla3a5ceqbexuwurmdeebzvclfpedz57fs7a5pfjby", "bafkreihxqgj4xe6kpxj37stedxbrnwv7md75lvqfzdgr5piz4qrofck32m" },
+    { 5752, false, "1 Qub3s", "bafkreig76xptwjb7vgugsnh3us4qdxdez5niqypt5kyutkpblsgxcgz6lm", "bafkreihduhk2qcxawjnzsu3mdvqdopveelvuqajy5clayi5tck5zja6tha" },
+};
+
+namespace {
+
+constexpr uint32 kMainnetNumberOfNFT = 7683;
+
+static Array<uint8, 64> uriFromString(const char* s)
+{
+    Array<uint8, 64> uri;
+    uri.setAll(0);
+    for (uint32 i = 0; s[i] != 0 && i < 64; i++)
+        uri.set(i, (uint8)s[i]);
+    return uri;
+}
+
+static uint32 qbayDate(uint32 year, uint32 month, uint32 day, uint32 hour)
+{
+    uint32 res;
+    QBAY::packQbayDate(year, month, day, hour, 0, 0, res);
+    return res;
+}
+
+static bool isListed(uint32 NFTid)
+{
+    for (uint32 x : { 1351u, 1761u, 1769u, 1772u, 1781u, 1802u, 1814u, 1821u, 1832u, 1864u, 4991u })
+        if (x == NFTid)
+            return true;
+    return false;
+}
+
+static const id kOtherCreator = getUser(901);
+static const id kOtherHolder = getUser(902);
+static const id kBurnCreator = getUser(903);
+static const id kAccomplice = getUser(904);
+
+static id setUriCreator(uint32 NFTid) { return getUser(910 + (NFTid % 7)); }
+static id setUriHolder(uint32 NFTid) { return getUser(10000 + NFTid); }
+
+// Replica of the relevant mainnet state of epoch 241 (all 7683 NFTs; listed ones with their state of that epoch).
+static void buildMainnetLikeState(ContractTestingQBAY& pfp, uint32 numberOfNFT = kMainnetNumberOfNFT)
+{
+    setMemory(utcTime, 0);
+    utcTime.Year = 2026;
+    utcTime.Month = 11;
+    utcTime.Day = 27;
+    utcTime.Hour = 12;
+    updateQpiTime();
+
+    QBAY::InfoOfNFT nft;
+    setMemory(nft, 0);
+    nft.creator = kOtherCreator;
+    nft.possessor = kOtherHolder;
+    nft.NFTidForExchange = QBAY_MAX_NUMBER_NFT;
+    nft.salePrice = QBAY_SALE_PRICE;
+    for (uint32 t = 0; t < numberOfNFT; t++)
+    {
+        nft.URI = uriFromString(("bafkreiunrelatednft" + std::to_string(t)).c_str());
+        pfp.getState()->NFTs.set(t, nft);
+    }
+    for (const auto& e : kQbayCleanupList)
+    {
+        if (e.NFTid >= numberOfNFT)
+            continue;
+        QBAY::InfoOfNFT n = nft;
+        n.URI = uriFromString(e.currentURI);
+        n.creator = e.burn ? kBurnCreator : setUriCreator(e.NFTid);
+        n.possessor = e.burn ? kBurnCreator : setUriHolder(e.NFTid);
+        if (isListed(e.NFTid))
+        {
+            n.statusOfSale = 1;
+            n.salePrice = 222222222;
+        }
+        if (e.NFTid == 1814)
+        {
+            // auction of 2026-04-20..21 is over, NFT is still listed for sale
+            n.statusOfAuction = 1;
+            n.startTimeOfAuction = qbayDate(26, 4, 20, 9);
+            n.endTimeOfAuction = qbayDate(26, 4, 21, 8);
+            n.creatorOfAuction = n.possessor;
+        }
+        if (e.NFTid == 1872)
+        {
+            // NFT 1703 was offered in exchange for 1872
+            n.NFTidForExchange = 1703;
+            n.statusOfExchange = 1;
+        }
+        pfp.getState()->NFTs.set(e.NFTid, n);
+    }
+    pfp.getState()->numberOfNFT = numberOfNFT;
+    pfp.getState()->duplicateCleanupDone = 0;
+}
+
+} // namespace
+
+TEST(TestContractQBAY, DuplicateCleanup_AppliesMainnetListOnceAtFirstBeginEpoch)
+{
+    ContractTestingQBAY pfp;
+    buildMainnetLikeState(pfp);
+    EXPECT_EQ(sizeof(kQbayCleanupList) / sizeof(kQbayCleanupList[0]), 93u);
+
+    // Burn targets 11 and 2318 carry open exchange proposals set up before the upgrade:
+    //  - 100 (accomplice) holds a proposal that offers 11 -> accepting it after the burn would resurrect 11
+    //  - 2318 holds a proposal that offers 200 for it
+    QBAY::InfoOfNFT t100 = pfp.getState()->NFTs.get(100);
+    t100.possessor = kAccomplice;
+    t100.NFTidForExchange = 11;
+    t100.statusOfExchange = 1;
+    pfp.getState()->NFTs.set(100, t100);
+    QBAY::InfoOfNFT b2318 = pfp.getState()->NFTs.get(2318);
+    b2318.NFTidForExchange = 200;
+    b2318.statusOfExchange = 1;
+    pfp.getState()->NFTs.set(2318, b2318);
+    const QBAY::InfoOfNFT untouchedBefore = pfp.getState()->NFTs.get(5000);
+
+    pfp.beginEpoch();
+    EXPECT_EQ(pfp.getState()->duplicateCleanupDone, 1u);
+    EXPECT_EQ(pfp.getState()->numberOfNFT, kMainnetNumberOfNFT);
+
+    uint32 burned = 0, changed = 0;
+    for (const auto& e : kQbayCleanupList)
+    {
+        const QBAY::InfoOfNFT n = pfp.getState()->NFTs.get(e.NFTid);
+        if (e.burn)
+        {
+            EXPECT_EQ(n.possessor, NULL_ID) << e.NFTid;
+            EXPECT_EQ(n.creator, kBurnCreator) << e.NFTid;
+            EXPECT_TRUE(isUriEqual(n.URI, uriFromString(e.currentURI))) << e.NFTid;
+            EXPECT_EQ(n.NFTidForExchange, QBAY_MAX_NUMBER_NFT) << e.NFTid;
+            EXPECT_EQ(n.statusOfExchange, 0) << e.NFTid;
+            burned++;
+        }
+        else
+        {
+            EXPECT_TRUE(isUriEqual(n.URI, uriFromString(e.newURI))) << e.NFTid;
+            EXPECT_EQ(n.creator, setUriCreator(e.NFTid)) << e.NFTid;
+            EXPECT_EQ(n.possessor, setUriHolder(e.NFTid)) << e.NFTid;
+            // fixed-price listings of the old item are cancelled (1814's auction is over, so it is one of them)
+            EXPECT_EQ(n.statusOfSale, 0) << e.NFTid;
+            if (isListed(e.NFTid))
+                EXPECT_EQ(n.salePrice, QBAY_SALE_PRICE) << e.NFTid;
+            changed++;
+        }
+    }
+    EXPECT_EQ(burned, 41u);
+    EXPECT_EQ(changed, 52u);
+
+    // 1814: auction fields untouched; 1872: incoming exchange proposal untouched
+    EXPECT_EQ(pfp.getState()->NFTs.get(1814).statusOfAuction, 1);
+    EXPECT_EQ(pfp.getState()->NFTs.get(1814).endTimeOfAuction, qbayDate(26, 4, 21, 8));
+    EXPECT_EQ(pfp.getState()->NFTs.get(1872).NFTidForExchange, 1703u);
+    EXPECT_EQ(pfp.getState()->NFTs.get(1872).statusOfExchange, 1);
+
+    // the stale proposal offering burned NFT 11 is cancelled -> 11 cannot be swapped out of NULL_ID
+    EXPECT_EQ(pfp.getState()->NFTs.get(100).NFTidForExchange, QBAY_MAX_NUMBER_NFT);
+    EXPECT_EQ(pfp.getState()->NFTs.get(100).statusOfExchange, 0);
+    increaseEnergy(kAccomplice, 1);
+    pfp.listInExchange(kAccomplice, 100, 11);
+    EXPECT_EQ(pfp.getState()->NFTs.get(11).possessor, NULL_ID);
+    EXPECT_EQ(pfp.getState()->NFTs.get(100).possessor, kAccomplice);
+
+    // nobody can sell or transfer a burned NFT
+    increaseEnergy(kBurnCreator, 1);
+    EXPECT_NE(pfp.transfer(kBurnCreator, 12, kOtherHolder, 0).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getState()->NFTs.get(12).possessor, NULL_ID);
+
+    // other NFTs are untouched
+    const QBAY::InfoOfNFT untouchedAfter = pfp.getState()->NFTs.get(5000);
+    EXPECT_EQ(memcmp(&untouchedBefore, &untouchedAfter, sizeof(untouchedAfter)), 0);
+
+    // one-time: a later epoch does not run it again
+    QBAY::InfoOfNFT n58 = pfp.getState()->NFTs.get(58);
+    n58.URI = uriFromString("QmZDWEAfu3idRbHMxKZ2tWkfjyq1wVh4ZeESDJAnjd2RQN");
+    pfp.getState()->NFTs.set(58, n58);
+    QBAY::InfoOfNFT n2459 = pfp.getState()->NFTs.get(2459);
+    n2459.possessor = kBurnCreator;
+    pfp.getState()->NFTs.set(2459, n2459);
+    pfp.beginEpoch();
+    EXPECT_TRUE(isUriEqual(pfp.getState()->NFTs.get(58).URI, uriFromString("QmZDWEAfu3idRbHMxKZ2tWkfjyq1wVh4ZeESDJAnjd2RQN")));
+    EXPECT_EQ(pfp.getState()->NFTs.get(2459).possessor, kBurnCreator);
+}
+
+TEST(TestContractQBAY, DuplicateCleanup_SkipsEntriesWhoseStateChanged)
+{
+    ContractTestingQBAY pfp;
+    buildMainnetLikeState(pfp, 5000); // 5077, 5085, 5752 do not exist
+
+    auto edit = [&](uint32 NFTid, auto fn) {
+        QBAY::InfoOfNFT n = pfp.getState()->NFTs.get(NFTid);
+        fn(n);
+        pfp.getState()->NFTs.set(NFTid, n);
+    };
+    edit(11, [](QBAY::InfoOfNFT& n) { n.possessor = kOtherHolder; });                       // burn: possessor changed
+    edit(12, [](QBAY::InfoOfNFT& n) { n.statusOfSale = 1; n.salePrice = 5; });              // burn: listed for sale
+    edit(32, [](QBAY::InfoOfNFT& n) { n.statusOfAsk = 1; n.askUser = kOtherHolder; });       // burn: open offer
+    edit(2318, [](QBAY::InfoOfNFT& n) { n.statusOfAuction = 1; n.endTimeOfAuction = qbayDate(26, 12, 31, 0); }); // burn: auction running
+    edit(1093, [](QBAY::InfoOfNFT& n) { n.URI = uriFromString("bafkreisomethingelse"); });   // set URI: URI changed
+    edit(1351, [](QBAY::InfoOfNFT& n) { n.statusOfAuction = 1; n.endTimeOfAuction = qbayDate(26, 12, 31, 0); }); // listed + auction running
+
+    pfp.beginEpoch();
+
+    EXPECT_EQ(pfp.getState()->NFTs.get(11).possessor, kOtherHolder);
+    EXPECT_EQ(pfp.getState()->NFTs.get(12).possessor, kBurnCreator);
+    EXPECT_EQ(pfp.getState()->NFTs.get(12).statusOfSale, 1);
+    EXPECT_EQ(pfp.getState()->NFTs.get(32).possessor, kBurnCreator);
+    EXPECT_EQ(pfp.getState()->NFTs.get(2318).possessor, kBurnCreator);
+    EXPECT_EQ(pfp.getState()->NFTs.get(2459).possessor, NULL_ID);    // unaffected entries still applied
+    EXPECT_TRUE(isUriEqual(pfp.getState()->NFTs.get(1093).URI, uriFromString("bafkreisomethingelse")));
+    // URI is applied, but the listing of an NFT with a running auction is not touched
+    EXPECT_TRUE(isUriEqual(pfp.getState()->NFTs.get(1351).URI, uriFromString("bafkreiftenmweonnuyuujw6evic3ftqxlwyihci6azawmg53oost66c6zm")));
+    EXPECT_EQ(pfp.getState()->NFTs.get(1351).statusOfSale, 1);
+    EXPECT_EQ(pfp.getState()->NFTs.get(1351).salePrice, 222222222ULL);
+    // ids beyond numberOfNFT are skipped and nothing is written there
+    EXPECT_EQ(pfp.getState()->numberOfNFT, 5000u);
+    EXPECT_TRUE(isUriEmpty(pfp.getState()->NFTs.get(5077).URI));
+    EXPECT_EQ(pfp.getState()->NFTs.get(5752).possessor, NULL_ID);
+    EXPECT_EQ(pfp.getState()->duplicateCleanupDone, 1u);
+}
+
+TEST(TestContractQBAY, DuplicateCleanup_FreshStateDoesNothing)
+{
+    ContractTestingQBAY pfp;
+    pfp.beginEpoch();
+    EXPECT_EQ(pfp.getState()->duplicateCleanupDone, 1u);
+    EXPECT_EQ(pfp.getState()->numberOfNFT, 0u);
+    EXPECT_TRUE(isUriEmpty(pfp.getState()->NFTs.get(58).URI));
+    EXPECT_EQ(pfp.getState()->NFTs.get(4991).possessor, NULL_ID);
+}
+
+TEST(TestContractQBAY, DuplicateCleanup_StaleProposalWouldResurrectBurnedNFTWithoutCancellation)
+{
+    // Documents why _cleanupCancelProposals is needed: with the proposal still open, accepting it swaps the
+    // burned NFT to the accomplice.
+    ContractTestingQBAY pfp;
+    buildMainnetLikeState(pfp);
+    pfp.beginEpoch();
+    ASSERT_EQ(pfp.getState()->NFTs.get(11).possessor, NULL_ID);
+
+    QBAY::InfoOfNFT t100 = pfp.getState()->NFTs.get(100);
+    t100.possessor = kAccomplice;
+    t100.NFTidForExchange = 11;     // re-create the stale proposal after the cleanup (cannot happen on chain)
+    t100.statusOfExchange = 1;
+    pfp.getState()->NFTs.set(100, t100);
+    increaseEnergy(kAccomplice, 1);
+    pfp.listInExchange(kAccomplice, 100, 11);
+    EXPECT_EQ(pfp.getState()->NFTs.get(11).possessor, kAccomplice);
+}
